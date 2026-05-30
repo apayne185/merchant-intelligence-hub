@@ -1,0 +1,136 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+# =============================================================================
+# Getnet AI Lab — Take-Home Graduate Program 2026
+# =============================================================================
+# Estructura de packaging moderna (PEP 621 + Hatch).
+# Alineada con el resto de repos del lab (mps-ailab-*).
+#
+# Install (recomendado, con uv — https://docs.astral.sh/uv/):
+#     uv sync --extra dev          # resuelve + crea .venv + genera uv.lock
+#
+# Install (fallback con pip):
+#     pip install -e ".[dev]"
+#
+# Run API:
+#     MOCK_LLM=1 uv run uvicorn src.parte4_api.main:app --reload --port 8000
+#
+# Test:
+#     MOCK_LLM=1 uv run pytest -v
+#
+# El candidato puede modificar este archivo añadiendo dependencias (con versión
+# fijada) y debe justificar las adiciones en DECISIONS.md.
+# =============================================================================
+
+[project]
+name = "getnet-ailab-takehome"
+version = "0.1.0"
+description = "Take-home test starter — Getnet AI Lab Graduate Program 2026"
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+license = { text = "Proprietary — Getnet recruitment use only" }
+authors = [
+    { name = "Getnet AI Lab", email = "ailab@getnet.es" },
+]
+keywords = ["getnet", "ai-lab", "graduate-program", "take-home"]
+
+# -----------------------------------------------------------------------------
+# Core deps — necesarias para que la app y los tests arranquen
+# -----------------------------------------------------------------------------
+dependencies = [
+    # Data & ML
+    "pandas==2.2.2",
+    "numpy==1.26.4",
+    "scikit-learn==1.5.1",
+    "xgboost==2.1.1",
+    "lightgbm==4.5.0",
+    "shap==0.46.0",
+
+    # Notebook (Parte 3)
+    "jupyter==1.0.0",
+    "ipykernel==6.29.5",
+
+    # API stack (Parte 4) — uvicorn obligatorio
+    "fastapi==0.115.0",
+    "uvicorn[standard]==0.30.6",
+    "pydantic==2.9.2",
+
+    # Agentic framework (Parte 4) — OBLIGATORIO, no sustituir por LangChain/LlamaIndex
+    "agno>=2.5,<3",
+    "openai>=1.40,<2",
+
+    # Utilidades comunes
+    "python-dotenv==1.0.1",
+]
+
+[project.optional-dependencies]
+# Dependencias de desarrollo y tests
+dev = [
+    "pytest==8.3.3",
+    "pytest-asyncio==0.24.0",
+    "httpx==0.27.2",
+    "ruff==0.6.9",
+]
+
+# Opcional para la Parte 5 bonus (collusion rings)
+bonus = [
+    "networkx==3.3",
+]
+
+[project.urls]
+Homepage = "https://getnet.santander.com"
+
+# -----------------------------------------------------------------------------
+# Hatch — qué empaquetar
+# -----------------------------------------------------------------------------
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+# -----------------------------------------------------------------------------
+# uv — configuración mínima del gestor (https://docs.astral.sh/uv/)
+# -----------------------------------------------------------------------------
+[tool.uv]
+# Garantiza venv local y resolución determinista (uv.lock se commitea).
+managed = true
+
+# -----------------------------------------------------------------------------
+# Pytest
+# -----------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+]
+asyncio_mode = "auto"
+pythonpath = ["."]
+
+# -----------------------------------------------------------------------------
+# Ruff (lint opcional)
+# -----------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",   # pycodestyle + pyflakes
+    "I",             # isort
+    "B",             # bugbear
+    "UP",            # pyupgrade
+    "RUF",           # ruff-specific
+]
+ignore = [
+    "E501",  # line too long (gestionado por formatter)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B", "RUF"]

@@ -1,0 +1,3502 @@
+[
+  {
+    "merchant_id": 10000383,
+    "segment": "SMB",
+    "tpv_last_3m": 8075.34,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000081,
+    "segment": "SMB",
+    "tpv_last_3m": 3815.82,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000058,
+    "segment": "SMB",
+    "tpv_last_3m": 3635.99,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 192
+  },
+  {
+    "merchant_id": 10000298,
+    "segment": "SMB",
+    "tpv_last_3m": 5041.78,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 242
+  },
+  {
+    "merchant_id": 10000380,
+    "segment": "SMB",
+    "tpv_last_3m": 6242.61,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000102,
+    "segment": "SMB",
+    "tpv_last_3m": 6341.23,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000239,
+    "segment": "SMB",
+    "tpv_last_3m": 6360.76,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000210,
+    "segment": "SMB",
+    "tpv_last_3m": 3897.44,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000279,
+    "segment": "SMB",
+    "tpv_last_3m": 4050.46,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000185,
+    "segment": "MidMarket",
+    "tpv_last_3m": 40263.84,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 211
+  },
+  {
+    "merchant_id": 10000090,
+    "segment": "SMB",
+    "tpv_last_3m": 3999.97,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000109,
+    "segment": "SMB",
+    "tpv_last_3m": 5911.89,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000375,
+    "segment": "SMB",
+    "tpv_last_3m": 3745.86,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000368,
+    "segment": "SMB",
+    "tpv_last_3m": 5998.09,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000080,
+    "segment": "MidMarket",
+    "tpv_last_3m": 37289.08,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000176,
+    "segment": "SMB",
+    "tpv_last_3m": 3960.99,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000349,
+    "segment": "SMB",
+    "tpv_last_3m": 7037.73,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 291
+  },
+  {
+    "merchant_id": 10000347,
+    "segment": "MidMarket",
+    "tpv_last_3m": 40650.0,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000027,
+    "segment": "SMB",
+    "tpv_last_3m": 3991.45,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000125,
+    "segment": "SMB",
+    "tpv_last_3m": 7252.43,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000430,
+    "segment": "SMB",
+    "tpv_last_3m": 9105.92,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 158
+  },
+  {
+    "merchant_id": 10000107,
+    "segment": "MidMarket",
+    "tpv_last_3m": 24054.45,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000284,
+    "segment": "MidMarket",
+    "tpv_last_3m": 6717.19,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000130,
+    "segment": "MidMarket",
+    "tpv_last_3m": 27796.13,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000479,
+    "segment": "SMB",
+    "tpv_last_3m": 4106.99,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000436,
+    "segment": "SMB",
+    "tpv_last_3m": 3660.66,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000318,
+    "segment": "SMB",
+    "tpv_last_3m": 3419.94,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000468,
+    "segment": "SMB",
+    "tpv_last_3m": 0,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000068,
+    "segment": "SMB",
+    "tpv_last_3m": 2305.94,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000117,
+    "segment": "SMB",
+    "tpv_last_3m": 3449.66,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 356
+  },
+  {
+    "merchant_id": 10000335,
+    "segment": "SMB",
+    "tpv_last_3m": 6307.45,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000402,
+    "segment": "SMB",
+    "tpv_last_3m": 7632.35,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 144
+  },
+  {
+    "merchant_id": 10000060,
+    "segment": "SMB",
+    "tpv_last_3m": 2021.81,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000286,
+    "segment": "SMB",
+    "tpv_last_3m": 4900.6,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 28
+  },
+  {
+    "merchant_id": 10000357,
+    "segment": "SMB",
+    "tpv_last_3m": 7062.77,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000400,
+    "segment": "MidMarket",
+    "tpv_last_3m": 18107.52,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000449,
+    "segment": "SMB",
+    "tpv_last_3m": 4246.11,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000142,
+    "segment": "SMB",
+    "tpv_last_3m": 1638.6,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 16
+  },
+  {
+    "merchant_id": 10000355,
+    "segment": "SMB",
+    "tpv_last_3m": 5342.88,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 7
+  },
+  {
+    "merchant_id": 10000280,
+    "segment": "SMB",
+    "tpv_last_3m": 3783.1,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000181,
+    "segment": "SMB",
+    "tpv_last_3m": 4332.81,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 294
+  },
+  {
+    "merchant_id": 10000362,
+    "segment": "MidMarket",
+    "tpv_last_3m": 35670.9,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000291,
+    "segment": "SMB",
+    "tpv_last_3m": 1348.26,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000144,
+    "segment": "SMB",
+    "tpv_last_3m": 2008.44,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 17
+  },
+  {
+    "merchant_id": 10000079,
+    "segment": "SMB",
+    "tpv_last_3m": 6064.65,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000016,
+    "segment": "SMB",
+    "tpv_last_3m": 3817.26,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000164,
+    "segment": "SMB",
+    "tpv_last_3m": 4768.09,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000306,
+    "segment": "SMB",
+    "tpv_last_3m": 5710.02,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 365
+  },
+  {
+    "merchant_id": 10000190,
+    "segment": "SMB",
+    "tpv_last_3m": 8393.21,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 365
+  },
+  {
+    "merchant_id": 10000026,
+    "segment": "SMB",
+    "tpv_last_3m": 3454.2,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 210
+  },
+  {
+    "merchant_id": 10000030,
+    "segment": "SMB",
+    "tpv_last_3m": 6311.69,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 217
+  },
+  {
+    "merchant_id": 10000177,
+    "segment": "SMB",
+    "tpv_last_3m": 4956.81,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000098,
+    "segment": "SMB",
+    "tpv_last_3m": 5509.1,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000192,
+    "segment": "SMB",
+    "tpv_last_3m": 5217.36,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 347
+  },
+  {
+    "merchant_id": 10000328,
+    "segment": "SMB",
+    "tpv_last_3m": 3914.51,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000183,
+    "segment": "SMB",
+    "tpv_last_3m": 2799.08,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000416,
+    "segment": "MidMarket",
+    "tpv_last_3m": 23139.48,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 134
+  },
+  {
+    "merchant_id": 10000384,
+    "segment": "SMB",
+    "tpv_last_3m": 4368.53,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000149,
+    "segment": "SMB",
+    "tpv_last_3m": 2522.28,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000410,
+    "segment": "SMB",
+    "tpv_last_3m": 4595.56,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000140,
+    "segment": "SMB",
+    "tpv_last_3m": 4388.98,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000367,
+    "segment": "SMB",
+    "tpv_last_3m": 3805.5,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 40
+  },
+  {
+    "merchant_id": 10000364,
+    "segment": "SMB",
+    "tpv_last_3m": 2612.64,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000272,
+    "segment": "SMB",
+    "tpv_last_3m": 5553.13,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000240,
+    "segment": "SMB",
+    "tpv_last_3m": 1829.22,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 321
+  },
+  {
+    "merchant_id": 10000171,
+    "segment": "SMB",
+    "tpv_last_3m": 4256.56,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000225,
+    "segment": "SMB",
+    "tpv_last_3m": 2952.07,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000429,
+    "segment": "MidMarket",
+    "tpv_last_3m": 17124.98,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000154,
+    "segment": "SMB",
+    "tpv_last_3m": 3400.9,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000302,
+    "segment": "SMB",
+    "tpv_last_3m": 5866.92,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 111
+  },
+  {
+    "merchant_id": 10000042,
+    "segment": "SMB",
+    "tpv_last_3m": 4017.59,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000409,
+    "segment": "SMB",
+    "tpv_last_3m": 5616.7,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 49
+  },
+  {
+    "merchant_id": 10000308,
+    "segment": "SMB",
+    "tpv_last_3m": 2433.99,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000063,
+    "segment": "SMB",
+    "tpv_last_3m": 3680.01,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000450,
+    "segment": "SMB",
+    "tpv_last_3m": 3324.67,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 206
+  },
+  {
+    "merchant_id": 10000014,
+    "segment": "SMB",
+    "tpv_last_3m": 2521.86,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000434,
+    "segment": "SMB",
+    "tpv_last_3m": 2536.17,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000343,
+    "segment": "Enterprise",
+    "tpv_last_3m": 111482.84,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000151,
+    "segment": "SMB",
+    "tpv_last_3m": 3725.53,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000333,
+    "segment": "SMB",
+    "tpv_last_3m": 3243.89,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 178
+  },
+  {
+    "merchant_id": 10000174,
+    "segment": "SMB",
+    "tpv_last_3m": 6030.64,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000121,
+    "segment": "SMB",
+    "tpv_last_3m": 2756.07,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000437,
+    "segment": "SMB",
+    "tpv_last_3m": 5512.27,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 168
+  },
+  {
+    "merchant_id": 10000338,
+    "segment": "MidMarket",
+    "tpv_last_3m": 13273.34,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000242,
+    "segment": "SMB",
+    "tpv_last_3m": 5542.69,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000234,
+    "segment": "SMB",
+    "tpv_last_3m": 4480.94,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000243,
+    "segment": "SMB",
+    "tpv_last_3m": 3506.71,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 336
+  },
+  {
+    "merchant_id": 10000020,
+    "segment": "SMB",
+    "tpv_last_3m": 4131.69,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 280
+  },
+  {
+    "merchant_id": 10000006,
+    "segment": "SMB",
+    "tpv_last_3m": 1757.18,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000040,
+    "segment": "SMB",
+    "tpv_last_3m": 2693.11,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000458,
+    "segment": "SMB",
+    "tpv_last_3m": 5074.4,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000078,
+    "segment": "Enterprise",
+    "tpv_last_3m": 190162.44,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000267,
+    "segment": "SMB",
+    "tpv_last_3m": 2548.4,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 52
+  },
+  {
+    "merchant_id": 10000069,
+    "segment": "Enterprise",
+    "tpv_last_3m": 37671.97,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000214,
+    "segment": "SMB",
+    "tpv_last_3m": 2907.39,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000172,
+    "segment": "SMB",
+    "tpv_last_3m": 2830.29,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000356,
+    "segment": "MidMarket",
+    "tpv_last_3m": 16745.66,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 242
+  },
+  {
+    "merchant_id": 10000007,
+    "segment": "Enterprise",
+    "tpv_last_3m": 44674.86,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000428,
+    "segment": "SMB",
+    "tpv_last_3m": 4847.52,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 184
+  },
+  {
+    "merchant_id": 10000327,
+    "segment": "SMB",
+    "tpv_last_3m": 5195.01,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000482,
+    "segment": "SMB",
+    "tpv_last_3m": 3230.9,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000221,
+    "segment": "SMB",
+    "tpv_last_3m": 6021.24,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000350,
+    "segment": "SMB",
+    "tpv_last_3m": 5703.9,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 81
+  },
+  {
+    "merchant_id": 10000262,
+    "segment": "SMB",
+    "tpv_last_3m": 3491.24,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000092,
+    "segment": "MidMarket",
+    "tpv_last_3m": 66897.34,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000379,
+    "segment": "SMB",
+    "tpv_last_3m": 4257.04,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 156
+  },
+  {
+    "merchant_id": 10000464,
+    "segment": "SMB",
+    "tpv_last_3m": 4526.98,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000212,
+    "segment": "SMB",
+    "tpv_last_3m": 3467.17,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000452,
+    "segment": "SMB",
+    "tpv_last_3m": 3903.02,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000415,
+    "segment": "SMB",
+    "tpv_last_3m": 726.91,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000394,
+    "segment": "SMB",
+    "tpv_last_3m": 1484.2,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 337
+  },
+  {
+    "merchant_id": 10000389,
+    "segment": "MidMarket",
+    "tpv_last_3m": 27014.67,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 278
+  },
+  {
+    "merchant_id": 10000041,
+    "segment": "SMB",
+    "tpv_last_3m": 3716.14,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000113,
+    "segment": "SMB",
+    "tpv_last_3m": 3925.67,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000348,
+    "segment": "SMB",
+    "tpv_last_3m": 4508.34,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000478,
+    "segment": "MidMarket",
+    "tpv_last_3m": 43046.8,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 103
+  },
+  {
+    "merchant_id": 10000290,
+    "segment": "MidMarket",
+    "tpv_last_3m": 16352.41,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 256
+  },
+  {
+    "merchant_id": 10000346,
+    "segment": "SMB",
+    "tpv_last_3m": 2695.13,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000249,
+    "segment": "SMB",
+    "tpv_last_3m": 5977.47,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 176
+  },
+  {
+    "merchant_id": 10000497,
+    "segment": "SMB",
+    "tpv_last_3m": 2972.22,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000265,
+    "segment": "SMB",
+    "tpv_last_3m": 3828.13,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000440,
+    "segment": "SMB",
+    "tpv_last_3m": 2020.97,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000441,
+    "segment": "SMB",
+    "tpv_last_3m": 3926.1,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 154
+  },
+  {
+    "merchant_id": 10000275,
+    "segment": "SMB",
+    "tpv_last_3m": 4016.74,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 308
+  },
+  {
+    "merchant_id": 10000485,
+    "segment": "SMB",
+    "tpv_last_3m": 2645.9,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000301,
+    "segment": "SMB",
+    "tpv_last_3m": 6767.52,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 35
+  },
+  {
+    "merchant_id": 10000310,
+    "segment": "SMB",
+    "tpv_last_3m": 4836.38,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 275
+  },
+  {
+    "merchant_id": 10000406,
+    "segment": "SMB",
+    "tpv_last_3m": 1972.18,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000233,
+    "segment": "SMB",
+    "tpv_last_3m": 5529.11,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000163,
+    "segment": "SMB",
+    "tpv_last_3m": 2372.16,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000408,
+    "segment": "SMB",
+    "tpv_last_3m": 4191.82,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000032,
+    "segment": "MidMarket",
+    "tpv_last_3m": 30071.7,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 307
+  },
+  {
+    "merchant_id": 10000371,
+    "segment": "SMB",
+    "tpv_last_3m": 5035.52,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 24
+  },
+  {
+    "merchant_id": 10000029,
+    "segment": "SMB",
+    "tpv_last_3m": 4100.28,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 338
+  },
+  {
+    "merchant_id": 10000062,
+    "segment": "SMB",
+    "tpv_last_3m": 4448.45,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000451,
+    "segment": "MidMarket",
+    "tpv_last_3m": 55667.63,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000448,
+    "segment": "SMB",
+    "tpv_last_3m": 3855.77,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000048,
+    "segment": "SMB",
+    "tpv_last_3m": 4904.47,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 331
+  },
+  {
+    "merchant_id": 10000153,
+    "segment": "SMB",
+    "tpv_last_3m": 1245.3,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000352,
+    "segment": "SMB",
+    "tpv_last_3m": 1006.49,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000257,
+    "segment": "SMB",
+    "tpv_last_3m": 2722.0,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000132,
+    "segment": "SMB",
+    "tpv_last_3m": 5810.23,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000480,
+    "segment": "SMB",
+    "tpv_last_3m": 2781.59,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000294,
+    "segment": "SMB",
+    "tpv_last_3m": 4261.38,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000392,
+    "segment": "SMB",
+    "tpv_last_3m": 2437.7,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000228,
+    "segment": "SMB",
+    "tpv_last_3m": 3148.03,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000438,
+    "segment": "SMB",
+    "tpv_last_3m": 4150.91,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 365
+  },
+  {
+    "merchant_id": 10000193,
+    "segment": "SMB",
+    "tpv_last_3m": 3244.28,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000071,
+    "segment": "SMB",
+    "tpv_last_3m": 6312.55,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000073,
+    "segment": "SMB",
+    "tpv_last_3m": 3623.82,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000180,
+    "segment": "SMB",
+    "tpv_last_3m": 4438.18,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 361
+  },
+  {
+    "merchant_id": 10000340,
+    "segment": "SMB",
+    "tpv_last_3m": 5904.24,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000178,
+    "segment": "SMB",
+    "tpv_last_3m": 2885.92,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000423,
+    "segment": "MidMarket",
+    "tpv_last_3m": 49100.79,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 104
+  },
+  {
+    "merchant_id": 10000421,
+    "segment": "MidMarket",
+    "tpv_last_3m": 39236.07,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000097,
+    "segment": "SMB",
+    "tpv_last_3m": 2201.81,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000013,
+    "segment": "SMB",
+    "tpv_last_3m": 2240.75,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 356
+  },
+  {
+    "merchant_id": 10000226,
+    "segment": "SMB",
+    "tpv_last_3m": 3656.77,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000288,
+    "segment": "SMB",
+    "tpv_last_3m": 2256.22,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000208,
+    "segment": "SMB",
+    "tpv_last_3m": 5408.02,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 235
+  },
+  {
+    "merchant_id": 10000481,
+    "segment": "SMB",
+    "tpv_last_3m": 4257.49,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 279
+  },
+  {
+    "merchant_id": 10000248,
+    "segment": "SMB",
+    "tpv_last_3m": 3345.44,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000453,
+    "segment": "SMB",
+    "tpv_last_3m": 2927.0,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000472,
+    "segment": "SMB",
+    "tpv_last_3m": 3524.13,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000447,
+    "segment": "SMB",
+    "tpv_last_3m": 5443.07,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 53
+  },
+  {
+    "merchant_id": 10000444,
+    "segment": "SMB",
+    "tpv_last_3m": 4165.41,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000342,
+    "segment": "SMB",
+    "tpv_last_3m": 6777.98,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000296,
+    "segment": "SMB",
+    "tpv_last_3m": 5109.68,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000156,
+    "segment": "SMB",
+    "tpv_last_3m": 5595.08,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 226
+  },
+  {
+    "merchant_id": 10000351,
+    "segment": "SMB",
+    "tpv_last_3m": 4920.32,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 53
+  },
+  {
+    "merchant_id": 10000258,
+    "segment": "SMB",
+    "tpv_last_3m": 3917.27,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000135,
+    "segment": "SMB",
+    "tpv_last_3m": 5207.93,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000238,
+    "segment": "SMB",
+    "tpv_last_3m": 5727.78,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000039,
+    "segment": "SMB",
+    "tpv_last_3m": 7812.94,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000295,
+    "segment": "SMB",
+    "tpv_last_3m": 8111.66,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 292
+  },
+  {
+    "merchant_id": 10000281,
+    "segment": "SMB",
+    "tpv_last_3m": 8356.68,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000220,
+    "segment": "SMB",
+    "tpv_last_3m": 4456.86,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000414,
+    "segment": "SMB",
+    "tpv_last_3m": 4367.71,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 340
+  },
+  {
+    "merchant_id": 10000475,
+    "segment": "SMB",
+    "tpv_last_3m": 1584.76,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000391,
+    "segment": "SMB",
+    "tpv_last_3m": 2615.17,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000033,
+    "segment": "SMB",
+    "tpv_last_3m": 4345.3,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000268,
+    "segment": "SMB",
+    "tpv_last_3m": 3682.36,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 64
+  },
+  {
+    "merchant_id": 10000332,
+    "segment": "SMB",
+    "tpv_last_3m": 3274.76,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 6
+  },
+  {
+    "merchant_id": 10000470,
+    "segment": "MidMarket",
+    "tpv_last_3m": 36615.33,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000372,
+    "segment": "Enterprise",
+    "tpv_last_3m": 137886.33,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000282,
+    "segment": "SMB",
+    "tpv_last_3m": 3769.18,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000152,
+    "segment": "SMB",
+    "tpv_last_3m": 3440.46,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 279
+  },
+  {
+    "merchant_id": 10000273,
+    "segment": "MidMarket",
+    "tpv_last_3m": 23934.81,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 142
+  },
+  {
+    "merchant_id": 10000309,
+    "segment": "SMB",
+    "tpv_last_3m": 4072.93,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000224,
+    "segment": "SMB",
+    "tpv_last_3m": 6837.97,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 51
+  },
+  {
+    "merchant_id": 10000122,
+    "segment": "SMB",
+    "tpv_last_3m": 3398.99,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000012,
+    "segment": "SMB",
+    "tpv_last_3m": 4289.35,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000184,
+    "segment": "SMB",
+    "tpv_last_3m": 5975.59,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000057,
+    "segment": "SMB",
+    "tpv_last_3m": 3995.24,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000182,
+    "segment": "SMB",
+    "tpv_last_3m": 3393.3,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 264
+  },
+  {
+    "merchant_id": 10000489,
+    "segment": "SMB",
+    "tpv_last_3m": 4905.19,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000491,
+    "segment": "SMB",
+    "tpv_last_3m": 5044.48,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 164
+  },
+  {
+    "merchant_id": 10000263,
+    "segment": "SMB",
+    "tpv_last_3m": 5649.5,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000002,
+    "segment": "SMB",
+    "tpv_last_3m": 8012.98,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000134,
+    "segment": "Enterprise",
+    "tpv_last_3m": 143407.33,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 197
+  },
+  {
+    "merchant_id": 10000293,
+    "segment": "SMB",
+    "tpv_last_3m": 6404.71,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000495,
+    "segment": "SMB",
+    "tpv_last_3m": 2387.49,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000498,
+    "segment": "SMB",
+    "tpv_last_3m": 2886.39,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000061,
+    "segment": "SMB",
+    "tpv_last_3m": 2897.68,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000483,
+    "segment": "Enterprise",
+    "tpv_last_3m": 125037.82,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000237,
+    "segment": "SMB",
+    "tpv_last_3m": 2877.69,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 191
+  },
+  {
+    "merchant_id": 10000314,
+    "segment": "SMB",
+    "tpv_last_3m": 3890.71,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000326,
+    "segment": "SMB",
+    "tpv_last_3m": 3892.0,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 314
+  },
+  {
+    "merchant_id": 10000126,
+    "segment": "SMB",
+    "tpv_last_3m": 1329.56,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 86
+  },
+  {
+    "merchant_id": 10000024,
+    "segment": "MidMarket",
+    "tpv_last_3m": 15343.7,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 150
+  },
+  {
+    "merchant_id": 10000254,
+    "segment": "SMB",
+    "tpv_last_3m": 5148.09,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000096,
+    "segment": "SMB",
+    "tpv_last_3m": 2519.81,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 53
+  },
+  {
+    "merchant_id": 10000118,
+    "segment": "MidMarket",
+    "tpv_last_3m": 58545.2,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 199
+  },
+  {
+    "merchant_id": 10000204,
+    "segment": "SMB",
+    "tpv_last_3m": 1887.1,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000471,
+    "segment": "SMB",
+    "tpv_last_3m": 5299.62,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 318
+  },
+  {
+    "merchant_id": 10000053,
+    "segment": "SMB",
+    "tpv_last_3m": 5484.33,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000162,
+    "segment": "SMB",
+    "tpv_last_3m": 2722.72,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000050,
+    "segment": "SMB",
+    "tpv_last_3m": 4486.04,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000167,
+    "segment": "SMB",
+    "tpv_last_3m": 2426.81,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000143,
+    "segment": "SMB",
+    "tpv_last_3m": 4913.93,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000091,
+    "segment": "SMB",
+    "tpv_last_3m": 3851.21,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000274,
+    "segment": "SMB",
+    "tpv_last_3m": 4393.55,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000232,
+    "segment": "SMB",
+    "tpv_last_3m": 3605.3,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000108,
+    "segment": "SMB",
+    "tpv_last_3m": 830.57,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000419,
+    "segment": "SMB",
+    "tpv_last_3m": 5322.02,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000179,
+    "segment": "SMB",
+    "tpv_last_3m": 4531.33,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000353,
+    "segment": "SMB",
+    "tpv_last_3m": 920.08,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000187,
+    "segment": "SMB",
+    "tpv_last_3m": 2765.21,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000189,
+    "segment": "SMB",
+    "tpv_last_3m": 4313.03,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 68
+  },
+  {
+    "merchant_id": 10000476,
+    "segment": "MidMarket",
+    "tpv_last_3m": 36130.27,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000477,
+    "segment": "MidMarket",
+    "tpv_last_3m": 55240.27,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 197
+  },
+  {
+    "merchant_id": 10000277,
+    "segment": "SMB",
+    "tpv_last_3m": 2247.28,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000411,
+    "segment": "SMB",
+    "tpv_last_3m": 6804.08,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000255,
+    "segment": "SMB",
+    "tpv_last_3m": 2502.59,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000499,
+    "segment": "SMB",
+    "tpv_last_3m": 3149.4,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 337
+  },
+  {
+    "merchant_id": 10000469,
+    "segment": "SMB",
+    "tpv_last_3m": 4727.71,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 229
+  },
+  {
+    "merchant_id": 10000198,
+    "segment": "SMB",
+    "tpv_last_3m": 2579.42,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000055,
+    "segment": "SMB",
+    "tpv_last_3m": 1878.86,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 266
+  },
+  {
+    "merchant_id": 10000231,
+    "segment": "SMB",
+    "tpv_last_3m": 4290.98,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000044,
+    "segment": "SMB",
+    "tpv_last_3m": 4304.83,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 128
+  },
+  {
+    "merchant_id": 10000085,
+    "segment": "SMB",
+    "tpv_last_3m": 5392.74,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000425,
+    "segment": "SMB",
+    "tpv_last_3m": 3756.82,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 55
+  },
+  {
+    "merchant_id": 10000247,
+    "segment": "SMB",
+    "tpv_last_3m": 3838.27,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000213,
+    "segment": "SMB",
+    "tpv_last_3m": 4705.25,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000054,
+    "segment": "MidMarket",
+    "tpv_last_3m": 16539.97,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 133
+  },
+  {
+    "merchant_id": 10000320,
+    "segment": "SMB",
+    "tpv_last_3m": 4157.62,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000119,
+    "segment": "SMB",
+    "tpv_last_3m": 3139.42,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000455,
+    "segment": "SMB",
+    "tpv_last_3m": 5706.95,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 12
+  },
+  {
+    "merchant_id": 10000009,
+    "segment": "SMB",
+    "tpv_last_3m": 5788.56,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000253,
+    "segment": "SMB",
+    "tpv_last_3m": 4975.84,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 37
+  },
+  {
+    "merchant_id": 10000401,
+    "segment": "SMB",
+    "tpv_last_3m": 2751.95,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000015,
+    "segment": "SMB",
+    "tpv_last_3m": 3843.24,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000459,
+    "segment": "SMB",
+    "tpv_last_3m": 3478.98,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 170
+  },
+  {
+    "merchant_id": 10000487,
+    "segment": "SMB",
+    "tpv_last_3m": 3314.14,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000395,
+    "segment": "SMB",
+    "tpv_last_3m": 2614.0,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000146,
+    "segment": "SMB",
+    "tpv_last_3m": 5384.52,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 235
+  },
+  {
+    "merchant_id": 10000051,
+    "segment": "SMB",
+    "tpv_last_3m": 3292.21,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000205,
+    "segment": "MidMarket",
+    "tpv_last_3m": 43132.88,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000341,
+    "segment": "SMB",
+    "tpv_last_3m": 4553.62,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 16
+  },
+  {
+    "merchant_id": 10000252,
+    "segment": "SMB",
+    "tpv_last_3m": 4612.61,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000131,
+    "segment": "SMB",
+    "tpv_last_3m": 4490.35,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000467,
+    "segment": "SMB",
+    "tpv_last_3m": 4306.38,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000169,
+    "segment": "SMB",
+    "tpv_last_3m": 6264.78,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000407,
+    "segment": "SMB",
+    "tpv_last_3m": 5791.72,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000241,
+    "segment": "MidMarket",
+    "tpv_last_3m": 11407.86,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000083,
+    "segment": "SMB",
+    "tpv_last_3m": 6761.95,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000354,
+    "segment": "SMB",
+    "tpv_last_3m": 5086.05,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 261
+  },
+  {
+    "merchant_id": 10000381,
+    "segment": "SMB",
+    "tpv_last_3m": 3788.12,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 189
+  },
+  {
+    "merchant_id": 10000324,
+    "segment": "SMB",
+    "tpv_last_3m": 1295.07,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 126
+  },
+  {
+    "merchant_id": 10000052,
+    "segment": "SMB",
+    "tpv_last_3m": 3548.55,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000413,
+    "segment": "SMB",
+    "tpv_last_3m": 4532.79,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000124,
+    "segment": "SMB",
+    "tpv_last_3m": 4939.19,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000251,
+    "segment": "SMB",
+    "tpv_last_3m": 3982.88,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000011,
+    "segment": "SMB",
+    "tpv_last_3m": 7095.78,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 204
+  },
+  {
+    "merchant_id": 10000325,
+    "segment": "SMB",
+    "tpv_last_3m": 6677.78,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 223
+  },
+  {
+    "merchant_id": 10000049,
+    "segment": "MidMarket",
+    "tpv_last_3m": 27747.33,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000266,
+    "segment": "SMB",
+    "tpv_last_3m": 3587.03,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000461,
+    "segment": "SMB",
+    "tpv_last_3m": 4588.38,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 294
+  },
+  {
+    "merchant_id": 10000287,
+    "segment": "SMB",
+    "tpv_last_3m": 3130.88,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000037,
+    "segment": "SMB",
+    "tpv_last_3m": 5079.02,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000101,
+    "segment": "SMB",
+    "tpv_last_3m": 6377.77,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 251
+  },
+  {
+    "merchant_id": 10000494,
+    "segment": "SMB",
+    "tpv_last_3m": 5416.66,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 242
+  },
+  {
+    "merchant_id": 10000261,
+    "segment": "SMB",
+    "tpv_last_3m": 3578.94,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000218,
+    "segment": "SMB",
+    "tpv_last_3m": 3200.63,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 281
+  },
+  {
+    "merchant_id": 10000127,
+    "segment": "SMB",
+    "tpv_last_3m": 1750.54,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000344,
+    "segment": "SMB",
+    "tpv_last_3m": 757.21,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000373,
+    "segment": "SMB",
+    "tpv_last_3m": 3711.54,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 239
+  },
+  {
+    "merchant_id": 10000299,
+    "segment": "MidMarket",
+    "tpv_last_3m": 41410.06,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000047,
+    "segment": "MidMarket",
+    "tpv_last_3m": 35929.17,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000366,
+    "segment": "SMB",
+    "tpv_last_3m": 5365.34,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000399,
+    "segment": "Enterprise",
+    "tpv_last_3m": 49415.54,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000088,
+    "segment": "SMB",
+    "tpv_last_3m": 5119.69,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000100,
+    "segment": "SMB",
+    "tpv_last_3m": 4757.89,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 59
+  },
+  {
+    "merchant_id": 10000387,
+    "segment": "SMB",
+    "tpv_last_3m": 5587.13,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 4
+  },
+  {
+    "merchant_id": 10000439,
+    "segment": "SMB",
+    "tpv_last_3m": 6118.61,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 183
+  },
+  {
+    "merchant_id": 10000488,
+    "segment": "SMB",
+    "tpv_last_3m": 6904.39,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000158,
+    "segment": "SMB",
+    "tpv_last_3m": 5147.14,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000235,
+    "segment": "SMB",
+    "tpv_last_3m": 3633.98,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000323,
+    "segment": "SMB",
+    "tpv_last_3m": 2411.91,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000165,
+    "segment": "SMB",
+    "tpv_last_3m": 2655.43,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000064,
+    "segment": "SMB",
+    "tpv_last_3m": 4386.05,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 54
+  },
+  {
+    "merchant_id": 10000431,
+    "segment": "Enterprise",
+    "tpv_last_3m": 176833.44,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000386,
+    "segment": "SMB",
+    "tpv_last_3m": 3025.13,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000089,
+    "segment": "SMB",
+    "tpv_last_3m": 111.68,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 315
+  },
+  {
+    "merchant_id": 10000365,
+    "segment": "MidMarket",
+    "tpv_last_3m": 19703.87,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000095,
+    "segment": "SMB",
+    "tpv_last_3m": 3619.8,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000036,
+    "segment": "MidMarket",
+    "tpv_last_3m": 36064.32,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000486,
+    "segment": "SMB",
+    "tpv_last_3m": 1975.42,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000023,
+    "segment": "SMB",
+    "tpv_last_3m": 3034.07,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000404,
+    "segment": "SMB",
+    "tpv_last_3m": 6259.59,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000396,
+    "segment": "SMB",
+    "tpv_last_3m": 3060.89,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000203,
+    "segment": "SMB",
+    "tpv_last_3m": 7648.44,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000074,
+    "segment": "SMB",
+    "tpv_last_3m": 4586.76,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 23
+  },
+  {
+    "merchant_id": 10000099,
+    "segment": "MidMarket",
+    "tpv_last_3m": 26418.4,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000289,
+    "segment": "SMB",
+    "tpv_last_3m": 3105.65,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 198
+  },
+  {
+    "merchant_id": 10000025,
+    "segment": "MidMarket",
+    "tpv_last_3m": 13885.62,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000186,
+    "segment": "SMB",
+    "tpv_last_3m": 4798.55,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000398,
+    "segment": "SMB",
+    "tpv_last_3m": 3878.56,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 122
+  },
+  {
+    "merchant_id": 10000276,
+    "segment": "SMB",
+    "tpv_last_3m": 4279.92,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000031,
+    "segment": "SMB",
+    "tpv_last_3m": 2989.38,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000043,
+    "segment": "MidMarket",
+    "tpv_last_3m": 14956.56,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000305,
+    "segment": "SMB",
+    "tpv_last_3m": 3225.65,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000443,
+    "segment": "SMB",
+    "tpv_last_3m": 3068.09,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 208
+  },
+  {
+    "merchant_id": 10000045,
+    "segment": "SMB",
+    "tpv_last_3m": 3368.45,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000321,
+    "segment": "SMB",
+    "tpv_last_3m": 861.1,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 358
+  },
+  {
+    "merchant_id": 10000105,
+    "segment": "SMB",
+    "tpv_last_3m": 4514.6,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000322,
+    "segment": "SMB",
+    "tpv_last_3m": 5376.16,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000330,
+    "segment": "SMB",
+    "tpv_last_3m": 1351.85,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000329,
+    "segment": "SMB",
+    "tpv_last_3m": 3523.29,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000003,
+    "segment": "SMB",
+    "tpv_last_3m": 4184.62,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000457,
+    "segment": "SMB",
+    "tpv_last_3m": 4034.05,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 331
+  },
+  {
+    "merchant_id": 10000120,
+    "segment": "SMB",
+    "tpv_last_3m": 2210.28,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 197
+  },
+  {
+    "merchant_id": 10000269,
+    "segment": "MidMarket",
+    "tpv_last_3m": 20622.05,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000424,
+    "segment": "SMB",
+    "tpv_last_3m": 1670.81,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 300
+  },
+  {
+    "merchant_id": 10000427,
+    "segment": "SMB",
+    "tpv_last_3m": 4411.48,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000202,
+    "segment": "MidMarket",
+    "tpv_last_3m": 35652.15,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000038,
+    "segment": "SMB",
+    "tpv_last_3m": 5915.83,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000359,
+    "segment": "MidMarket",
+    "tpv_last_3m": 44290.44,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 19
+  },
+  {
+    "merchant_id": 10000417,
+    "segment": "SMB",
+    "tpv_last_3m": 3723.9,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000166,
+    "segment": "SMB",
+    "tpv_last_3m": 4260.81,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000292,
+    "segment": "SMB",
+    "tpv_last_3m": 3992.78,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 7
+  },
+  {
+    "merchant_id": 10000378,
+    "segment": "SMB",
+    "tpv_last_3m": 4411.1,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 103
+  },
+  {
+    "merchant_id": 10000067,
+    "segment": "SMB",
+    "tpv_last_3m": 7247.09,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000010,
+    "segment": "MidMarket",
+    "tpv_last_3m": 33749.94,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000094,
+    "segment": "SMB",
+    "tpv_last_3m": 4483.45,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 361
+  },
+  {
+    "merchant_id": 10000128,
+    "segment": "SMB",
+    "tpv_last_3m": 5758.25,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 162
+  },
+  {
+    "merchant_id": 10000393,
+    "segment": "SMB",
+    "tpv_last_3m": 4583.84,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000259,
+    "segment": "MidMarket",
+    "tpv_last_3m": 22408.12,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000188,
+    "segment": "SMB",
+    "tpv_last_3m": 2602.09,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000270,
+    "segment": "Enterprise",
+    "tpv_last_3m": 66107.43,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000161,
+    "segment": "SMB",
+    "tpv_last_3m": 2465.27,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 17
+  },
+  {
+    "merchant_id": 10000217,
+    "segment": "MidMarket",
+    "tpv_last_3m": 16903.03,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000388,
+    "segment": "MidMarket",
+    "tpv_last_3m": 26491.31,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000191,
+    "segment": "SMB",
+    "tpv_last_3m": 3971.66,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000004,
+    "segment": "SMB",
+    "tpv_last_3m": 2123.67,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000116,
+    "segment": "SMB",
+    "tpv_last_3m": 2960.12,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 60
+  },
+  {
+    "merchant_id": 10000197,
+    "segment": "SMB",
+    "tpv_last_3m": 6322.91,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000484,
+    "segment": "SMB",
+    "tpv_last_3m": 3073.28,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000207,
+    "segment": "SMB",
+    "tpv_last_3m": 6225.2,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000303,
+    "segment": "SMB",
+    "tpv_last_3m": 3793.64,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 31
+  },
+  {
+    "merchant_id": 10000250,
+    "segment": "SMB",
+    "tpv_last_3m": 5001.36,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000139,
+    "segment": "SMB",
+    "tpv_last_3m": 8370.14,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000435,
+    "segment": "SMB",
+    "tpv_last_3m": 5818.85,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000001,
+    "segment": "SMB",
+    "tpv_last_3m": 1886.5,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000106,
+    "segment": "SMB",
+    "tpv_last_3m": 4275.2,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000374,
+    "segment": "SMB",
+    "tpv_last_3m": 1802.13,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000412,
+    "segment": "SMB",
+    "tpv_last_3m": 1542.3,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000070,
+    "segment": "SMB",
+    "tpv_last_3m": 3363.31,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000065,
+    "segment": "SMB",
+    "tpv_last_3m": 4735.78,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 44
+  },
+  {
+    "merchant_id": 10000173,
+    "segment": "SMB",
+    "tpv_last_3m": 2737.85,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000196,
+    "segment": "SMB",
+    "tpv_last_3m": 2676.5,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000114,
+    "segment": "SMB",
+    "tpv_last_3m": 3965.07,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000086,
+    "segment": "SMB",
+    "tpv_last_3m": 3688.86,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000397,
+    "segment": "SMB",
+    "tpv_last_3m": 3186.14,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000473,
+    "segment": "SMB",
+    "tpv_last_3m": 7571.3,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000432,
+    "segment": "Enterprise",
+    "tpv_last_3m": 256680.66,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000175,
+    "segment": "SMB",
+    "tpv_last_3m": 2544.07,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000219,
+    "segment": "SMB",
+    "tpv_last_3m": 2650.3,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000465,
+    "segment": "SMB",
+    "tpv_last_3m": 2717.77,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000297,
+    "segment": "SMB",
+    "tpv_last_3m": 2856.7,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000319,
+    "segment": "Enterprise",
+    "tpv_last_3m": 187470.39,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000201,
+    "segment": "SMB",
+    "tpv_last_3m": 3064.54,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000195,
+    "segment": "MidMarket",
+    "tpv_last_3m": 23645.41,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000312,
+    "segment": "Enterprise",
+    "tpv_last_3m": 158561.81,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 43
+  },
+  {
+    "merchant_id": 10000072,
+    "segment": "MidMarket",
+    "tpv_last_3m": 30652.94,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 357
+  },
+  {
+    "merchant_id": 10000456,
+    "segment": "Enterprise",
+    "tpv_last_3m": 131535.67,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000433,
+    "segment": "SMB",
+    "tpv_last_3m": 2257.02,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 352
+  },
+  {
+    "merchant_id": 10000337,
+    "segment": "MidMarket",
+    "tpv_last_3m": 27192.54,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 65
+  },
+  {
+    "merchant_id": 10000021,
+    "segment": "SMB",
+    "tpv_last_3m": 4307.14,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 282
+  },
+  {
+    "merchant_id": 10000339,
+    "segment": "MidMarket",
+    "tpv_last_3m": 22330.88,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000445,
+    "segment": "SMB",
+    "tpv_last_3m": 4141.35,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000035,
+    "segment": "SMB",
+    "tpv_last_3m": 2116.38,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000474,
+    "segment": "SMB",
+    "tpv_last_3m": 3443.56,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000082,
+    "segment": "SMB",
+    "tpv_last_3m": 4621.76,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000230,
+    "segment": "SMB",
+    "tpv_last_3m": 7326.77,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000138,
+    "segment": "SMB",
+    "tpv_last_3m": 984.84,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000093,
+    "segment": "SMB",
+    "tpv_last_3m": 1219.91,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 110
+  },
+  {
+    "merchant_id": 10000271,
+    "segment": "SMB",
+    "tpv_last_3m": 6582.11,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000199,
+    "segment": "SMB",
+    "tpv_last_3m": 2851.48,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 264
+  },
+  {
+    "merchant_id": 10000316,
+    "segment": "SMB",
+    "tpv_last_3m": 1542.01,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000285,
+    "segment": "SMB",
+    "tpv_last_3m": 4709.02,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000017,
+    "segment": "SMB",
+    "tpv_last_3m": 1377.39,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000256,
+    "segment": "SMB",
+    "tpv_last_3m": 3299.78,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 69
+  },
+  {
+    "merchant_id": 10000460,
+    "segment": "SMB",
+    "tpv_last_3m": 6040.87,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 237
+  },
+  {
+    "merchant_id": 10000466,
+    "segment": "SMB",
+    "tpv_last_3m": 6865.73,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000104,
+    "segment": "MidMarket",
+    "tpv_last_3m": 6172.14,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000360,
+    "segment": "SMB",
+    "tpv_last_3m": 6008.51,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000490,
+    "segment": "SMB",
+    "tpv_last_3m": 2416.97,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000246,
+    "segment": "MidMarket",
+    "tpv_last_3m": 30041.89,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000382,
+    "segment": "SMB",
+    "tpv_last_3m": 4363.78,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000123,
+    "segment": "SMB",
+    "tpv_last_3m": 3224.69,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000422,
+    "segment": "SMB",
+    "tpv_last_3m": 6060.75,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000361,
+    "segment": "SMB",
+    "tpv_last_3m": 6658.85,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000075,
+    "segment": "SMB",
+    "tpv_last_3m": 582.88,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000493,
+    "segment": "SMB",
+    "tpv_last_3m": 1633.57,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 144
+  },
+  {
+    "merchant_id": 10000034,
+    "segment": "SMB",
+    "tpv_last_3m": 5279.79,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000462,
+    "segment": "SMB",
+    "tpv_last_3m": 5225.46,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000426,
+    "segment": "SMB",
+    "tpv_last_3m": 5535.68,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 239
+  },
+  {
+    "merchant_id": 10000420,
+    "segment": "SMB",
+    "tpv_last_3m": 2654.66,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000137,
+    "segment": "SMB",
+    "tpv_last_3m": 3827.06,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000264,
+    "segment": "SMB",
+    "tpv_last_3m": 1522.3,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 211
+  },
+  {
+    "merchant_id": 10000018,
+    "segment": "SMB",
+    "tpv_last_3m": 5254.89,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 187
+  },
+  {
+    "merchant_id": 10000059,
+    "segment": "SMB",
+    "tpv_last_3m": 5265.2,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000194,
+    "segment": "SMB",
+    "tpv_last_3m": 2763.25,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000369,
+    "segment": "SMB",
+    "tpv_last_3m": 4284.51,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 345
+  },
+  {
+    "merchant_id": 10000496,
+    "segment": "SMB",
+    "tpv_last_3m": 2625.24,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000084,
+    "segment": "SMB",
+    "tpv_last_3m": 2811.1,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000442,
+    "segment": "MidMarket",
+    "tpv_last_3m": 42233.1,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 90
+  },
+  {
+    "merchant_id": 10000260,
+    "segment": "MidMarket",
+    "tpv_last_3m": 23613.43,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000160,
+    "segment": "SMB",
+    "tpv_last_3m": 5616.2,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000358,
+    "segment": "SMB",
+    "tpv_last_3m": 3667.88,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000145,
+    "segment": "SMB",
+    "tpv_last_3m": 1874.92,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 276
+  },
+  {
+    "merchant_id": 10000028,
+    "segment": "SMB",
+    "tpv_last_3m": 4948.7,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 156
+  },
+  {
+    "merchant_id": 10000136,
+    "segment": "SMB",
+    "tpv_last_3m": 1898.61,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000111,
+    "segment": "SMB",
+    "tpv_last_3m": 2655.47,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000336,
+    "segment": "SMB",
+    "tpv_last_3m": 3845.28,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000236,
+    "segment": "SMB",
+    "tpv_last_3m": 3149.46,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": 185
+  },
+  {
+    "merchant_id": 10000046,
+    "segment": "MidMarket",
+    "tpv_last_3m": 26733.12,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000463,
+    "segment": "MidMarket",
+    "tpv_last_3m": 21488.32,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000317,
+    "segment": "SMB",
+    "tpv_last_3m": 3016.73,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000170,
+    "segment": "SMB",
+    "tpv_last_3m": 2392.92,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000110,
+    "segment": "SMB",
+    "tpv_last_3m": 5893.47,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000300,
+    "segment": "MidMarket",
+    "tpv_last_3m": 32312.35,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000454,
+    "segment": "SMB",
+    "tpv_last_3m": 2451.01,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000133,
+    "segment": "SMB",
+    "tpv_last_3m": 3706.17,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000446,
+    "segment": "SMB",
+    "tpv_last_3m": 4709.63,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000215,
+    "segment": "MidMarket",
+    "tpv_last_3m": 31997.86,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000229,
+    "segment": "SMB",
+    "tpv_last_3m": 1806.48,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 104
+  },
+  {
+    "merchant_id": 10000022,
+    "segment": "SMB",
+    "tpv_last_3m": 5206.65,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 237
+  },
+  {
+    "merchant_id": 10000370,
+    "segment": "SMB",
+    "tpv_last_3m": 6340.7,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000206,
+    "segment": "MidMarket",
+    "tpv_last_3m": 21654.77,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000008,
+    "segment": "SMB",
+    "tpv_last_3m": 3103.28,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000377,
+    "segment": "SMB",
+    "tpv_last_3m": 4963.24,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 234
+  },
+  {
+    "merchant_id": 10000385,
+    "segment": "MidMarket",
+    "tpv_last_3m": 13652.56,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 280
+  },
+  {
+    "merchant_id": 10000227,
+    "segment": "SMB",
+    "tpv_last_3m": 5061.03,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 81
+  },
+  {
+    "merchant_id": 10000056,
+    "segment": "MidMarket",
+    "tpv_last_3m": 11908.03,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000405,
+    "segment": "MidMarket",
+    "tpv_last_3m": 18924.43,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000103,
+    "segment": "SMB",
+    "tpv_last_3m": 1232.97,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000216,
+    "segment": "SMB",
+    "tpv_last_3m": 3558.22,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000066,
+    "segment": "SMB",
+    "tpv_last_3m": 2514.91,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 73
+  },
+  {
+    "merchant_id": 10000331,
+    "segment": "MidMarket",
+    "tpv_last_3m": 41777.58,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 363
+  },
+  {
+    "merchant_id": 10000077,
+    "segment": "SMB",
+    "tpv_last_3m": 3664.9,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 85
+  },
+  {
+    "merchant_id": 10000390,
+    "segment": "MidMarket",
+    "tpv_last_3m": 26885.38,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000311,
+    "segment": "SMB",
+    "tpv_last_3m": 4939.97,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000315,
+    "segment": "SMB",
+    "tpv_last_3m": 5076.58,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 80
+  },
+  {
+    "merchant_id": 10000222,
+    "segment": "SMB",
+    "tpv_last_3m": 5204.99,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000313,
+    "segment": "Enterprise",
+    "tpv_last_3m": 179125.62,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000244,
+    "segment": "SMB",
+    "tpv_last_3m": 3314.79,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 49
+  },
+  {
+    "merchant_id": 10000157,
+    "segment": "SMB",
+    "tpv_last_3m": 5260.28,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000363,
+    "segment": "MidMarket",
+    "tpv_last_3m": 23837.98,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000168,
+    "segment": "SMB",
+    "tpv_last_3m": 4640.04,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 302
+  },
+  {
+    "merchant_id": 10000076,
+    "segment": "SMB",
+    "tpv_last_3m": 4540.21,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 332
+  },
+  {
+    "merchant_id": 10000211,
+    "segment": "MidMarket",
+    "tpv_last_3m": 32703.14,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000334,
+    "segment": "SMB",
+    "tpv_last_3m": 4589.15,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000418,
+    "segment": "SMB",
+    "tpv_last_3m": 4647.22,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000155,
+    "segment": "SMB",
+    "tpv_last_3m": 3502.11,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000209,
+    "segment": "SMB",
+    "tpv_last_3m": 4890.1,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000115,
+    "segment": "SMB",
+    "tpv_last_3m": 4710.81,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000245,
+    "segment": "SMB",
+    "tpv_last_3m": 5343.84,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000307,
+    "segment": "SMB",
+    "tpv_last_3m": 4398.92,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000223,
+    "segment": "SMB",
+    "tpv_last_3m": 3242.36,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000376,
+    "segment": "SMB",
+    "tpv_last_3m": 0,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000148,
+    "segment": "SMB",
+    "tpv_last_3m": 2784.21,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000283,
+    "segment": "SMB",
+    "tpv_last_3m": 3923.43,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000492,
+    "segment": "SMB",
+    "tpv_last_3m": 6800.99,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000147,
+    "segment": "Enterprise",
+    "tpv_last_3m": 115941.8,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000403,
+    "segment": "SMB",
+    "tpv_last_3m": 3499.85,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 119
+  },
+  {
+    "merchant_id": 10000005,
+    "segment": "SMB",
+    "tpv_last_3m": 2552.01,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000019,
+    "segment": "SMB",
+    "tpv_last_3m": 5815.18,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 289
+  },
+  {
+    "merchant_id": 10000141,
+    "segment": "SMB",
+    "tpv_last_3m": 2433.78,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000278,
+    "segment": "SMB",
+    "tpv_last_3m": 5261.64,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000150,
+    "segment": "SMB",
+    "tpv_last_3m": 7298.44,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000345,
+    "segment": "SMB",
+    "tpv_last_3m": 4722.14,
+    "n_complaints_30d": 0,
+    "days_since_last_complaint": 296
+  },
+  {
+    "merchant_id": 10000000,
+    "segment": "SMB",
+    "tpv_last_3m": 2591.94,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000129,
+    "segment": "SMB",
+    "tpv_last_3m": 1150.61,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000200,
+    "segment": "SMB",
+    "tpv_last_3m": 3870.45,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000087,
+    "segment": "SMB",
+    "tpv_last_3m": 3001.47,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 337
+  },
+  {
+    "merchant_id": 10000159,
+    "segment": "SMB",
+    "tpv_last_3m": 4195.43,
+    "n_complaints_30d": 1,
+    "days_since_last_complaint": 335
+  },
+  {
+    "merchant_id": 10000304,
+    "segment": "SMB",
+    "tpv_last_3m": 3619.79,
+    "n_complaints_30d": 2,
+    "days_since_last_complaint": null
+  },
+  {
+    "merchant_id": 10000112,
+    "segment": "SMB",
+    "tpv_last_3m": 1341.89,
+    "n_complaints_30d": 3,
+    "days_since_last_complaint": 315
+  }
+]
