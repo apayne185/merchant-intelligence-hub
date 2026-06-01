@@ -46,17 +46,20 @@ PII_PATTERNS: dict[str, re.Pattern[str]] = {
 
 
 def is_mock_mode() -> bool:
-    """True si debe usarse el LLM stub (no llama a OpenAI)."""
+    """True si debe usarse el LLM stub (no llama a OpenAI).
+    """
     return os.environ.get("MOCK_LLM", "").lower() in {"1", "true", "yes"}
 
 
 def detect_prompt_injection(text: str) -> bool:
-    """Devuelve True si `text` contiene patrones típicos de prompt injection."""
+    """Devuelve True si `text` contiene patrones típicos de prompt injection.
+    """
     return any(p.search(text) for p in PROMPT_INJECTION_PATTERNS)
 
 
 def redact_pii(text: str) -> str:
-    """Reemplaza PII por placeholders genéricos antes de enviar al LLM."""
+    """Reemplaza PII por placeholders genéricos antes de enviar al LLM.
+    """
     # TODO: implementa. Devuelve el texto con [EMAIL] / [PHONE] / [CARD] sustituidos.
     redacted = text
     for label, pattern in PII_PATTERNS.items():
@@ -106,43 +109,55 @@ def flag_for_human_review(merchant_id: int, reason: str) -> dict[str, Any]:
 
 
 # -----------------------------------------------------------------------------
-# Agente Agno
+# Agente Agno real
 # -----------------------------------------------------------------------------
-# TODO: implementa el agente con Agno.
-#
-# Esqueleto sugerido (consulta https://docs.agno.com para la API exacta de tu versión):
-#
-#     from agno.agent import Agent
-#     from agno.models.openai import OpenAIChat
-#     from agno.tools import tool
-#
-#     @tool
-#     def merchant_context_tool(merchant_id: int) -> dict:
-#         return get_merchant_context(merchant_id)
-#
-#     @tool
-#     def flag_human_review_tool(merchant_id: int, reason: str) -> dict:
-#         return flag_for_human_review(merchant_id, reason)
-#
-#     def build_agent(model_name: str = "gpt-4o-mini") -> Agent:
-#         return Agent(
-#             model=OpenAIChat(id=model_name),
-#             tools=[merchant_context_tool, flag_human_review_tool],
-#             instructions="...",
-#             response_model=ClassifyResponse,  # ← structured output
-#         )
-#
-# Recuerda: el endpoint debe poder mockear el LLM para que los tests pasen sin
-# clave OpenAI. Una opción es inyectar el agente con `Depends(get_agent)` en
-# main.py y sustituirlo en tests vía `app.dependency_overrides`.
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools import tool as agno_tool
+
+from .schemas import ClassifyResponse
+
+_AGENT_INSTRUCTIONS = """
+Eres un clasificador de reclamaciones de merchants para Getnet (adquirente de pagos).
+
+Dado un email, debes:
+1. Llamar a merchant_context_tool con merchant_id para obtener contexto del merchant.
+2. Clasificar en una de: technical_issue, billing, onboarding, fraud, churn_threat, other.
+3. Asignar urgency 1-5 (5=crítico: bloqueo total o amenaza de cancelación inmediata).
+4. Si urgency >= 4 o category es churn_threat/fraud: requires_human_escalation=True
+   y llamar a flag_human_review_tool con el motivo.
+5. Escribir reasoning conciso (≤ 300 chars).
+Responde SIEMPRE en el schema estructurado.
+"""
+
+
+@agno_tool
+def merchant_context_tool(merchant_id: int) -> dict:
+    """Obtiene segmento, TPV y quejas recientes del merchant.
+    """
+    return get_merchant_context(merchant_id)
+
+
+@agno_tool
+def flag_human_review_tool(merchant_id: int, reason: str) -> dict:
+    """Registra el caso en la cola de revisión humana.
+    """
+    return flag_for_human_review(merchant_id, reason)
 
 
 def build_agent(model_name: str = "gpt-4o-mini"):
-    """Construye el agente Agno. Si MOCK_LLM=1, devuelve un stub."""
+    """Construye el agente Agno. Si MOCK_LLM=1, devuelve un stub.
+    """
     if is_mock_mode():
         return _MockAgent()
-    # TODO: construye y devuelve un agno.agent.Agent real
-    raise NotImplementedError("Parte 4 · build_agent (Agno)")
+
+    return Agent(
+        model=OpenAIChat(id=model_name),
+        tools=[merchant_context_tool, flag_human_review_tool],
+        instructions=_AGENT_INSTRUCTIONS,
+        response_model=ClassifyResponse,
+        structured_outputs=True,
+    )
 
 
 class _MockAgent:

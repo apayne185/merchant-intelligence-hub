@@ -57,14 +57,16 @@ AgentDep = Annotated[object, Depends(get_agent)]
 # -----------------------------------------------------------------------------
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
-    """Liveness probe. Devuelve modelo activo y versión."""
+    """Liveness probe. Devuelve modelo activo y versión.
+    """
     # TODO: rellena 'model' con el modelo realmente configurado
     return HealthResponse(status="ok", model="gpt-4o-mini-or-mock", version=app.version)
 
 
 @app.post("/classify", response_model=ClassifyResponse)
 def classify(req: ClassifyRequest, agent: AgentDep) -> ClassifyResponse:
-    """Clasifica una reclamación individual."""
+    """Clasifica una reclamación individual.
+    """
     t0 = time.perf_counter()
 
     # 1. Guardrail prompt injection (defensa antes del LLM)
@@ -107,7 +109,8 @@ def classify(req: ClassifyRequest, agent: AgentDep) -> ClassifyResponse:
 
 @app.post("/classify/batch", response_model=BatchClassifyResponse)
 async def classify_batch(req: BatchClassifyRequest, agent: AgentDep) -> BatchClassifyResponse:
-    """Procesa hasta 50 reclamaciones concurrentemente."""
+    """Procesa hasta 50 reclamaciones concurrentemente.
+    """
     t0 = time.perf_counter()
 
     async def _one(item: ClassifyRequest) -> ClassifyResponse | None:
