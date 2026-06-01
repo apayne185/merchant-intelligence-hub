@@ -28,15 +28,17 @@ class Category(StrEnum):
 # Request
 # -----------------------------------------------------------------------------
 class ClassifyRequest(BaseModel):
-    """Reclamación de un merchant a clasificar."""
+    """Reclamación de un merchant a clasificar.
+    """
 
-    merchant_id: int = Field(..., description="ID del merchant que envía la reclamación")
-    email_text: str = Field(..., min_length=1, description="Texto íntegro del email")
-    locale: Literal["es", "pt", "en"] = Field(default="es", description="Idioma del email")
+    merchant_id: int = Field(..., description="ID del merchant que envía la reclamación / ID of the merchant sending the complaint")
+    email_text: str = Field(..., min_length=1, description="Texto íntegro del email / Full text of the email")
+    locale: Literal["es", "pt", "en"] = Field(default="es", description="Idioma del email / Language of the email")
 
 
 class BatchClassifyRequest(BaseModel):
-    """Lote de reclamaciones (hasta 50 por petición)."""
+    """Lote de reclamaciones (hasta 50 por petición).
+    """
 
     items: list[ClassifyRequest] = Field(..., max_length=50, min_length=1)
 
@@ -45,7 +47,8 @@ class BatchClassifyRequest(BaseModel):
 # Response
 # -----------------------------------------------------------------------------
 class ClassifyResponse(BaseModel):
-    """Resultado de clasificación de una reclamación."""
+    """Resultado de clasificación de una reclamación.
+    """
 
     merchant_id: int
     category: Category
@@ -53,7 +56,7 @@ class ClassifyResponse(BaseModel):
     requires_human_escalation: bool
     reasoning: str = Field(..., max_length=300)
     merchant_context_used: bool = Field(
-        ..., description="True si el agente invocó la tool de contexto del merchant"
+        ..., description="True si el agente invocó la tool de contexto del merchant / True if the agent invoked the merchant context tool"
     )
     latency_ms: int
 
