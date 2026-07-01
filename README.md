@@ -1,9 +1,7 @@
-# Merchant Intelligence Hub 
+# Merchant Intelligence Hub
 #### Payne, Anna
 
-Take home solution for the Getnet AI Lab Graduate Program 2026
-
-
+A data pipeline and risk-scoring project for merchant transaction data: ingestion, cleaning, KPI/SQL analysis, a churn-risk ML model, and a FastAPI service on top. Originally started as a technical assessment for the Getnet AI Lab Graduate Program, and extended independently since because the problem was worth continuing to build on.
 
 
 ## Setup rápido
@@ -80,8 +78,8 @@ uv run jupyter lab src/parte3_modeling.ipynb
 
 
 
-## Estructura de entregables
-*Deliverables structure*
+## Estructura del proyecto
+*Project structure*
 
 ```
 ├── DECISIONS.md         # 13 decisiones técnicas documentadas / 13 technical decisions documented

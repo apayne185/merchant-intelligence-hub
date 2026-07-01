@@ -1,7 +1,6 @@
 # DECISIONS.md — Payne, Anna
 
-> **Regla**: por cada decisión técnica relevante responde **4 preguntas**:
-> *[EN]: Rule: for each relevant technical decision answer 4 questions:*
+> Reasoning behind the pipeline design. For each relevant technical decision, **4 questions**:
 > 1. **Qué hice** (acción concreta, no descripción genérica).
 > 2. **Por qué** (criterio o evidencia, no "best practice").
 > 3. **Qué descarté** (alternativas que consideraste y por qué no).
