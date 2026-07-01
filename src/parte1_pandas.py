@@ -1,20 +1,17 @@
 """
-Parte 1 · Análisis exploratorio en pandas (15 pts)
-==================================================
+Parte 1 · Análisis exploratorio en pandas
+==========================================
 
-Implementa las 4 funciones que aparecen abajo. Lee el `STATEMENT.md` antes de
-empezar para entender los requisitos y la rúbrica.
+4 funciones: load_clean, monthly_kpis, quality_report, merchants_at_risk.
 
 Reglas:
 - Código vectorizado. NO loops sobre filas.
 - Type hints en las firmas públicas.
-- Documenta tus decisiones en `DECISIONS.md`, no aquí.
-- El CSV tiene problemas a propósito. Encontrarlos forma parte del test.
+- Decisiones documentadas en `DECISIONS.md`, no aquí.
+- El CSV tiene problemas de calidad plantados a propósito (ver DECISIONS.md).
 
 Ejecuta con:
     python -m src.parte1_pandas data/transactions_sample.csv
-
-(o adapta el `if __name__ == "__main__"` a tu gusto)
 """
 from __future__ import annotations
 
