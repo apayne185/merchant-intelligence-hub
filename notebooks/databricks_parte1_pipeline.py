@@ -36,8 +36,14 @@ catalog_schema = dbutils.widgets.get("catalog_schema")
 
 # COMMAND ----------
 
+import os
 import sys
 
+if not os.path.isdir(repo_path):
+    raise ValueError(
+        f"repo_path widget points at '{repo_path}', which doesn't exist on this cluster. "
+        "Set it to wherever this repo was cloned via Workspace > Repos."
+    )
 if repo_path not in sys.path:
     sys.path.append(repo_path)
 
@@ -52,7 +58,7 @@ from src.parte1_pyspark import load_clean, monthly_kpis, quality_report, merchan
 
 # COMMAND ----------
 
-df = load_clean(spark, csv_path)
+df = load_clean(spark, csv_path).cache()
 display(df.limit(20))
 
 # COMMAND ----------
@@ -62,12 +68,12 @@ display(df.limit(20))
 
 # COMMAND ----------
 
-kpis = monthly_kpis(df)
+kpis = monthly_kpis(df).cache()
 display(kpis.orderBy("merchant_id", "month").limit(20))
 
 # COMMAND ----------
 
-at_risk = merchants_at_risk(df, top_n=200)
+at_risk = merchants_at_risk(df, top_n=200).cache()
 display(at_risk.limit(20))
 
 # COMMAND ----------

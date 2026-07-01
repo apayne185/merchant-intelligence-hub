@@ -22,7 +22,13 @@ from pyspark.sql import functions as F
 
 
 def get_spark(app_name: str = "merchant-intelligence-hub") -> SparkSession:
-    """Local Spark session with Delta Lake support, no cluster required."""
+    """Local Spark session with Delta Lake support, no cluster required.
+
+    Only for `main()` / local runs. On Databricks the notebook uses the
+    runtime's own ambient `spark` (already Delta-enabled) instead of this —
+    if pyspark/delta-spark versions are bumped in pyproject.toml, check they
+    still match the target Databricks Runtime's bundled versions.
+    """
     builder = (
         SparkSession.builder.appName(app_name)
         .master("local[*]")
@@ -33,6 +39,14 @@ def get_spark(app_name: str = "merchant-intelligence-hub") -> SparkSession:
         )
     )
     return configure_spark_with_delta_pip(builder).getOrCreate()
+
+
+def _path_exists(spark: SparkSession, path: str) -> bool:
+    """Existence check via Hadoop FS, unlike pathlib this understands dbfs:/, s3://, etc."""
+    hadoop_conf = spark._jsc.hadoopConfiguration()
+    jvm_path = spark._jvm.org.apache.hadoop.fs.Path(path)
+    fs = jvm_path.getFileSystem(hadoop_conf)
+    return fs.exists(jvm_path)
 
 
 DUP_COLS = ["merchant_id", "transaction_date", "amount", "status", "channel"]
@@ -52,13 +66,13 @@ def load_clean(spark: SparkSession, path: str | Path) -> DataFrame:
     """
     df = spark.read.csv(str(path), header=True, inferSchema=False)
 
-    # --- T4: transaction_date, dos pasadas (ISO primero, luego DD/MM/YYYY) ---
-    iso_date = F.to_date("transaction_date", "yyyy-MM-dd")
-    br_date = F.to_date("transaction_date", "dd/MM/yyyy")
-    df = df.withColumn("transaction_date", F.coalesce(iso_date, br_date))
-
-    df = df.withColumn("reference_date", F.to_date("reference_date"))
-    df = df.withColumn("last_complaint_date", F.to_date("last_complaint_date"))
+    # --- T4: fechas mixtas YYYY-MM-DD / DD/MM/YYYY, dos pasadas (ISO primero) ---
+    # Aplicado a las 3 columnas de fecha, no solo transaction_date: el CSV no
+    # garantiza que reference_date/last_complaint_date esten siempre en ISO.
+    for date_col in ["transaction_date", "reference_date", "last_complaint_date"]:
+        iso_date = F.to_date(date_col, "yyyy-MM-dd")
+        br_date = F.to_date(date_col, "dd/MM/yyyy")
+        df = df.withColumn(date_col, F.coalesce(iso_date, br_date))
 
     # --- T3: amount formato BR -> double ---
     amount_clean = F.regexp_replace(F.col("amount"), "\\.", "")
@@ -83,8 +97,13 @@ def load_clean(spark: SparkSession, path: str | Path) -> DataFrame:
     ).drop("segment_median")
 
     # --- T5: eliminar duplicados (mismo contenido, transaction_id distinto) ---
-    # keep='first' -> ordenamos por transaction_id ascendente dentro de cada grupo
-    # y nos quedamos con la primera fila (transaction_id mas bajo == mas antiguo).
+    # Spark no tiene un equivalente real a pandas' keep='first' (que conserva
+    # la primera fila en el orden de lectura del CSV; en Spark el orden de
+    # lectura no es estable entre particiones). Como proxy determinista,
+    # nos quedamos con el transaction_id mas bajo por grupo — esto coincide
+    # con "mas antiguo" solo si transaction_id es monotono con el orden del
+    # archivo, lo cual NO esta verificado contra los datos. Ver DECISIONS.md
+    # "Parte 1b" para el detalle de esta diferencia de semantica pandas/Spark.
     w = Window.partitionBy(*DUP_COLS).orderBy(F.col("transaction_id").asc())
     df = (
         df.withColumn("_rn", F.row_number().over(w))
@@ -134,16 +153,31 @@ def quality_report(
     """
     Reporte de calidad de datos con al menos 5 problemas detectados. Re-lee
     `raw_path` (CSV crudo, sin parsear) para conteos exactos cuando existe.
+
+    Nota: el fallback `raw is None` (cuando raw_path no existe) da conteos
+    aproximados a partir de `df` ya limpio, no exactos — pensado para tests
+    unitarios con fixtures pequenos sin CSV real, no para producción. Si se
+    cambia el parseo de fechas/amount en `load_clean`, revisar tambien las
+    ramas `if raw is not None` de esta funcion (T3-T1 abajo), que reparsean
+    el CSV crudo por separado.
     """
-    raw_path = Path(raw_path)
-    raw = spark.read.csv(str(raw_path), header=True, inferSchema=False) if raw_path.exists() else None
+    raw_path = str(raw_path)
+    raw = None
+    if _path_exists(spark, raw_path):
+        raw = spark.read.csv(raw_path, header=True, inferSchema=False).cache()
 
     issues: list[dict[str, Any]] = []
 
     # T3 — amount en formato BR (coma decimal, punto de miles)
     if raw is not None:
-        n_br = raw.filter(F.col("amount").contains(",")).count()
-        n_null = raw.filter(F.col("amount").isNull() | (F.trim(F.col("amount")) == "")).count()
+        amount_counts = raw.select(
+            F.sum(F.when(F.col("amount").contains(","), 1).otherwise(0)).alias("n_br"),
+            F.sum(
+                F.when(F.col("amount").isNull() | (F.trim(F.col("amount")) == ""), 1).otherwise(0)
+            ).alias("n_null"),
+        ).first()
+        n_br = amount_counts["n_br"] or 0
+        n_null = amount_counts["n_null"] or 0
     else:
         n_br = df.filter(F.col("amount").isNotNull()).count()
         n_null = df.filter(F.col("amount").isNull()).count()
@@ -191,7 +225,7 @@ def quality_report(
             ),
         )
         amount_clean = F.regexp_replace(F.regexp_replace(F.col("amount"), "\\.", ""), ",", ".")
-        raw_tmp = raw_tmp.withColumn("amount", amount_clean.cast("double"))
+        raw_tmp = raw_tmp.withColumn("amount", amount_clean.cast("double")).cache()
         n_total = raw_tmp.count()
         n_dedup = raw_tmp.dropDuplicates(DUP_COLS).count()
         n_dups = n_total - n_dedup
@@ -263,7 +297,8 @@ def quality_report(
         "fix": "Excluir cancellation_reason de todos los features del modelo.",
     })
 
-    n_rows = raw.count() if raw is not None else df.count()
+    # n_total (raw_tmp) is raw with recast columns, same row count — reuse instead of re-scanning.
+    n_rows = n_total if raw is not None else df.count()
     n_cols = len(raw.columns) if raw is not None else len(df.columns)
 
     return {
@@ -308,7 +343,9 @@ def merchants_at_risk(df: DataFrame, top_n: int = 200) -> DataFrame:
 
     complaints = (
         df.groupBy("merchant_id")
-        .agg(F.first("last_complaint_date", ignorenulls=True).alias("last_complaint_date"))
+        # max(), not first(): deterministic across partitions and picks the
+        # most recent complaint if a merchant ever has more than one on file.
+        .agg(F.max("last_complaint_date").alias("last_complaint_date"))
         .withColumn(
             "has_recent_complaint",
             F.when(
@@ -397,14 +434,14 @@ def main(csv_path: str) -> None:
 
     spark = get_spark()
     try:
-        df = load_clean(spark, csv_path)
+        df = load_clean(spark, csv_path).cache()
         df.write.format("delta").mode("overwrite").save(str(delta_root / "transactions_clean"))
 
         kpis = monthly_kpis(df)
         kpis.write.format("delta").mode("overwrite").save(str(delta_root / "monthly_kpis"))
         kpis.toPandas().to_csv(outputs / "monthly_kpis_spark.csv", index=False)
 
-        report = quality_report(spark, df)
+        report = quality_report(spark, df, raw_path=csv_path)
         (outputs / "quality_report_spark.json").write_text(json.dumps(report, indent=2, default=str))
 
         at_risk = merchants_at_risk(df, top_n=200)
