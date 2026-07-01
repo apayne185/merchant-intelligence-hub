@@ -88,6 +88,22 @@
 
 ---
 
+## Parte 1b · PySpark rewrite — pandas vs. PySpark tradeoffs
+*Same 4 functions (`load_clean`, `monthly_kpis`, `quality_report`, `merchants_at_risk`), rewritten with the DataFrame API in `src/parte1_pyspark.py`, run locally (`local[*]`) with `delta-spark`, no cluster needed.*
+
+- **Qué hice**: Reimplementé las 4 funciones con el DataFrame API de PySpark en vez de pandas, manteniendo exactamente las mismas reglas de negocio (T1-T5, ventanas, pesos del score). Verifiqué numéricamente que ambas implementaciones producen los mismos KPIs y quality_report sobre `data/transactions_sample.csv` antes de dar el rewrite por terminado.
+- *What I did: Reimplemented the 4 functions with PySpark's DataFrame API instead of pandas, keeping the exact same business rules (T1-T5, windows, score weights). I numerically verified both implementations produce the same KPIs and quality_report on `data/transactions_sample.csv` before considering the rewrite done.*
+
+- **Diferencias encontradas al comparar output pandas vs. Spark**:
+  1. **Mediana aproximada vs exacta**: usar `percentile_approx` para la mediana de `amount` por segmento (imputación de nulls) introduce ruido de punto flotante en el valor imputado. Como `amount` es parte de la clave de deduplicación (T5), ese ruido cambiaba qué filas se consideraban duplicados exactos, afectando el conteo. Cambié a `percentile` (exacto) para que el imputado coincida bit a bit con la mediana de pandas — con eso, KPIs y quality_report coinciden hasta ruido de suma en punto flotante (~1e-11), esperable por el orden de suma distribuida.
+  2. **Empates en `merchants_at_risk`**: las distribuciones de `risk_score` son idénticas entre pandas y Spark (mismos cuantiles, mismos conteos por valor), pero ~135/200 merchants del top-200 caen en un empate exacto en 0.8. Ni pandas (`sort_values` sin criterio de desempate) ni un `orderBy` naive en Spark garantizan el mismo orden dentro de un empate masivo, así que el conjunto exacto de "top 200" difiere aunque el cálculo sea correcto en ambos. Añadí `merchant_id` ascendente como criterio de desempate secundario en Spark para que el resultado sea al menos reproducible entre corridas.
+- *Differences found comparing pandas vs. Spark output: (1) Approximate vs exact median — using `percentile_approx` for the per-segment `amount` median (null imputation) introduces floating-point noise in the imputed value. Since `amount` is part of the dedup key (T5), that noise changed which rows counted as exact duplicates. Switched to exact `percentile` so the imputed value matches pandas' median bit-for-bit — after that, KPIs and quality_report agree up to distributed-summation floating point noise (~1e-11). (2) Ties in `merchants_at_risk` — risk_score distributions are identical between pandas and Spark (same quantiles, same per-value counts), but ~135/200 top-200 merchants land in an exact tie at 0.8. Neither pandas' `sort_values` (no tiebreak) nor a naive Spark `orderBy` guarantee the same order within a massive tie, so the exact top-200 set differs even though the computation is correct in both. Added ascending `merchant_id` as a secondary Spark sort key so the result is at least reproducible run-to-run.*
+
+- **Cuándo usaría cada uno**: pandas para este volumen (204k filas) es más simple y rápido de iterar (sin overhead de JVM/sesión Spark). PySpark se justifica cuando el dataset no cabe en memoria de una máquina, o cuando el pipeline necesita correr sobre un cluster/Databricks como parte de una arquitectura de datos más amplia (lo cual es el caso real en Getnet). El rewrite aquí es una prueba de portabilidad del pipeline, no una necesidad de escala para este dataset de muestra.
+- *When I'd use each: pandas is simpler and faster to iterate on for this volume (204k rows) — no JVM/Spark session overhead. PySpark is justified once the dataset doesn't fit in a single machine's memory, or the pipeline needs to run on a cluster/Databricks as part of a larger data architecture (the real-world case at Getnet). This rewrite is a portability exercise, not a scale necessity for this sample dataset.*
+
+---
+
 
 
 
