@@ -78,6 +78,10 @@ dev = [
 bonus = [
     "networkx==3.3",
 ]
+pyspark = [
+    "delta-spark==3.2.1",
+    "pyspark==3.5.3",
+]
 
 [project.urls]
 Homepage = "https://getnet.santander.com"

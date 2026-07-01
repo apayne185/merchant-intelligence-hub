@@ -44,3 +44,11 @@ data/transactions_sample.csv
 
 # Outputs generados (entrégalos, no los ignores en tu zip)
 # outputs/  ← deliberadamente NO ignorado
+
+# Delta Lake tables (parte1_pyspark.py) — binarios regenerables, no se versionan
+outputs/delta/
+
+# PySpark local run artifacts
+derby.log
+metastore_db/
+spark-warehouse/
