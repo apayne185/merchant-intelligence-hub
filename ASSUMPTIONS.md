@@ -1,6 +1,6 @@
 # ASSUMPTIONS.md — Payne, Anna
 
-> El enunciado contiene **3 ambigüedades intencionales**. Por cada supuesto: (1) qué dice el spec ambiguamente, (2) qué supuse, (3) cómo lo verificaría con un stakeholder real, (4) impacto si mi supuesto resulta falso.
+> Reasoning behind the pipeline design: the original spec left several points ambiguous (3 intentional, plus 2 I found while building). For each assumption: (1) what the spec left ambiguous, (2) what I assumed, (3) how I'd verify it with a real stakeholder, (4) impact if the assumption turns out to be wrong.
 
 ---
 
