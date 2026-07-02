@@ -211,12 +211,25 @@ def quality_report(df: pd.DataFrame, raw_path: str | Path = "data/transactions_s
     dup_cols = ["merchant_id", "transaction_date", "amount", "status", "channel"]
     if raw is not None:
         raw_tmp = raw.copy()
-        raw_tmp["transaction_date"] = pd.to_datetime(
-            raw_tmp["transaction_date"], dayfirst=False, errors="coerce"
-        )
+        # Mismo parseo en dos pasadas que load_clean (T4): un solo pase deja
+        # ~10% de fechas DD/MM/YYYY en NaT, lo que descuadra qué filas cuentan
+        # como duplicado real vs. cuáles solo comparten un NaT espurio.
+        raw_dates = raw_tmp["transaction_date"]
+        parsed = pd.to_datetime(raw_dates, dayfirst=False, errors="coerce")
+        nat_mask = parsed.isna()
+        if nat_mask.any():
+            parsed.loc[nat_mask] = pd.to_datetime(raw_dates[nat_mask], dayfirst=True, errors="coerce")
+        raw_tmp["transaction_date"] = parsed
         raw_tmp["amount"] = pd.to_numeric(
             raw_tmp["amount"].str.replace(".", "", regex=False).str.replace(",", ".", regex=False),
             errors="coerce",
+        )
+        # Igual que load_clean: imputar amount nulo con la mediana por segment
+        # antes de deduplicar. Sin esto, dos filas con amount=NaN se agrupan
+        # entre si (NaN==NaN en duplicated()) en vez de con su mediana real,
+        # lo que descuadra el conteo final en un puñado de filas.
+        raw_tmp["amount"] = raw_tmp["amount"].fillna(
+            raw_tmp.groupby("segment", observed=True)["amount"].transform("median")
         )
         n_dups = int(raw_tmp.duplicated(subset=dup_cols).sum())
     else:

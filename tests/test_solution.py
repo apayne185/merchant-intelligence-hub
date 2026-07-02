@@ -140,6 +140,20 @@ def test_quality_report_with_real_csv() -> None:
     assert report["summary"]["n_rows"] > 0
 
 
+@pytest.mark.skipif(not CSV_PATH.exists(), reason="CSV not available")
+def test_quality_report_dup_count_matches_load_clean() -> None:
+    # quality_report re-parses the raw CSV independently of load_clean; both
+    # must agree on how many rows T5 removes, or the report describes a
+    # pipeline that isn't the one actually running.
+    raw_row_count = len(pd.read_csv(CSV_PATH, dtype=str, low_memory=False))
+    df = load_clean(CSV_PATH)
+    n_removed_by_load_clean = raw_row_count - len(df)
+
+    report = quality_report(df)
+    dup_issue = next(i for i in report["issues"] if i["column"] == "transaction_id")
+    assert dup_issue["rows_affected"] == n_removed_by_load_clean
+
+
 # ---------------------------------------------------------------------------
 # Part 1.4 — merchants_at_risk
 # ---------------------------------------------------------------------------

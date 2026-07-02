@@ -41,14 +41,14 @@
 ### D2 · Estrategia de deduplicación
 *Deduplication strategy*
 
-- **Qué hice**: Imputé `amount` nulo con mediana por segmento antes de deduplicar. Luego yo eliminé las filas con `drop_duplicates(subset=["merchant_id","transaction_date","amount","status", "channel"], keep="first")`. El resultado fue 4351 duplicados eliminados de 204000 filas (casi 2.1% = coherente con la trampa T5)
+- **Qué hice**: Imputé `amount` nulo con mediana por segmento antes de deduplicar. Luego yo eliminé las filas con `drop_duplicates(subset=["merchant_id","transaction_date","amount","status", "channel"], keep="first")`. El resultado fue 4182 duplicados eliminados de 204000 filas (casi 2.05% = coherente con la trampa T5)
 
-- *What I did: Imputed null `amount` with median by segment before deduplicating. Then I went to remove rows with `drop_duplicates(subset=["merchant_id","transaction_date","amount","status", "channel"], keep="first")`. The result was 4351 duplicates removed from 204000 rows (about 2.1% = consistent with trap T5) .*
+- *What I did: Imputed null `amount` with median by segment before deduplicating. Then I went to remove rows with `drop_duplicates(subset=["merchant_id","transaction_date","amount","status", "channel"], keep="first")`. The result was 4182 duplicates removed from 204000 rows (about 2.05% = consistent with trap T5) .*
 
 
-- **Por que**: La trampa T5 genera duplicados con `transaction_id` distinto pero el resto identico, deduplicar por `transaction_id` no los captura. Imputar antes importa porque `NaN != NaN` en pandas, porque dos filas idénticas con `amount=NaN` no serían reconocidas como duplicadas sin imputación previa.
+- **Por que**: La trampa T5 genera duplicados con `transaction_id` distinto pero el resto identico, deduplicar por `transaction_id` no los captura. Imputar antes importa para que el valor final de `amount` en los KPIs sea la mediana real y no NaN — pandas ya trata `NaN == NaN` como igual dentro de `duplicated()`/`drop_duplicates()` (a diferencia de `==` escalar), así que el orden no afecta si se detectan como duplicados, pero sí afecta qué valor de `amount` sobrevive.
 
-- *Why: Trap T5 will generate duplicates with a different `transaction_id` but an identical rest, as deduplicating by `transaction_id` does not catch them. Imputing here first matters because `NaN != NaN` in pandas, here two identical rows with `amount=NaN` would not be recognized as duplicates without prior imputation.*  
+- *Why: Trap T5 generates duplicates with a different `transaction_id` but an otherwise identical row, so deduplicating by `transaction_id` alone doesn't catch them. Imputing first matters so the final `amount` value in the KPIs is the real median, not NaN — pandas already treats `NaN == NaN` as equal inside `duplicated()`/`drop_duplicates()` (unlike scalar `==`), so the ordering doesn't affect whether they're detected as duplicates, but it does affect which `amount` value survives.*
 
 - **Qué descarté**: Deduplicar solo por `transaction_id` no captura T5. Hash de todas las columnas, una`transaction_id` diferente las haría distintas, es el mismo problema   
 - *What I discarded: Deduplicating only by thhe `transaction_id` does not catch T5. Hashing of all columns means a different `transaction_id` would make them distinct, same problem.*
