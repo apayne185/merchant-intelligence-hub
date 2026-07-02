@@ -91,6 +91,51 @@
 
 
 
+## Parte 2 · SQL
+*SQL*
+
+### D14 · Q1 — filtro doble sobre dat_process y transaction_date
+
+- **Qué hice**: Filtré `transactions` tanto por `dat_process BETWEEN '2025-07-01' AND '2025-09-30'` (columna de partición) como por `transaction_date BETWEEN '2025-07-01' AND '2025-09-30'` (fecha de negocio).
+- *What I did: Filtered `transactions` both by `dat_process BETWEEN '2025-07-01' AND '2025-09-30'` (partition column) and by `transaction_date BETWEEN '2025-07-01' AND '2025-09-30'` (business date).*
+
+- **Por qué**: `dat_process` es la fecha de ETL/procesamiento, no necesariamente igual a `transaction_date` (una transacción del 30-sep podría procesarse el 1-oct). El filtro sobre `dat_process` habilita partition pruning grueso; el filtro sobre `transaction_date` asegura que el resultado sea correcto por fecha de negocio aunque haya lag entre ambas columnas cerca de un límite de trimestre.
+- *Why: `dat_process` is the ETL/processing date, not necessarily equal to `transaction_date` (a Sep-30 transaction could be processed on Oct-1). Filtering on `dat_process` enables coarse partition pruning; filtering on `transaction_date` ensures the result is correct by business date even if there's lag between the two columns near a quarter boundary.*
+
+- **Qué supuse**: Que `dat_process` y `transaction_date` coinciden en la gran mayoría de los casos (lag de 0-1 días). No verificado contra el schema real — lo confirmaría con el equipo de ingeniería de datos antes de confiar en el partition pruning como única garantía de completitud.
+- *What I assumed: That `dat_process` and `transaction_date` coincide in the vast majority of cases (0-1 day lag). Not verified against the real schema — I'd confirm with the data engineering team before relying on partition pruning alone as a completeness guarantee.*
+
+---
+
+### D15 · Q1 — approval_rate: denominador incluye reversed
+
+- **Qué hice**: `approval_rate = n_approved / COUNT(*)`, donde `COUNT(*)` cuenta todas las transacciones del periodo (approved + denied + reversed).
+- *What I did: `approval_rate = n_approved / COUNT(*)`, where `COUNT(*)` counts all transactions in the period (approved + denied + reversed).*
+
+- **Qué descarté**: Excluir `reversed` del denominador (solo `approved`/`denied`). Lo descarté porque una transacción `reversed` fue aprobada y luego revertida — sigue siendo relevante para medir qué fracción de los intentos de cobro del merchant resultan en TPV neto retenido.
+- *What I discarded: Excluding `reversed` from the denominator (only `approved`/`denied`). Discarded because a `reversed` transaction was approved and then reversed — still relevant for measuring what fraction of the merchant's charge attempts result in retained net TPV.*
+
+- **Qué supuse**: Que "approval_rate" en el contexto de negocio de Getnet incluye reversals en el denominador. Lo verificaría con el equipo de producto — ver también ASSUMPTIONS.md A1 sobre la misma ambigüedad en TPV.
+- *What I assumed: That "approval_rate" in the business context includes reversals in the denominator. I'd verify this with the product team — see also ASSUMPTIONS.md A1 on the same ambiguity for TPV.*
+
+---
+
+### D16 · Q3 — self-join en vez de LAG(tpv, 12) para el YoY
+
+- **Qué hice**: Uní `monthly_tpv` consigo misma por `(merchant_id, mo)` con `prev.yr = 2024`, en vez de usar `LAG(tpv, 12) OVER (PARTITION BY merchant_id ORDER BY month_start)`.
+- *What I did: Joined `monthly_tpv` to itself on `(merchant_id, mo)` with `prev.yr = 2024`, instead of using `LAG(tpv, 12) OVER (PARTITION BY merchant_id ORDER BY month_start)`.*
+
+- **Por qué**: `LAG(tpv, 12)` con offset fijo es sintaxis Spark SQL perfectamente válida — la elección no es por falta de soporte. El motivo real es que `monthly_tpv` puede tener huecos: si un merchant no tuvo transacciones en algún mes, ese mes no aparece como fila. `LAG(tpv, 12)` se desplazaría 12 *filas* hacia atrás en la partición, no 12 *meses* — con huecos, terminaría comparando meses que no son realmente el mismo mes del año anterior. El self-join empareja explícitamente por `mo`, así que es correcto independientemente de huecos en la serie.
+- *Why: `LAG(tpv, 12)` with a fixed offset is perfectly valid Spark SQL — the choice isn't due to a lack of support. The real reason is that `monthly_tpv` can have gaps: if a merchant had no transactions in some month, that month doesn't appear as a row. `LAG(tpv, 12)` would shift 12 *rows* back within the partition, not 12 *months* — with gaps, it would end up comparing months that aren't actually the same month a year prior. The self-join matches explicitly on `mo`, so it's correct regardless of gaps in the series.*
+
+- **Qué descarté**: `LAG(tpv, 12)` — funcionaría solo si se garantiza una fila por cada (merchant_id, mes) sin huecos, lo cual requeriría un join contra un "calendar spine" primero. El self-join es más simple para este caso.
+- *What I discarded: `LAG(tpv, 12)` — would only work if every (merchant_id, month) combination is guaranteed a row with no gaps, which would require joining against a calendar spine first. The self-join is simpler for this case.*
+
+---
+
+
+
+
 ## Parte 3 · Modelado ML
 *ML Modelling*
 

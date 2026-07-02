@@ -36,11 +36,14 @@ SELECT
 FROM transactions t
 JOIN merchants m
     ON t.merchant_id = m.merchant_id
-   AND m.country = 'BR'
 WHERE
+    m.country = 'BR'
     -- Partition pruning: el optimizador Spark/Databricks elimina particiones fuera del rango
-    t.dat_process BETWEEN '2025-07-01' AND '2025-09-30'
-    -- Filtro adicional sobre transaction_date (por si dat_process ≠ transaction_date)
+    AND t.dat_process BETWEEN '2025-07-01' AND '2025-09-30'
+    -- Filtro adicional sobre transaction_date: no asumimos dat_process == transaction_date
+    -- (dat_process es la fecha de ETL/procesamiento, no necesariamente la de negocio;
+    -- si difieren cerca de un limite de trimestre, este filtro evita incluir/excluir
+    -- transacciones por error aunque dat_process ya haya hecho partition pruning grueso)
     AND t.transaction_date BETWEEN '2025-07-01' AND '2025-09-30'
 GROUP BY
     t.merchant_id,
@@ -84,9 +87,14 @@ ORDER BY
 -- -----------------------------------------------------------------------------
 -- Supuesto: TPV = suma de amount donde status = 'approved'.
 -- Supuesto: "mismo mes año anterior" = mismo número de mes en 2024.
--- Usamos LAG con PARTITION BY merchant_id ORDER BY mes — pero el gap de 12 meses
--- requiere un self-join (LAG de offset variable no es estándar). Usamos self-join
--- más legible y compatible con Spark SQL.
+-- LAG(tpv, 12) OVER (PARTITION BY merchant_id ORDER BY month_start) sería
+-- sintaxis Spark SQL válida (offset fijo, no hay nada no-estándar en eso),
+-- pero asume una serie mensual contigua sin huecos: si un merchant no tuvo
+-- transacciones en algún mes, ese mes simplemente no existe como fila en
+-- monthly_tpv, y LAG(tpv,12) se desplazaría al mes anterior disponible en
+-- vez de al mismo mes del año anterior — comparando, ej., enero 2025 con
+-- noviembre 2024. El self-join empareja explícitamente por (merchant_id, mo),
+-- así que es robusto a huecos en la serie mensual.
 
 WITH monthly_tpv AS (
     SELECT
@@ -99,7 +107,9 @@ WITH monthly_tpv AS (
     WHERE
         -- Cubre tanto 2024 (para YoY) como 2025
         YEAR(transaction_date) IN (2024, 2025)
-        -- Partition pruning
+        -- Partition pruning: acota el scan a los 2 años que necesita el YoY
+        -- (Q2 no tiene un filtro equivalente porque no toca `transactions`
+        -- en absoluto — solo hace join contra churn_labels/merchants)
         AND dat_process BETWEEN '2024-01-01' AND '2025-12-31'
     GROUP BY
         merchant_id,
