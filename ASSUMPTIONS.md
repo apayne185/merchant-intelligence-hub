@@ -1,6 +1,6 @@
 # ASSUMPTIONS.md — Payne, Anna
 
-> Reasoning behind the pipeline design: the original spec left several points ambiguous (3 intentional, plus 2 I found while building). For each assumption: (1) what the spec left ambiguous, (2) what I assumed, (3) how I'd verify it with a real stakeholder, (4) impact if the assumption turns out to be wrong.
+> Reasoning behind the pipeline design: the original spec left 3 points ambiguous. For each assumption: (1) what the spec left ambiguous, (2) what I assumed, (3) how I'd verify it with a real stakeholder, (4) impact if the assumption turns out to be wrong.
 
 ---
 

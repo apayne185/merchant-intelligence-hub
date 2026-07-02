@@ -29,5 +29,6 @@ lint:
 	uv run ruff check src/ tests/ || true
 
 clean:
-	rm -rf .venv **/__pycache__ .pytest_cache .ruff_cache build dist *.egg-info
+	rm -rf .venv .pytest_cache .ruff_cache build dist *.egg-info
+	find . -name __pycache__ -type d -not -path "./.venv/*" -exec rm -rf {} +
 	@echo "✓ Caches eliminados (uv.lock y outputs/ conservados)"

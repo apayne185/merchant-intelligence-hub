@@ -115,7 +115,7 @@
 - **Qué descarté**: Excluir `reversed` del denominador (solo `approved`/`denied`). Lo descarté porque una transacción `reversed` fue aprobada y luego revertida — sigue siendo relevante para medir qué fracción de los intentos de cobro del merchant resultan en TPV neto retenido.
 - *What I discarded: Excluding `reversed` from the denominator (only `approved`/`denied`). Discarded because a `reversed` transaction was approved and then reversed — still relevant for measuring what fraction of the merchant's charge attempts result in retained net TPV.*
 
-- **Qué supuse**: Que "approval_rate" en el contexto de negocio de Getnet incluye reversals en el denominador. Lo verificaría con el equipo de producto — ver también ASSUMPTIONS.md A1 sobre la misma ambigüedad en TPV.
+- **Qué supuse**: Que "approval_rate" en el contexto de negocio del acquirer incluye reversals en el denominador. Lo verificaría con el equipo de producto — ver también ASSUMPTIONS.md A1 sobre la misma ambigüedad en TPV.
 - *What I assumed: That "approval_rate" in the business context includes reversals in the denominator. I'd verify this with the product team — see also ASSUMPTIONS.md A1 on the same ambiguity for TPV.*
 
 ---
@@ -175,7 +175,7 @@
 ### D5 · Split temporal aware y prevención de leakage
 *Temporal aware split and leakage prevention*
 
-- **Que hice**: Split estratificado 80/20 de `merchant_id` (7986 train/1996 test). No hice un split temporal por snapshot porque este dataset tiene una sola `reference_date` (2025-09-30), no hay multiples snapshots disponibles para simular un evaluación temporal real. Riesgo de leakage temporal se mitigó íntegramente en la ingeniería de features, todas las agregaciones usan solo `transaction_date <=reference_date`
+- **Que hice**: Split estratificado 80/20 de `merchant_id` (7973 train/1994 test). No hice un split temporal por snapshot porque este dataset tiene una sola `reference_date` (2025-09-30), no hay multiples snapshots disponibles para simular un evaluación temporal real. Riesgo de leakage temporal se mitigó íntegramente en la ingeniería de features, todas las agregaciones usan solo `transaction_date <=reference_date`
 
 - **Por qué**: Con un unico snapshot, el split temporal clásico no aplica, pero el split por merchant garantiza que no hay contaminación de datos entre train y test. La estratificación preserva el 8.75 de churn en los dos splits
 - *Why: With only a single snapshot, the classic temporal split doesn't apply. However, merchant split guarantees no data contamination between train and test. Stratification preserves the 8.75% churn rate in both splits*

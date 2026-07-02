@@ -10,7 +10,6 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
-
 from src.parte4_api.agent import _LLMClassification, _RealAgentAdapter, build_agent
 from src.parte4_api.schemas import Category
 

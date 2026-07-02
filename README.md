@@ -14,7 +14,17 @@ uv sync --extra dev
 uv run python -c "import pandas, sklearn, fastapi, uvicorn, agno, pydantic; print('OK · environment ready')"
 ```
 
-> **Nota Python 3.13**: `pandas` fue bumpeado de 2.2.2 a 2.2.3 (patch release, API idéntica) para compatibilidad con Python 3.13..
+> **Nota Python 3.13**: `pandas` fue bumpeado de 2.2.2 a 2.2.3 (patch release, API idéntica) para compatibilidad con Python 3.13.
+
+Atajos disponibles vía `Makefile` (`make help` para la lista completa):
+*[EN]: Shortcuts available via `Makefile` (`make help` for the full list):*
+
+```bash
+make setup      # uv sync --extra dev
+make test       # pytest -v con MOCK_LLM=1
+make run        # uvicorn con MOCK_LLM=1
+make lint       # ruff check
+```
 
 
 
@@ -83,7 +93,7 @@ uv run jupyter lab src/parte3_modeling.ipynb
 
 ```
 ├── DECISIONS.md         # 13 decisiones técnicas documentadas / 13 technical decisions documented
-├── ASSUMPTIONS.md       # 3 ambiguedades identificadas + 2 adicionales 
+├── ASSUMPTIONS.md       # 3 ambiguedades identificadas en el diseño del pipeline
 ├── SELF_REVIEW.md       # 5 problemas honestos de la solución 
 ├── TOOLS_USED.md     
 ├── src/
