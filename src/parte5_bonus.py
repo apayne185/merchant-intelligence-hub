@@ -7,10 +7,8 @@ el grafo no puede detectar colusión real entre merchants.
 """
 from __future__ import annotations
 
-import pandas as pd
 
-
-def detect_collusion_rings(transactions: pd.DataFrame) -> list[set[int]]:
+def detect_collusion_rings() -> list[set[int]]:
     """
     Detecta grupos de >= 3 merchants que muestran señales de colusión
     (transacciones cruzadas anómalas en patrones grafos).
@@ -18,11 +16,13 @@ def detect_collusion_rings(transactions: pd.DataFrame) -> list[set[int]]:
 
     Limitación crítica: el dataset no contiene `cardholder_id` ni entidad
     compradora. Sin esa información, no es posible construir el grafo
-    merchant-merchant necesario para detectar ciclos de colusión.
+    merchant-merchant necesario para detectar ciclos de colusión — por eso
+    esta función no recibe ni usa un DataFrame de transacciones: no hay
+    input que la haga producir un resultado real todavía.
 
     Con los datos disponibles (solo merchant_id + amount + fecha), el único
-    proxy observable es merchants que comparten patrones de importe idéntico
-    en la misma ventana temporal — señal muy débil y ruidosa.
+    proxy observable sería merchants que comparten patrones de importe
+    idéntico en la misma ventana temporal — señal muy débil y ruidosa.
 
     Ver DECISIONS.md D12 para análisis detallado: por qué es difícil,
     qué datos se necesitan, qué algoritmos investigaría, tiempo estimado.
