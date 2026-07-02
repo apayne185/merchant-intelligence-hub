@@ -72,7 +72,12 @@ def load_clean(path: str | Path) -> pd.DataFrame:
     # --- Tipos básicos ---
     df["transaction_id"] = pd.to_numeric(df["transaction_id"], errors="coerce").astype("Int64")
     df["merchant_id"] = pd.to_numeric(df["merchant_id"], errors="coerce").astype("Int64")
-    df["fla_churn90"] = pd.to_numeric(df["fla_churn90"], errors="coerce").astype("Int8")
+    # fla_churn90 es un flag 0/1: to_numeric(errors="coerce") solo captura
+    # strings no-numéricos -> NaN, pero un entero fuera de rango (ej. "200")
+    # pasaría to_numeric sin error y luego rompería el cast a Int8. Forzar a
+    # {0, 1, NA} explícitamente antes de castear.
+    fla_churn90_numeric = pd.to_numeric(df["fla_churn90"], errors="coerce")
+    df["fla_churn90"] = fla_churn90_numeric.where(fla_churn90_numeric.isin([0, 1])).astype("Int8")
 
     # Categoricals para columnas de baja cardinalidad
     for col in ["status", "channel", "segment", "mcc", "cancellation_reason"]:
@@ -134,7 +139,11 @@ def monthly_kpis(df: pd.DataFrame) -> pd.DataFrame:
     )
     result["approval_rate"] = result["n_approved"] / result["n_tx"]
     tpv_safe = result["tpv"].where(result["tpv"] != 0)  # float NaN where tpv==0
-    result["pct_ecom"] = (result["tpv_ecom"] / tpv_safe).fillna(0.0)
+    # clip: si algún amount 'approved' fuese negativo (reversal mal etiquetado,
+    # no se observa en el CSV actual pero no está garantizado por el schema),
+    # tpv podría acercarse a 0 o volverse negativo mientras tpv_ecom no, lo
+    # que sacaría pct_ecom fuera de [0, 1] — el rango documentado del KPI.
+    result["pct_ecom"] = (result["tpv_ecom"] / tpv_safe).fillna(0.0).clip(0.0, 1.0)
 
     return result[["merchant_id", "month", "tpv", "approval_rate", "pct_ecom", "n_tx"]]
 

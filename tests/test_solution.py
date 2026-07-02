@@ -71,6 +71,22 @@ def test_load_clean_transaction_date_no_nat() -> None:
     assert n_nat == 0, f"Quedaron {n_nat} NaT tras parseo de fechas mixtas"
 
 
+def test_load_clean_out_of_range_fla_churn90_does_not_crash(tmp_path: Path) -> None:
+    # fla_churn90 solo deberia ser 0/1; un valor corrupto fuera de ese rango
+    # pasa pd.to_numeric(errors="coerce") sin problema pero antes rompia el
+    # cast directo a Int8 (int8 no puede caber "200").
+    csv_path = tmp_path / "corrupt.csv"
+    csv_path.write_text(
+        "transaction_id,merchant_id,transaction_date,amount,status,channel,"
+        "cancellation_reason,reference_date,fla_churn90,last_complaint_date,segment,mcc\n"
+        "1,10,2025-08-15,100,approved,pos,,2025-09-30,0,,SMB,5411\n"
+        "2,10,2025-08-16,50,approved,pos,,2025-09-30,200,,SMB,5411\n"
+    )
+    df = load_clean(csv_path)
+    assert df["fla_churn90"].iloc[0] == 0
+    assert pd.isna(df["fla_churn90"].iloc[1])
+
+
 # ---------------------------------------------------------------------------
 # Part 1.2 — monthly_kpis
 # ---------------------------------------------------------------------------
@@ -105,6 +121,24 @@ def test_monthly_kpis_approval_rate(tiny_df: pd.DataFrame) -> None:
 def test_monthly_kpis_pct_ecom_range(tiny_df: pd.DataFrame) -> None:
     out = monthly_kpis(tiny_df)
     assert out["pct_ecom"].between(0, 1).all(), "pct_ecom debe estar en [0, 1]"
+
+
+def test_monthly_kpis_pct_ecom_clipped_with_negative_amount() -> None:
+    # Un amount negativo en una fila 'approved' (no se observa en el CSV real,
+    # pero el schema no lo prohibe) puede hacer que tpv se acerque a 0 o sea
+    # negativo mientras tpv_ecom no — sin clip, pct_ecom se sale de [0, 1].
+    df = pd.DataFrame(
+        {
+            "transaction_id": pd.array([1, 2], dtype="Int64"),
+            "merchant_id": pd.array([10, 10], dtype="Int64"),
+            "transaction_date": pd.to_datetime(["2025-08-15", "2025-08-20"]),
+            "amount": [-50.0, 100.0],
+            "status": pd.Categorical(["approved", "approved"]),
+            "channel": pd.Categorical(["ecom", "pos"]),
+        }
+    )
+    out = monthly_kpis(df)
+    assert out["pct_ecom"].between(0, 1).all()
 
 
 # ---------------------------------------------------------------------------
