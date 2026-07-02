@@ -161,3 +161,39 @@ def test_merchants_at_risk_sorted_desc(tiny_df: pd.DataFrame) -> None:
 def test_merchants_at_risk_score_range(tiny_df: pd.DataFrame) -> None:
     out = merchants_at_risk(tiny_df, top_n=5)
     assert out["risk_score"].between(0, 1).all()
+
+
+def test_merchants_at_risk_empty_df_does_not_crash() -> None:
+    empty = pd.DataFrame(
+        {
+            "transaction_id": pd.array([], dtype="Int64"),
+            "merchant_id": pd.array([], dtype="Int64"),
+            "transaction_date": pd.to_datetime([]),
+            "amount": pd.array([], dtype="float64"),
+            "status": pd.Categorical([]),
+            "reference_date": pd.to_datetime([]),
+            "last_complaint_date": pd.to_datetime([]),
+        }
+    )
+    out = merchants_at_risk(empty)
+    assert out.empty
+    assert list(out.columns) == ["merchant_id", "risk_score", "top_signal"]
+
+
+def test_merchants_at_risk_no_variance_is_neutral_not_max_risk() -> None:
+    # Un solo merchant sano (approval 100%, sin caida de TPV, sin quejas):
+    # no hay nada contra que comparar, así que el riesgo debe ser bajo/neutral,
+    # no 0.8 (que resultaria si "sin varianza" se invirtiera a "maximo riesgo").
+    single = pd.DataFrame(
+        {
+            "transaction_id": pd.array([1, 2], dtype="Int64"),
+            "merchant_id": pd.array([10, 10], dtype="Int64"),
+            "transaction_date": pd.to_datetime(["2025-09-20", "2025-09-25"]),
+            "amount": [100.0, 100.0],
+            "status": pd.Categorical(["approved", "approved"]),
+            "reference_date": pd.to_datetime(["2025-09-30"] * 2),
+            "last_complaint_date": pd.to_datetime([None, None]),
+        }
+    )
+    out = merchants_at_risk(single)
+    assert out["risk_score"].iloc[0] < 0.3

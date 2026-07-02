@@ -373,13 +373,22 @@ def merchants_at_risk(df: pd.DataFrame, top_n: int = 200) -> pd.DataFrame:
     scores["tpv_ratio"] = (scores["recent_tpv"] / denom).fillna(0.0).clip(0, 3).astype(float)
 
     # Normalizar cada señal al rango 0-1
-    def minmax(s: pd.Series) -> pd.Series:
+    def minmax(s: pd.Series, invert: bool = False) -> pd.Series:
+        """Sin varianza (Serie vacia, o todos los merchants empatados en esta
+        señal) no hay nada contra que comparar -> neutral (0.0). Si se
+        invirtiera un minmax de 0.0 (`1 - 0.0 = 1.0`), un merchant sin señal
+        de comparacion aparenteria maximo riesgo, que es lo opuesto de lo
+        que se quiere decir con "sin señal".
+        """
         rng = s.max() - s.min()
-        return (s - s.min()) / rng if rng > 0 else pd.Series(0.0, index=s.index)
+        if pd.isna(rng) or rng <= 0:
+            return pd.Series(0.0, index=s.index)
+        norm = (s - s.min()) / rng
+        return 1 - norm if invert else norm
 
     # Riesgo = bajo TPV ratio + baja approval rate + complaint reciente
-    scores["sig_tpv"] = 1 - minmax(scores["tpv_ratio"])           # inversión: menor ratio = más riesgo
-    scores["sig_approval"] = 1 - minmax(scores["approval_rate_recent"])
+    scores["sig_tpv"] = minmax(scores["tpv_ratio"], invert=True)           # menor ratio = más riesgo
+    scores["sig_approval"] = minmax(scores["approval_rate_recent"], invert=True)
     scores["sig_complaint"] = minmax(scores["has_recent_complaint"])
 
     # Score compuesto ponderado
