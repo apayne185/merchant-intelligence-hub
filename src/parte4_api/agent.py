@@ -114,8 +114,9 @@ def flag_for_human_review(merchant_id: int, reason: str) -> dict[str, Any]:
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from agno.tools import tool as agno_tool
+from pydantic import BaseModel, Field, conint
 
-from .schemas import ClassifyResponse
+from .schemas import Category
 
 _AGENT_INSTRUCTIONS = """
 Eres un clasificador de reclamaciones de merchants para un adquirente de pagos.
@@ -145,19 +146,58 @@ def flag_human_review_tool(merchant_id: int, reason: str) -> dict:
     return flag_for_human_review(merchant_id, reason)
 
 
+class _LLMClassification(BaseModel):
+    """response_model para el Agent real de Agno.
+
+    Igual que `ClassifyResponse` pero sin `merchant_id`/`latency_ms`: esos los
+    conoce el caller (request + reloj), no tiene sentido que el LLM los genere.
+    """
+
+    category: Category
+    urgency: conint(ge=1, le=5)  # type: ignore[valid-type]
+    requires_human_escalation: bool
+    reasoning: str = Field(..., max_length=300)
+    merchant_context_used: bool
+
+
+class _RealAgentAdapter:
+    """Envuelve un `Agent` de Agno real para exponer la misma interfaz
+    `.classify()` que `_MockAgent`, así `main.py` no necesita saber cuál de
+    los dos está usando.
+    """
+
+    def __init__(self, agent: Agent) -> None:
+        self._agent = agent
+
+    def classify(self, *, merchant_id: int, email_text: str, locale: str = "es") -> dict[str, Any]:
+        prompt = f"merchant_id: {merchant_id}\nlocale: {locale}\n\n{email_text}"
+        run_output = self._agent.run(prompt)
+        content = run_output.content
+        if isinstance(content, _LLMClassification):
+            data = content.model_dump()
+        elif isinstance(content, dict):
+            data = dict(content)
+        else:
+            raise TypeError(f"Respuesta inesperada del agente Agno: {type(content)!r}")
+        data["merchant_id"] = merchant_id
+        return data
+
+
 def build_agent(model_name: str = "gpt-4o-mini"):
-    """Construye el agente Agno. Si MOCK_LLM=1, devuelve un stub.
+    """Construye el agente. Si MOCK_LLM=1, devuelve el stub determinístico;
+    si no, un Agent de Agno real envuelto en `_RealAgentAdapter`.
     """
     if is_mock_mode():
         return _MockAgent()
 
-    return Agent(
+    real_agent = Agent(
         model=OpenAIChat(id=model_name),
         tools=[merchant_context_tool, flag_human_review_tool],
         instructions=_AGENT_INSTRUCTIONS,
-        response_model=ClassifyResponse,
+        output_schema=_LLMClassification,
         structured_outputs=True,
     )
+    return _RealAgentAdapter(real_agent)
 
 
 class _MockAgent:

@@ -84,9 +84,8 @@ def classify(req: ClassifyRequest, agent: AgentDep) -> ClassifyResponse:
     # 2. PII redaction antes de pasar al LLM
     safe_text = redact_pii(req.email_text)
 
-    # 3. Llamada al agente. El _MockAgent expone `.classify(...)`;
-    #    si construyes un Agent de Agno real, adapta esta llamada para que
-    #    devuelva un dict (o un objeto Pydantic) con los mismos campos.
+    # 3. Llamada al agente. Tanto _MockAgent como _RealAgentAdapter (agent.py)
+    #    exponen `.classify(...)` y devuelven el mismo dict de campos.
     try:
         result = agent.classify(
             merchant_id=req.merchant_id,
