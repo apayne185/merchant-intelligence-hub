@@ -32,9 +32,9 @@ from .schemas import (
 # App
 # -----------------------------------------------------------------------------
 app = FastAPI(
-    title="Getnet AI Lab — Merchant Complaint Classifier",
+    title="Merchant Intelligence Hub — Complaint Classifier",
     version="0.1.0",
-    description="Take-home Parte 4 · agente Agno detrás de FastAPI",
+    description="Agno agent behind FastAPI for merchant complaint triage",
 )
 
 

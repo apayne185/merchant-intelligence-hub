@@ -118,7 +118,7 @@ from agno.tools import tool as agno_tool
 from .schemas import ClassifyResponse
 
 _AGENT_INSTRUCTIONS = """
-Eres un clasificador de reclamaciones de merchants para Getnet (adquirente de pagos).
+Eres un clasificador de reclamaciones de merchants para un adquirente de pagos.
 
 Dado un email, debes:
 1. Llamar a merchant_context_tool con merchant_id para obtener contexto del merchant.

@@ -30,8 +30,8 @@
 - **Qué descarté**: `pd.read_csv(..., decimal=',',thousands='.')`  no funciona cuando la misma columna mezcla los vacíos (~3% NaN= trampa T3b). `dateutil.infer_datetime_format` es mas lento y tambien menos predecible con mezcla de formatos. Regex, fila a fila, viola el requisito de vectorizción.
 - *What I discarded: `pd.read_csv(..., decimal=',',thousands='.')` does not work when the same column mixes empty values (~3% NaN = trap T3b). `dateutil.infer_datetime_format` is slower and also less predictable with any mixed formats. Row-by-row regex will violates the vectorization requirement.*
 
-- **Qué supuse**: Que el separador de miles es siempre (.) y el decimal siempre es (,) (el formato de BR/ES). For ejemplo, si Getnet opera en México con un formato diferente, habría que parametrizar el parser. Yo verificaría el locale del sistema de caja con el equipo de ingeniería de datos.
-- *What I assumed: That the thousands separator is always . and the decimal always , (BR/ES format). If Getnet would operates in Mexico with a different format, the parser would need to be parameterized. I would need to verify the POS system locale with the data engineering team.*
+- **Qué supuse**: Que el separador de miles es siempre (.) y el decimal siempre es (,) (el formato de BR/ES). Si el acquirer operase en un país con un formato diferente (ej. México), habría que parametrizar el parser. Yo verificaría el locale del sistema de caja con el equipo de ingeniería de datos.
+- *What I assumed: That the thousands separator is always . and the decimal always , (BR/ES format). If the acquirer operated in a country with a different format (e.g. Mexico), the parser would need to be parameterized. I would need to verify the POS system locale with the data engineering team.*
 
 ---
 
@@ -324,5 +324,10 @@
 ### D13 · Bump de pandas 2.2.2 a 2.2.3
 
 - **Qué hice**: Actualicé `pyproject.toml` de `pandas==2.2.2` a `pandas==2.2.3`.
-- **Por qué**: el pandas 2.2.2 no tiene wheel precompilado para Python 3.13. `uv sync` intentaba compilar desde source y el fallaba en el paso de Meson/Cython.  pandas 2.2.3 (patch release y API idéntica) si tiene wheel para Python 3.13. Y el evaluador en 3.11/3.12 no ve diferencia.
-- Yo supuse que el evaluador tiene Python 3.11 o 3.12 y que el bump de patch version es transparente.
+- *What I did: Updated `pyproject.toml` from `pandas==2.2.2` to `pandas==2.2.3`.*
+
+- **Por qué**: pandas 2.2.2 no tiene wheel precompilado para Python 3.13. `uv sync` intentaba compilar desde source y fallaba en el paso de Meson/Cython. pandas 2.2.3 (patch release, misma API) sí tiene wheel para Python 3.13, y en 3.11/3.12 no hay diferencia de comportamiento.
+- *Why: pandas 2.2.2 has no precompiled wheel for Python 3.13. `uv sync` tried to compile from source and failed at the Meson/Cython step. pandas 2.2.3 (patch release, identical API) does have a 3.13 wheel, and there's no behavior difference on 3.11/3.12.*
+
+- **Qué supuse**: Que quien corra esto en 3.11 o 3.12 no ve ningún cambio de comportamiento por el bump de patch version.
+- *What I assumed: That anyone running this on 3.11 or 3.12 sees no behavior change from the patch-version bump.*

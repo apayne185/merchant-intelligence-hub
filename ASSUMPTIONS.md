@@ -12,7 +12,7 @@
 
 - **Qué supuse**: TPV=suma de `amount` donde `status= 'approved'` unicamente. Las transacciones `reversed` se excluyen, porque el dinero se devuelve al dueno, por lo que no cuenta como volumen procesado neto. Las `denied` claramente quedan fuera.
 
-- **Cómo lo verificaría con stakeholder**: Preguntar al equipo de finanzas si el TPV que aparece en los dashboards de Getnet incluye o excluye reversals. En muchos adquirentes se reporta TPV bruto (incluye reversals) y TPV neto por separado.
+- **Cómo lo verificaría con stakeholder**: Preguntar al equipo de finanzas si el TPV que aparece en los dashboards del acquirer incluye o excluye reversals. En muchos adquirentes se reporta TPV bruto (incluye reversals) y TPV neto por separado.
 
 - **Impacto si mi supuesto es falso**: Si TPV incluye reversals (`status IN ('approved',  'reversed')`), los KPIs mensuales estarían subestimados un 2% (tasa de reversals observada en dataset). Para el ranking Q1 SQL, podría cambiar merchants con alta tasa de devoluciones (fraude). Para las features del modelo ML, la señal relativa entre merchants se preservaría aunque el valor absoluto cambie.
 
@@ -24,7 +24,7 @@
 ## A2 · Ventana temporal de "señal débil" en `merchants_at_risk`
 *Time window for weak signal in merchants_at_risk*
 
-- **Qué dice el spec (ambiguo)**: El enunciado pide "señal débil de pre-churn" sin especificar ventana temporal. No queda claro si "reciente" es 7 días, 30 días, 90 días, o es un estandar interno de Getnet    
+- **Qué dice el spec (ambiguo)**: El enunciado pide "señal débil de pre-churn" sin especificar ventana temporal. No queda claro si "reciente" es 7 días, 30 días, 90 días, o un estandar interno del acquirer.
 
 - **Qué supuse**: Usé 30 dias antes de `reference_date` para las 3 señales (TPV drop, approval rate baja, queja reciente). Esta eleccion asume que el equipo de retencion trabaja con ciclos mensuales de revision.
 
