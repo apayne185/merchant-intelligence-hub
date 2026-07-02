@@ -13,20 +13,26 @@ Arranca con:
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
 import time
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException
 
-from .agent import build_agent, detect_prompt_injection, redact_pii
+from .agent import build_agent, detect_prompt_injection, is_mock_mode, redact_pii
 from .schemas import (
     BatchClassifyRequest,
     BatchClassifyResponse,
+    BatchErrorItem,
+    BatchResultItem,
     Category,
     ClassifyRequest,
     ClassifyResponse,
     HealthResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
 # App
@@ -58,9 +64,17 @@ AgentDep = Annotated[object, Depends(get_agent)]
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     """Liveness probe. Devuelve modelo activo y versión.
+
+    `status="degraded"` si no hay MOCK_LLM ni una OPENAI_API_KEY configurada —
+    en ese caso todo /classify request va a 502 aunque el proceso esté vivo.
     """
-    # TODO: rellena 'model' con el modelo realmente configurado
-    return HealthResponse(status="ok", model="gpt-4o-mini-or-mock", version=app.version)
+    if is_mock_mode():
+        return HealthResponse(status="ok", model="mock", version=app.version)
+
+    if os.environ.get("OPENAI_API_KEY"):
+        return HealthResponse(status="ok", model="gpt-4o-mini", version=app.version)
+
+    return HealthResponse(status="degraded", model="unconfigured", version=app.version)
 
 
 @app.post("/classify", response_model=ClassifyResponse)
@@ -92,15 +106,23 @@ def classify(req: ClassifyRequest, agent: AgentDep) -> ClassifyResponse:
             email_text=safe_text,
             locale=req.locale,
         )
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"agent_error: {exc}") from exc
+    except Exception:
+        # No exponer str(exc) al cliente: puede filtrar detalles internos
+        # (URLs de request, config del modelo, trazas del SDK).
+        logger.exception("classify failed for merchant_id=%s", req.merchant_id)
+        raise HTTPException(status_code=502, detail="agent_error") from None
+
+    # PII redaction también a la salida: el LLM puede repetir en `reasoning`
+    # datos de contexto del merchant que sí contienen PII real (no solo el
+    # email de entrada, ya redactado en el paso 2).
+    reasoning = redact_pii(result["reasoning"])[:300]
 
     return ClassifyResponse(
         merchant_id=result["merchant_id"],
         category=result["category"],
         urgency=result["urgency"],
         requires_human_escalation=result["requires_human_escalation"],
-        reasoning=result["reasoning"][:300],
+        reasoning=reasoning,
         merchant_context_used=result.get("merchant_context_used", False),
         latency_ms=int((time.perf_counter() - t0) * 1000),
     )
@@ -109,24 +131,37 @@ def classify(req: ClassifyRequest, agent: AgentDep) -> ClassifyResponse:
 @app.post("/classify/batch", response_model=BatchClassifyResponse)
 async def classify_batch(req: BatchClassifyRequest, agent: AgentDep) -> BatchClassifyResponse:
     """Procesa hasta 50 reclamaciones concurrentemente.
+
+    Cada resultado/error lleva el índice del item original en `req.items`,
+    para que el caller pueda correlacionar la respuesta con su request —
+    varios items pueden compartir merchant_id, así que el índice es la
+    única clave fiable.
     """
     t0 = time.perf_counter()
 
-    async def _one(item: ClassifyRequest) -> ClassifyResponse | None:
+    async def _one(index: int, item: ClassifyRequest) -> tuple[int, ClassifyResponse | None]:
         try:
             # Empujamos la llamada sync a thread para no bloquear el loop
-            return await asyncio.to_thread(classify, item, agent)
+            resp = await asyncio.to_thread(classify, item, agent)
+            return index, resp
         except Exception:
-            return None
+            logger.exception("classify_batch item %d failed (merchant_id=%s)", index, item.merchant_id)
+            return index, None
 
-    results = await asyncio.gather(*[_one(it) for it in req.items])
-    ok = [r for r in results if r is not None]
-    n_failed = len(results) - len(ok)
+    outcomes = await asyncio.gather(*[_one(i, item) for i, item in enumerate(req.items)])
+
+    results = [BatchResultItem(index=i, response=r) for i, r in outcomes if r is not None]
+    errors = [
+        BatchErrorItem(index=i, merchant_id=req.items[i].merchant_id, message="agent_error")
+        for i, r in outcomes
+        if r is None
+    ]
 
     return BatchClassifyResponse(
-        results=ok,
+        results=results,
+        errors=errors,
         total_latency_ms=int((time.perf_counter() - t0) * 1000),
-        n_failed=n_failed,
+        n_failed=len(errors),
     )
 
 

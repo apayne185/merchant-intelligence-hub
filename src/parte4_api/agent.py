@@ -29,9 +29,15 @@ OUTPUTS_DIR = REPO_ROOT / "outputs"
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
 PROMPT_INJECTION_PATTERNS: list[re.Pattern[str]] = [
+    # English
     re.compile(r"ignore (?:all )?previous instructions", re.IGNORECASE),
     re.compile(r"\bsystem\s*:", re.IGNORECASE),
     re.compile(r"\bdisregard\b.*\b(prompt|instructions)\b", re.IGNORECASE),
+    # Español — el locale primario documentado de la API, sin cobertura hasta ahora
+    re.compile(r"ignora(?:r)?\s+(?:todas\s+)?las\s+instrucciones\s+anteriores", re.IGNORECASE),
+    re.compile(r"\bignora\b.*\b(prompt|instrucciones)\b", re.IGNORECASE),
+    # Português
+    re.compile(r"ignor[ae]\s+(?:todas\s+)?as\s+instru[çc][õo]es\s+anteriores", re.IGNORECASE),
     # TODO: añade más patrones que consideres relevantes
 ]
 
