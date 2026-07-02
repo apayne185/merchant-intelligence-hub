@@ -38,9 +38,16 @@ htmlcov/
 *.key
 *.pem
 
-# Datos grandes — el CSV original ya lo tenemos, NO lo incluyas en tu zip
-# (sí puedes generar derivados en outputs/)
+# Datos grandes — no versionado por tamaño
+# (los derivados en outputs/ sí se versionan)
 data/transactions_sample.csv
 
-# Outputs generados (entrégalos, no los ignores en tu zip)
+# Outputs generados
 # outputs/  ← deliberadamente NO ignorado
+
+# Delta Lake / Spark scratch output (src/parte1_pyspark.py) — binarios
+# regenerables, no se versionan
+outputs/delta/
+derby.log
+metastore_db/
+spark-warehouse/

@@ -26,6 +26,12 @@
 - `last_complaint_date` raw — T2: some dates are post-reference (temporal leakage)
 - Transactions dated > reference_date — undocumented trap: future activity
 
+## Persistence
+`outputs/model.pkl` is a `joblib`-pickled sklearn `Pipeline`. Pickle
+deserialization executes arbitrary code — only `joblib.load()` this file if
+you trust its provenance (e.g. you built it yourself from this repo). Not
+meant for loading from an untrusted source.
+
 ## Limitations
 1. **Discrimination is weak (ROC-AUC 0.5828 ≈ near-random)** — only
    safe to use for coarse deprioritization at high k (≥10%), not for precise

@@ -15,6 +15,9 @@ Transacciones simuladas de merchants. Columnas: `transaction_id`, `merchant_id`,
 ⚠️ **Contiene problemas de calidad plantados a propósito** (formatos de fecha mixtos, decimales en
 formato BR, duplicados, leakage temporal — ver `quality_report` en Parte 1 y `DECISIONS.md`).
 
+**No está versionado** (`.gitignore`, por tamaño ~80MB). Si cloneas este repo sin el CSV, la mayoría
+del pipeline no tiene con qué correr — no hay un generador incluido en el repo para regenerarlo.
+
 ### `merchants_context.json` (~500 merchants)
 
 Input para la tool `get_merchant_context` de Parte 4. Esquema:
