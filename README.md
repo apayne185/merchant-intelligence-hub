@@ -129,9 +129,11 @@ uv run jupyter lab src/parte3_modeling.ipynb
 ├── notebooks/
 │   └── databricks_parte1_pipeline.py  # notebook Databricks (Community Edition)
 ├── tests/ 
-│   ├── test_solution.py         #17 tests - Parte 1 pandas
-│   ├── test_parte1_pyspark.py   #17 tests - Parte 1 PySpark rewrite
-│   └── test_api.py             #5 tests- Parte 4    (required)   
+│   ├── test_solution.py         #22 tests - Parte 1 pandas
+│   ├── test_parte1_pyspark.py   #17 tests - Parte 1 PySpark rewrite (requiere --extra pyspark)
+│   ├── test_api.py             #6 tests - Parte 4    (required)   
+│   ├── test_agent_adapter.py   #2 tests - adaptador Agent real de Agno
+│   └── test_bonus.py           #1 test  - Parte 5 (stub)
 └── outputs/
     ├── monthly_kpis.csv
     ├── quality_report.json
@@ -159,5 +161,5 @@ uv run jupyter lab src/parte3_modeling.ipynb
 | 1 · Pandas | Completo  | 6 problemas de calidad detectados (5 trampas + 1 adicional) |
 | 2 · SQL | Completo | Q1-Q4 con partition pruning explicado |
 | 3 · ML | Ejecutado / Executed | ROC-AUC 0.58, PR-AUC 0.11 (sin leakage) |
-| 4 · API | Arranca / Starts | `/health` 200, mock + real Agent, 31 tests passing (repo-wide) |
+| 4 · API | Arranca / Starts | `/health` 200, mock + real Agent, 31 tests passing (48 con `--extra pyspark`) |
 | 5 · Bonus! | Stub + análisis | Ver  DECISIONS.md D12 |
