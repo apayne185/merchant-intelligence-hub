@@ -1,15 +1,16 @@
 """
 Agente Agno para clasificar reclamaciones de merchants.
 
-Requisitos (ver `STATEMENT.md` Parte 4):
-  1. `Agent` de Agno con `instructions` claras y `response_model` Pydantic.
-  2. >= 2 tools custom:
-       - get_merchant_context(merchant_id) -> dict
-       - flag_for_human_review(merchant_id, reason) -> dict
-  3. Guardrail prompt injection.
-  4. PII redaction antes del LLM.
+Expone `build_agent()`, que devuelve `_MockAgent` (determinístico, sin
+llamadas a OpenAI) si `MOCK_LLM` está activo, o un `Agent` de Agno real
+envuelto en `_RealAgentAdapter` en caso contrario — ambos exponen la misma
+interfaz `.classify(merchant_id, email_text, locale)`.
 
-Sustituye los TODO por tu implementación. Docs Agno: https://docs.agno.com
+Incluye 2 tools custom (`get_merchant_context`, `flag_for_human_review`),
+guardrail de prompt injection, y PII redaction antes del LLM (ver
+`src/parte4_api/README.md` "Guardrails implementados").
+
+Docs Agno: https://docs.agno.com
 """
 from __future__ import annotations
 
