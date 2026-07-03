@@ -14,7 +14,17 @@ uv sync --extra dev
 uv run python -c "import pandas, sklearn, fastapi, uvicorn, agno, pydantic; print('OK · environment ready')"
 ```
 
-> **Nota Python 3.13**: `pandas` fue bumpeado de 2.2.2 a 2.2.3 (patch release, API idéntica) para compatibilidad con Python 3.13..
+> **Nota Python 3.13**: `pandas` fue bumpeado de 2.2.2 a 2.2.3 (patch release, API idéntica) para compatibilidad con Python 3.13.
+
+Atajos disponibles vía `Makefile` (`make help` para la lista completa):
+*[EN]: Shortcuts available via `Makefile` (`make help` for the full list):*
+
+```bash
+make setup      # uv sync --extra dev
+make test       # pytest -v con MOCK_LLM=1
+make run        # uvicorn con MOCK_LLM=1
+make lint       # ruff check
+```
 
 
 
@@ -52,7 +62,7 @@ curl -s http://localhost:8000/health | python -m json.tool
 
 ```bash
 MOCK_LLM=1 uv run pytest tests/ -v
-#22 passed  
+#31 passed  
 ```   
 
 
@@ -104,8 +114,8 @@ uv run jupyter lab src/parte3_modeling.ipynb
 *Project structure*
 
 ```
-├── DECISIONS.md         # 13 decisiones técnicas documentadas / 13 technical decisions documented
-├── ASSUMPTIONS.md       # 3 ambiguedades identificadas + 2 adicionales 
+├── DECISIONS.md         # 16 decisiones técnicas documentadas / 16 technical decisions documented
+├── ASSUMPTIONS.md       # 3 ambiguedades identificadas en el diseño del pipeline
 ├── SELF_REVIEW.md       # 5 problemas honestos de la solución 
 ├── TOOLS_USED.md     
 ├── src/
@@ -113,7 +123,7 @@ uv run jupyter lab src/parte3_modeling.ipynb
 │   ├── parte1_pyspark.py       # mismas 4 funciones, PySpark DataFrame API + Delta Lake
 │   ├── parte2_sql.sql          #Q1-Q4 en Spark SQL 
 │   ├── parte3_modeling.ipynb   #pipeline LightGBM ejecutado 
-│   ├── parte4_api/             #FastAPI + mock Agno agento
+│   ├── parte4_api/             #FastAPI + Agno agent (mock + real)
 │   ├── parte5_bonus.py         #stub + analisis en DECISIONS.md D12    
 │   └── eda/eda.ipynb          # EDA completo con deteccion de trampas  
 ├── notebooks/
@@ -149,5 +159,5 @@ uv run jupyter lab src/parte3_modeling.ipynb
 | 1 · Pandas | Completo  | 6 problemas de calidad detectados (5 trampas + 1 adicional) |
 | 2 · SQL | Completo | Q1-Q4 con partition pruning explicado |
 | 3 · ML | Ejecutado / Executed | ROC-AUC 0.58, PR-AUC 0.11 (sin leakage) |
-| 4 · API | Arranca / Starts | `/health` 200, 22 tests passing |
+| 4 · API | Arranca / Starts | `/health` 200, mock + real Agent, 31 tests passing (repo-wide) |
 | 5 · Bonus! | Stub + análisis | Ver  DECISIONS.md D12 |

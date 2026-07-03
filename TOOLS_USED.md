@@ -8,10 +8,10 @@
 
 | Herramienta / Tool | Versión / modelo | Para qué la usé / What I used it for | % aproximado del código / Approximate % of code |
 |---|---|---|---:|
-| Claude Code (Anthropic) | claude-sonnet-4-6 | Setup del entorno, scaffolding inicial de funciones, creacion de los tablas en los README.mds / Environment setup, initial function scaffolding, created the tables within README,d.s | ~20% |
+| Claude Code (Anthropic) | claude-sonnet-4-6 | Setup del entorno, scaffolding inicial de funciones, creacion de los tablas en los README.mds, arreglar mis commentos en el code / Environment setup, initial function scaffolding, created the tables within README.md.s, fixed my comments in the code (they were messy) | ~20% |
 
-> El codigo generado fue revisado, adaptado y validado por mí. Los conteos reales (197913 filas con formato BR, 4351 duplicados, AUC = 0.58 ) son output de ejecuciones reales de el código, no inventados por el LLM
-> *All of the generated code was reviewed, adapted and validated by me. The real counts (197913 rows in BR format, 4351 duplicates, AUC= 0.58) are output from the actual code runs and not invented/hallucinated by the LLM.*
+> El codigo generado fue revisado, adaptado y validado por mí. Los conteos reales (197913 filas con formato BR, 4182 duplicados, AUC = 0.58 ) son output de ejecuciones reales de el código, no inventados por el LLM
+> *All of the generated code was reviewed, adapted and validated by me. The real counts (197913 rows in BR format, 4182 duplicates, AUC= 0.58) are output from the actual code runs and not invented/hallucinated by the LLM.*
 
 
 ---

@@ -26,8 +26,22 @@
 - `last_complaint_date` raw — T2: some dates are post-reference (temporal leakage)
 - Transactions dated > reference_date — undocumented trap: future activity
 
+## Persistence
+`outputs/model.pkl` is a `joblib`-pickled sklearn `Pipeline`. Pickle
+deserialization executes arbitrary code — only `joblib.load()` this file if
+you trust its provenance (e.g. you built it yourself from this repo). Not
+meant for loading from an untrusted source.
+
 ## Limitations
-1. Single snapshot — no temporal CV possible with this dataset
-2. Synthetic data — distribution may not match production Brazil merchants
-3. TPV trend limited to 3m/6m windows; longer lookbacks could improve signal
-4. No calibration step applied — probabilities may be miscalibrated
+1. **Discrimination is weak (ROC-AUC 0.5828 ≈ near-random)** — only
+   safe to use for coarse deprioritization at high k (≥10%), not for precise
+   targeting at low k. At recall@1% (0.0172), the model
+   catches essentially none of the churners in the top 1% ranked — not
+   meaningfully better than a random selection of that size.
+2. Single snapshot — no temporal CV possible with this dataset. Train/test is
+   a stratified split of merchants sharing the same reference_date, not a
+   held-out future period, so these metrics don't validate generalization to
+   a genuinely future snapshot — only to unseen merchants from the same period.
+3. Synthetic data — distribution may not match production Brazil merchants
+4. TPV trend limited to 3m/6m windows; longer lookbacks could improve signal
+5. No calibration step applied — probabilities may be miscalibrated

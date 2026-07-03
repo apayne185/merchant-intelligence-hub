@@ -4,7 +4,7 @@
       "column": "amount",
       "rows_affected": 197913,
       "impact": "pd.read_csv interpreta '1.234,56' como string. C\u00e1lculos de TPV fallan silenciosamente si no se parsea.",
-      "fix": "Quitar puntos de miles, coma\u2192punto decimal, pd.to_numeric(errors='coerce')."
+      "fix": "Quitar puntos de miles, coma-punto decimal, pd.to_numeric(errors='coerce')."
     },
     {
       "column": "amount",
@@ -15,12 +15,12 @@
     {
       "column": "transaction_date",
       "rows_affected": 20363,
-      "impact": "~10% de fechas en DD/MM/YYYY producen NaT con parseo est\u00e1ndar \u2192 exclusi\u00f3n silenciosa de transacciones en agregaciones temporales.",
+      "impact": "~10% de fechas en DD/MM/YYYY producen NaT con parseo est\u00e1ndar - exclusi\u00f3n silenciosa de transacciones en agregaciones temporales.",
       "fix": "Parsear primero con dayfirst=False, reintentar NaT con dayfirst=True."
     },
     {
       "column": "transaction_id",
-      "rows_affected": 4351,
+      "rows_affected": 4182,
       "impact": "Duplicados de re-env\u00edo POS (transaction_id distinto, resto id\u00e9ntico) inflan TPV y n_tx ~2%.",
       "fix": "Deduplicar por (merchant_id, transaction_date, amount, status, channel), keep='first'."
     },
@@ -33,7 +33,7 @@
     {
       "column": "cancellation_reason",
       "rows_affected": 13219,
-      "impact": "cancellation_reason se rellena ~100% de las veces solo cuando fla_churn90=1 \u2192 leakage directo del target si se usa como feature.",
+      "impact": "cancellation_reason se rellena ~100% de las veces solo cuando fla_churn90=1 - leakage directo del target si se usa como feature.",
       "fix": "Excluir cancellation_reason de todos los features del modelo."
     }
   ],

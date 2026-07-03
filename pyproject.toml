@@ -3,10 +3,9 @@ requires = ["hatchling>=1.24"]
 build-backend = "hatchling.build"
 
 # =============================================================================
-# Getnet AI Lab — Take-Home Graduate Program 2026
+# Merchant Intelligence Hub
 # =============================================================================
 # Estructura de packaging moderna (PEP 621 + Hatch).
-# Alineada con el resto de repos del lab (mps-ailab-*).
 #
 # Install (recomendado, con uv — https://docs.astral.sh/uv/):
 #     uv sync --extra dev          # resuelve + crea .venv + genera uv.lock
@@ -20,21 +19,20 @@ build-backend = "hatchling.build"
 # Test:
 #     MOCK_LLM=1 uv run pytest -v
 #
-# El candidato puede modificar este archivo añadiendo dependencias (con versión
-# fijada) y debe justificar las adiciones en DECISIONS.md.
+# Nuevas dependencias: version fijada + justificacion en DECISIONS.md.
 # =============================================================================
 
 [project]
-name = "getnet-ailab-takehome"
-version = "0.1.0"
-description = "Take-home test starter — Getnet AI Lab Graduate Program 2026"
+name = "merchant-intelligence-hub"
+version = "0.2.0"
+description = "Data pipeline and risk-scoring project for merchant transaction data — pandas & PySpark/Delta Lake ETL, a churn-risk model, and a FastAPI service on top."
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
-license = { text = "Proprietary — Getnet recruitment use only" }
+license = { text = "MIT" }
 authors = [
-    { name = "Getnet AI Lab", email = "ailab@getnet.es" },
+    { name = "Anna Payne" },
 ]
-keywords = ["getnet", "ai-lab", "graduate-program", "take-home"]
+keywords = ["data-engineering", "etl", "pyspark", "databricks", "delta-lake", "pandas", "machine-learning"]
 
 # -----------------------------------------------------------------------------
 # Core deps — necesarias para que la app y los tests arranquen
@@ -84,7 +82,7 @@ pyspark = [
 ]
 
 [project.urls]
-Homepage = "https://getnet.santander.com"
+Homepage = "https://github.com/apayne185/merchant-intelligence-hub"
 
 # -----------------------------------------------------------------------------
 # Hatch — qué empaquetar

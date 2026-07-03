@@ -1,20 +1,17 @@
 """
-Parte 1 · Análisis exploratorio en pandas (15 pts)
-==================================================
+Parte 1 · Análisis exploratorio en pandas
+==========================================
 
-Implementa las 4 funciones que aparecen abajo. Lee el `STATEMENT.md` antes de
-empezar para entender los requisitos y la rúbrica.
+4 funciones: load_clean, monthly_kpis, quality_report, merchants_at_risk.
 
 Reglas:
 - Código vectorizado. NO loops sobre filas.
 - Type hints en las firmas públicas.
-- Documenta tus decisiones en `DECISIONS.md`, no aquí.
-- El CSV tiene problemas a propósito. Encontrarlos forma parte del test.
+- Decisiones documentadas en `DECISIONS.md`, no aquí.
+- El CSV tiene problemas de calidad plantados a propósito (ver DECISIONS.md).
 
 Ejecuta con:
     python -m src.parte1_pandas data/transactions_sample.csv
-
-(o adapta el `if __name__ == "__main__"` a tu gusto)
 """
 from __future__ import annotations
 
@@ -75,7 +72,12 @@ def load_clean(path: str | Path) -> pd.DataFrame:
     # --- Tipos básicos ---
     df["transaction_id"] = pd.to_numeric(df["transaction_id"], errors="coerce").astype("Int64")
     df["merchant_id"] = pd.to_numeric(df["merchant_id"], errors="coerce").astype("Int64")
-    df["fla_churn90"] = pd.to_numeric(df["fla_churn90"], errors="coerce").astype("Int8")
+    # fla_churn90 es un flag 0/1: to_numeric(errors="coerce") solo captura
+    # strings no-numéricos -> NaN, pero un entero fuera de rango (ej. "200")
+    # pasaría to_numeric sin error y luego rompería el cast a Int8. Forzar a
+    # {0, 1, NA} explícitamente antes de castear.
+    fla_churn90_numeric = pd.to_numeric(df["fla_churn90"], errors="coerce")
+    df["fla_churn90"] = fla_churn90_numeric.where(fla_churn90_numeric.isin([0, 1])).astype("Int8")
 
     # Categoricals para columnas de baja cardinalidad
     for col in ["status", "channel", "segment", "mcc", "cancellation_reason"]:
@@ -137,7 +139,11 @@ def monthly_kpis(df: pd.DataFrame) -> pd.DataFrame:
     )
     result["approval_rate"] = result["n_approved"] / result["n_tx"]
     tpv_safe = result["tpv"].where(result["tpv"] != 0)  # float NaN where tpv==0
-    result["pct_ecom"] = (result["tpv_ecom"] / tpv_safe).fillna(0.0)
+    # clip: si algún amount 'approved' fuese negativo (reversal mal etiquetado,
+    # no se observa en el CSV actual pero no está garantizado por el schema),
+    # tpv podría acercarse a 0 o volverse negativo mientras tpv_ecom no, lo
+    # que sacaría pct_ecom fuera de [0, 1] — el rango documentado del KPI.
+    result["pct_ecom"] = (result["tpv_ecom"] / tpv_safe).fillna(0.0).clip(0.0, 1.0)
 
     return result[["merchant_id", "month", "tpv", "approval_rate", "pct_ecom", "n_tx"]]
 
@@ -214,12 +220,25 @@ def quality_report(df: pd.DataFrame, raw_path: str | Path = "data/transactions_s
     dup_cols = ["merchant_id", "transaction_date", "amount", "status", "channel"]
     if raw is not None:
         raw_tmp = raw.copy()
-        raw_tmp["transaction_date"] = pd.to_datetime(
-            raw_tmp["transaction_date"], dayfirst=False, errors="coerce"
-        )
+        # Mismo parseo en dos pasadas que load_clean (T4): un solo pase deja
+        # ~10% de fechas DD/MM/YYYY en NaT, lo que descuadra qué filas cuentan
+        # como duplicado real vs. cuáles solo comparten un NaT espurio.
+        raw_dates = raw_tmp["transaction_date"]
+        parsed = pd.to_datetime(raw_dates, dayfirst=False, errors="coerce")
+        nat_mask = parsed.isna()
+        if nat_mask.any():
+            parsed.loc[nat_mask] = pd.to_datetime(raw_dates[nat_mask], dayfirst=True, errors="coerce")
+        raw_tmp["transaction_date"] = parsed
         raw_tmp["amount"] = pd.to_numeric(
             raw_tmp["amount"].str.replace(".", "", regex=False).str.replace(",", ".", regex=False),
             errors="coerce",
+        )
+        # Igual que load_clean: imputar amount nulo con la mediana por segment
+        # antes de deduplicar. Sin esto, dos filas con amount=NaN se agrupan
+        # entre si (NaN==NaN en duplicated()) en vez de con su mediana real,
+        # lo que descuadra el conteo final en un puñado de filas.
+        raw_tmp["amount"] = raw_tmp["amount"].fillna(
+            raw_tmp.groupby("segment", observed=True)["amount"].transform("median")
         )
         n_dups = int(raw_tmp.duplicated(subset=dup_cols).sum())
     else:
@@ -376,13 +395,22 @@ def merchants_at_risk(df: pd.DataFrame, top_n: int = 200) -> pd.DataFrame:
     scores["tpv_ratio"] = (scores["recent_tpv"] / denom).fillna(0.0).clip(0, 3).astype(float)
 
     # Normalizar cada señal al rango 0-1
-    def minmax(s: pd.Series) -> pd.Series:
+    def minmax(s: pd.Series, invert: bool = False) -> pd.Series:
+        """Sin varianza (Serie vacia, o todos los merchants empatados en esta
+        señal) no hay nada contra que comparar -> neutral (0.0). Si se
+        invirtiera un minmax de 0.0 (`1 - 0.0 = 1.0`), un merchant sin señal
+        de comparacion aparenteria maximo riesgo, que es lo opuesto de lo
+        que se quiere decir con "sin señal".
+        """
         rng = s.max() - s.min()
-        return (s - s.min()) / rng if rng > 0 else pd.Series(0.0, index=s.index)
+        if pd.isna(rng) or rng <= 0:
+            return pd.Series(0.0, index=s.index)
+        norm = (s - s.min()) / rng
+        return 1 - norm if invert else norm
 
     # Riesgo = bajo TPV ratio + baja approval rate + complaint reciente
-    scores["sig_tpv"] = 1 - minmax(scores["tpv_ratio"])           # inversión: menor ratio = más riesgo
-    scores["sig_approval"] = 1 - minmax(scores["approval_rate_recent"])
+    scores["sig_tpv"] = minmax(scores["tpv_ratio"], invert=True)           # menor ratio = más riesgo
+    scores["sig_approval"] = minmax(scores["approval_rate_recent"], invert=True)
     scores["sig_complaint"] = minmax(scores["has_recent_complaint"])
 
     # Score compuesto ponderado

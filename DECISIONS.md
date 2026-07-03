@@ -30,8 +30,8 @@
 - **Qué descarté**: `pd.read_csv(..., decimal=',',thousands='.')`  no funciona cuando la misma columna mezcla los vacíos (~3% NaN= trampa T3b). `dateutil.infer_datetime_format` es mas lento y tambien menos predecible con mezcla de formatos. Regex, fila a fila, viola el requisito de vectorizción.
 - *What I discarded: `pd.read_csv(..., decimal=',',thousands='.')` does not work when the same column mixes empty values (~3% NaN = trap T3b). `dateutil.infer_datetime_format` is slower and also less predictable with any mixed formats. Row-by-row regex will violates the vectorization requirement.*
 
-- **Qué supuse**: Que el separador de miles es siempre (.) y el decimal siempre es (,) (el formato de BR/ES). For ejemplo, si Getnet opera en México con un formato diferente, habría que parametrizar el parser. Yo verificaría el locale del sistema de caja con el equipo de ingeniería de datos.
-- *What I assumed: That the thousands separator is always . and the decimal always , (BR/ES format). If Getnet would operates in Mexico with a different format, the parser would need to be parameterized. I would need to verify the POS system locale with the data engineering team.*
+- **Qué supuse**: Que el separador de miles es siempre (.) y el decimal siempre es (,) (el formato de BR/ES). Si el acquirer operase en un país con un formato diferente (ej. México), habría que parametrizar el parser. Yo verificaría el locale del sistema de caja con el equipo de ingeniería de datos.
+- *What I assumed: That the thousands separator is always . and the decimal always , (BR/ES format). If the acquirer operated in a country with a different format (e.g. Mexico), the parser would need to be parameterized. I would need to verify the POS system locale with the data engineering team.*
 
 ---
 
@@ -41,14 +41,14 @@
 ### D2 · Estrategia de deduplicación
 *Deduplication strategy*
 
-- **Qué hice**: Imputé `amount` nulo con mediana por segmento antes de deduplicar. Luego yo eliminé las filas con `drop_duplicates(subset=["merchant_id","transaction_date","amount","status", "channel"], keep="first")`. El resultado fue 4351 duplicados eliminados de 204000 filas (casi 2.1% = coherente con la trampa T5)
+- **Qué hice**: Imputé `amount` nulo con mediana por segmento antes de deduplicar. Luego yo eliminé las filas con `drop_duplicates(subset=["merchant_id","transaction_date","amount","status", "channel"], keep="first")`. El resultado fue 4182 duplicados eliminados de 204000 filas (casi 2.05% = coherente con la trampa T5)
 
-- *What I did: Imputed null `amount` with median by segment before deduplicating. Then I went to remove rows with `drop_duplicates(subset=["merchant_id","transaction_date","amount","status", "channel"], keep="first")`. The result was 4351 duplicates removed from 204000 rows (about 2.1% = consistent with trap T5) .*
+- *What I did: Imputed null `amount` with median by segment before deduplicating. Then I went to remove rows with `drop_duplicates(subset=["merchant_id","transaction_date","amount","status", "channel"], keep="first")`. The result was 4182 duplicates removed from 204000 rows (about 2.05% = consistent with trap T5) .*
 
 
-- **Por que**: La trampa T5 genera duplicados con `transaction_id` distinto pero el resto identico, deduplicar por `transaction_id` no los captura. Imputar antes importa porque `NaN != NaN` en pandas, porque dos filas idénticas con `amount=NaN` no serían reconocidas como duplicadas sin imputación previa.
+- **Por que**: La trampa T5 genera duplicados con `transaction_id` distinto pero el resto identico, deduplicar por `transaction_id` no los captura. Imputar antes importa para que el valor final de `amount` en los KPIs sea la mediana real y no NaN — pandas ya trata `NaN == NaN` como igual dentro de `duplicated()`/`drop_duplicates()` (a diferencia de `==` escalar), así que el orden no afecta si se detectan como duplicados, pero sí afecta qué valor de `amount` sobrevive.
 
-- *Why: Trap T5 will generate duplicates with a different `transaction_id` but an identical rest, as deduplicating by `transaction_id` does not catch them. Imputing here first matters because `NaN != NaN` in pandas, here two identical rows with `amount=NaN` would not be recognized as duplicates without prior imputation.*  
+- *Why: Trap T5 generates duplicates with a different `transaction_id` but an otherwise identical row, so deduplicating by `transaction_id` alone doesn't catch them. Imputing first matters so the final `amount` value in the KPIs is the real median, not NaN — pandas already treats `NaN == NaN` as equal inside `duplicated()`/`drop_duplicates()` (unlike scalar `==`), so the ordering doesn't affect whether they're detected as duplicates, but it does affect which `amount` value survives.*
 
 - **Qué descarté**: Deduplicar solo por `transaction_id` no captura T5. Hash de todas las columnas, una`transaction_id` diferente las haría distintas, es el mismo problema   
 - *What I discarded: Deduplicating only by thhe `transaction_id` does not catch T5. Hashing of all columns means a different `transaction_id` would make them distinct, same problem.*
@@ -108,6 +108,51 @@
 
 
 
+## Parte 2 · SQL
+*SQL*
+
+### D14 · Q1 — filtro doble sobre dat_process y transaction_date
+
+- **Qué hice**: Filtré `transactions` tanto por `dat_process BETWEEN '2025-07-01' AND '2025-09-30'` (columna de partición) como por `transaction_date BETWEEN '2025-07-01' AND '2025-09-30'` (fecha de negocio).
+- *What I did: Filtered `transactions` both by `dat_process BETWEEN '2025-07-01' AND '2025-09-30'` (partition column) and by `transaction_date BETWEEN '2025-07-01' AND '2025-09-30'` (business date).*
+
+- **Por qué**: `dat_process` es la fecha de ETL/procesamiento, no necesariamente igual a `transaction_date` (una transacción del 30-sep podría procesarse el 1-oct). El filtro sobre `dat_process` habilita partition pruning grueso; el filtro sobre `transaction_date` asegura que el resultado sea correcto por fecha de negocio aunque haya lag entre ambas columnas cerca de un límite de trimestre.
+- *Why: `dat_process` is the ETL/processing date, not necessarily equal to `transaction_date` (a Sep-30 transaction could be processed on Oct-1). Filtering on `dat_process` enables coarse partition pruning; filtering on `transaction_date` ensures the result is correct by business date even if there's lag between the two columns near a quarter boundary.*
+
+- **Qué supuse**: Que `dat_process` y `transaction_date` coinciden en la gran mayoría de los casos (lag de 0-1 días). No verificado contra el schema real — lo confirmaría con el equipo de ingeniería de datos antes de confiar en el partition pruning como única garantía de completitud.
+- *What I assumed: That `dat_process` and `transaction_date` coincide in the vast majority of cases (0-1 day lag). Not verified against the real schema — I'd confirm with the data engineering team before relying on partition pruning alone as a completeness guarantee.*
+
+---
+
+### D15 · Q1 — approval_rate: denominador incluye reversed
+
+- **Qué hice**: `approval_rate = n_approved / COUNT(*)`, donde `COUNT(*)` cuenta todas las transacciones del periodo (approved + denied + reversed).
+- *What I did: `approval_rate = n_approved / COUNT(*)`, where `COUNT(*)` counts all transactions in the period (approved + denied + reversed).*
+
+- **Qué descarté**: Excluir `reversed` del denominador (solo `approved`/`denied`). Lo descarté porque una transacción `reversed` fue aprobada y luego revertida — sigue siendo relevante para medir qué fracción de los intentos de cobro del merchant resultan en TPV neto retenido.
+- *What I discarded: Excluding `reversed` from the denominator (only `approved`/`denied`). Discarded because a `reversed` transaction was approved and then reversed — still relevant for measuring what fraction of the merchant's charge attempts result in retained net TPV.*
+
+- **Qué supuse**: Que "approval_rate" en el contexto de negocio del acquirer incluye reversals en el denominador. Lo verificaría con el equipo de producto — ver también ASSUMPTIONS.md A1 sobre la misma ambigüedad en TPV.
+- *What I assumed: That "approval_rate" in the business context includes reversals in the denominator. I'd verify this with the product team — see also ASSUMPTIONS.md A1 on the same ambiguity for TPV.*
+
+---
+
+### D16 · Q3 — self-join en vez de LAG(tpv, 12) para el YoY
+
+- **Qué hice**: Uní `monthly_tpv` consigo misma por `(merchant_id, mo)` con `prev.yr = 2024`, en vez de usar `LAG(tpv, 12) OVER (PARTITION BY merchant_id ORDER BY month_start)`.
+- *What I did: Joined `monthly_tpv` to itself on `(merchant_id, mo)` with `prev.yr = 2024`, instead of using `LAG(tpv, 12) OVER (PARTITION BY merchant_id ORDER BY month_start)`.*
+
+- **Por qué**: `LAG(tpv, 12)` con offset fijo es sintaxis Spark SQL perfectamente válida — la elección no es por falta de soporte. El motivo real es que `monthly_tpv` puede tener huecos: si un merchant no tuvo transacciones en algún mes, ese mes no aparece como fila. `LAG(tpv, 12)` se desplazaría 12 *filas* hacia atrás en la partición, no 12 *meses* — con huecos, terminaría comparando meses que no son realmente el mismo mes del año anterior. El self-join empareja explícitamente por `mo`, así que es correcto independientemente de huecos en la serie.
+- *Why: `LAG(tpv, 12)` with a fixed offset is perfectly valid Spark SQL — the choice isn't due to a lack of support. The real reason is that `monthly_tpv` can have gaps: if a merchant had no transactions in some month, that month doesn't appear as a row. `LAG(tpv, 12)` would shift 12 *rows* back within the partition, not 12 *months* — with gaps, it would end up comparing months that aren't actually the same month a year prior. The self-join matches explicitly on `mo`, so it's correct regardless of gaps in the series.*
+
+- **Qué descarté**: `LAG(tpv, 12)` — funcionaría solo si se garantiza una fila por cada (merchant_id, mes) sin huecos, lo cual requeriría un join contra un "calendar spine" primero. El self-join es más simple para este caso.
+- *What I discarded: `LAG(tpv, 12)` — would only work if every (merchant_id, month) combination is guaranteed a row with no gaps, which would require joining against a calendar spine first. The self-join is simpler for this case.*
+
+---
+
+
+
+
 ## Parte 3 · Modelado ML
 *ML Modelling*
 
@@ -147,7 +192,7 @@
 ### D5 · Split temporal aware y prevención de leakage
 *Temporal aware split and leakage prevention*
 
-- **Que hice**: Split estratificado 80/20 de `merchant_id` (7986 train/1996 test). No hice un split temporal por snapshot porque este dataset tiene una sola `reference_date` (2025-09-30), no hay multiples snapshots disponibles para simular un evaluación temporal real. Riesgo de leakage temporal se mitigó íntegramente en la ingeniería de features, todas las agregaciones usan solo `transaction_date <=reference_date`
+- **Que hice**: Split estratificado 80/20 de `merchant_id` (7973 train/1994 test). No hice un split temporal por snapshot porque este dataset tiene una sola `reference_date` (2025-09-30), no hay multiples snapshots disponibles para simular un evaluación temporal real. Riesgo de leakage temporal se mitigó íntegramente en la ingeniería de features, todas las agregaciones usan solo `transaction_date <=reference_date`
 
 - **Por qué**: Con un unico snapshot, el split temporal clásico no aplica, pero el split por merchant garantiza que no hay contaminación de datos entre train y test. La estratificación preserva el 8.75 de churn en los dos splits
 - *Why: With only a single snapshot, the classic temporal split doesn't apply. However, merchant split guarantees no data contamination between train and test. Stratification preserves the 8.75% churn rate in both splits*
@@ -341,5 +386,10 @@
 ### D13 · Bump de pandas 2.2.2 a 2.2.3
 
 - **Qué hice**: Actualicé `pyproject.toml` de `pandas==2.2.2` a `pandas==2.2.3`.
-- **Por qué**: el pandas 2.2.2 no tiene wheel precompilado para Python 3.13. `uv sync` intentaba compilar desde source y el fallaba en el paso de Meson/Cython.  pandas 2.2.3 (patch release y API idéntica) si tiene wheel para Python 3.13. Y el evaluador en 3.11/3.12 no ve diferencia.
-- Yo supuse que el evaluador tiene Python 3.11 o 3.12 y que el bump de patch version es transparente.
+- *What I did: Updated `pyproject.toml` from `pandas==2.2.2` to `pandas==2.2.3`.*
+
+- **Por qué**: pandas 2.2.2 no tiene wheel precompilado para Python 3.13. `uv sync` intentaba compilar desde source y fallaba en el paso de Meson/Cython. pandas 2.2.3 (patch release, misma API) sí tiene wheel para Python 3.13, y en 3.11/3.12 no hay diferencia de comportamiento.
+- *Why: pandas 2.2.2 has no precompiled wheel for Python 3.13. `uv sync` tried to compile from source and failed at the Meson/Cython step. pandas 2.2.3 (patch release, identical API) does have a 3.13 wheel, and there's no behavior difference on 3.11/3.12.*
+
+- **Qué supuse**: Que quien corra esto en 3.11 o 3.12 no ve ningún cambio de comportamiento por el bump de patch version.
+- *What I assumed: That anyone running this on 3.11 or 3.12 sees no behavior change from the patch-version bump.*

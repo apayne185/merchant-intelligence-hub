@@ -6,7 +6,7 @@ agente Agno devuelve datos compatibles y de que los tests siguen pasando.
 """
 from __future__ import annotations
 
-from enum import StrEnum
+from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, Field, conint
@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, conint
 # -----------------------------------------------------------------------------
 # Enums
 # -----------------------------------------------------------------------------
-class Category(StrEnum):
+class Category(str, Enum):
     technical_issue = "technical_issue"
     billing = "billing"
     onboarding = "onboarding"
@@ -61,8 +61,26 @@ class ClassifyResponse(BaseModel):
     latency_ms: int
 
 
+class BatchResultItem(BaseModel):
+    """Un resultado de batch, con el índice del item original para poder
+    correlacionar la respuesta con `BatchClassifyRequest.items`.
+    """
+
+    index: int
+    response: ClassifyResponse
+
+
+class BatchErrorItem(BaseModel):
+    """Un fallo de batch, con el índice del item original."""
+
+    index: int
+    merchant_id: int
+    message: str
+
+
 class BatchClassifyResponse(BaseModel):
-    results: list[ClassifyResponse]
+    results: list[BatchResultItem]
+    errors: list[BatchErrorItem] = Field(default_factory=list)
     total_latency_ms: int
     n_failed: int
 
