@@ -1,0 +1,45 @@
+{
+  "issues": [
+    {
+      "column": "amount",
+      "rows_affected": 197913,
+      "impact": "El CSV representa '1.234,56' como string. Calculos de TPV fallan silenciosamente si no se parsea.",
+      "fix": "Quitar puntos de miles, coma-punto decimal, cast a double."
+    },
+    {
+      "column": "amount",
+      "rows_affected": 6087,
+      "impact": "TPV subestimado; introduce sesgo en metricas mensuales.",
+      "fix": "Imputar con mediana por segment antes de agregar en KPIs."
+    },
+    {
+      "column": "transaction_date",
+      "rows_affected": 20363,
+      "impact": "~10% de fechas en DD/MM/YYYY producen null con parseo ISO estandar - exclusion silenciosa de transacciones en agregaciones temporales.",
+      "fix": "Parsear primero como ISO, reintentar los null como DD/MM/YYYY."
+    },
+    {
+      "column": "transaction_id",
+      "rows_affected": 4181,
+      "impact": "Duplicados de re-envio POS (transaction_id distinto, resto identico) inflan TPV y n_tx.",
+      "fix": "Deduplicar por (merchant_id, transaction_date, amount, status, channel), keep first."
+    },
+    {
+      "column": "last_complaint_date",
+      "rows_affected": 3535,
+      "impact": "Fecha de queja post-reference_date es informacion futura no disponible en produccion. Usarla como feature causa leakage temporal severo.",
+      "fix": "Filtrar last_complaint_date <= reference_date; derivar 'days_since_complaint' con tope."
+    },
+    {
+      "column": "cancellation_reason",
+      "rows_affected": 13219,
+      "impact": "cancellation_reason se rellena ~100% de las veces solo cuando fla_churn90=1 - leakage directo del target si se usa como feature.",
+      "fix": "Excluir cancellation_reason de todos los features del modelo."
+    }
+  ],
+  "summary": {
+    "n_rows": 204000,
+    "n_cols": 13,
+    "n_issues": 6
+  }
+}

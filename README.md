@@ -76,6 +76,28 @@ uv run python -m src.parte1_pandas data/transactions_sample.csv
 
 
 
+## Ejecutar Parte 1 · PySpark rewrite (genera Delta tables en outputs/delta/)
+*Run Part 1 · PySpark rewrite (generates Delta tables in outputs/delta/)*
+
+Same 4 functions as `parte1_pandas.py`, rewritten with the PySpark DataFrame
+API and a Delta Lake write, running locally via `delta-spark` (no cluster
+needed — requires Java 11/17/21).
+
+```bash
+uv sync --extra pyspark
+uv run --extra pyspark python -m src.parte1_pyspark data/transactions_sample.csv
+#outputs/delta/{transactions_clean,monthly_kpis,merchants_at_risk}, monthly_kpis_spark.csv, quality_report_spark.json, merchants_at_risk_spark.csv
+```
+
+A Databricks Community Edition notebook covering the same
+ingestion -> transform -> Delta write flow is at
+`notebooks/databricks_parte1_pipeline.py` (Databricks source format — import
+via Repos or Workspace > Import).
+
+Tradeoffs between the pandas and PySpark implementations are documented in
+DECISIONS.md ("Parte 1b · PySpark rewrite").
+
+
 ## Ejecutar notebook de ML (Parte 3)
 *Run ML notebook (Part 3)*
 
@@ -98,20 +120,26 @@ uv run jupyter lab src/parte3_modeling.ipynb
 ├── TOOLS_USED.md     
 ├── src/
 │   ├── parte1_pandas.py        #4 funciones implementadas 
+│   ├── parte1_pyspark.py       # mismas 4 funciones, PySpark DataFrame API + Delta Lake
 │   ├── parte2_sql.sql          #Q1-Q4 en Spark SQL 
 │   ├── parte3_modeling.ipynb   #pipeline LightGBM ejecutado 
 │   ├── parte4_api/             #FastAPI + Agno agent (mock + real)
 │   ├── parte5_bonus.py         #stub + analisis en DECISIONS.md D12    
 │   └── eda/eda.ipynb          # EDA completo con deteccion de trampas  
+├── notebooks/
+│   └── databricks_parte1_pipeline.py  # notebook Databricks (Community Edition)
 ├── tests/ 
-│   ├── test_solution.py        #22 tests - Parte 1 
-│   ├── test_api.py             #6 tests - Parte 4    (required)   
-│   ├── test_agent_adapter.py   #2 tests - adaptador Agent real de Agno
-│   └── test_bonus.py           #1 test  - Parte 5 (stub)
+│   ├── test_solution.py         #17 tests - Parte 1 pandas
+│   ├── test_parte1_pyspark.py   #17 tests - Parte 1 PySpark rewrite
+│   └── test_api.py             #5 tests- Parte 4    (required)   
 └── outputs/
     ├── monthly_kpis.csv
     ├── quality_report.json
     ├── merchants_at_risk.csv
+    ├── monthly_kpis_spark.csv
+    ├── quality_report_spark.json
+    ├── merchants_at_risk_spark.csv
+    ├── delta/                  # transactions_clean, monthly_kpis, merchants_at_risk (git-ignored)
     ├── metrics.json
     ├── model.pkl
     ├── feature_importance.csv
