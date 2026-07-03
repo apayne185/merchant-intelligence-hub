@@ -65,9 +65,8 @@ def detect_prompt_injection(text: str) -> bool:
 
 
 def redact_pii(text: str) -> str:
-    """Reemplaza PII por placeholders genéricos antes de enviar al LLM.
+    """Reemplaza PII (email/teléfono/tarjeta) por placeholders [EMAIL]/[PHONE]/[CARD].
     """
-    # TODO: implementa. Devuelve el texto con [EMAIL] / [PHONE] / [CARD] sustituidos.
     redacted = text
     for label, pattern in PII_PATTERNS.items():
         redacted = pattern.sub(f"[{label.upper()}]", redacted)
