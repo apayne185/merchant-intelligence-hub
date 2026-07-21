@@ -4,7 +4,7 @@ Datos de entrada para el pipeline. Tratarlos como inmutables (read-only); los de
 
 ## Archivos
 
-### `transactions_sample.csv` (~200k filas · ~80 MB)
+### `transactions_sample.csv` (~200k filas · ~18 MB)
 
 Transacciones simuladas de merchants. Columnas: `transaction_id`, `merchant_id`, `transaction_date`,
 `amount`, `status` (`approved`/`denied`/`reversed`), `channel`, `cancellation_reason`,
@@ -15,7 +15,7 @@ Transacciones simuladas de merchants. Columnas: `transaction_id`, `merchant_id`,
 ⚠️ **Contiene problemas de calidad plantados a propósito** (formatos de fecha mixtos, decimales en
 formato BR, duplicados, leakage temporal — ver `quality_report` en Parte 1 y `DECISIONS.md`).
 
-**No está versionado** (`.gitignore`, por tamaño ~80MB). Si cloneas este repo sin el CSV, la mayoría
+**No está versionado** (`.gitignore`, por tamaño ~18MB). Si cloneas este repo sin el CSV, la mayoría
 del pipeline no tiene con qué correr — no hay un generador incluido en el repo para regenerarlo.
 
 ### `merchants_context.json` (~500 merchants)

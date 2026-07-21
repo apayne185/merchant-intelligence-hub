@@ -165,7 +165,7 @@
   | Feature | Razón / Reason |
   |---|---|
   | `cancellation_reason` | **T1 (leakage directo / direct leakage)**: rellena en ~92% de churners vs 0% de no-churners / filled in ~92% of churners vs 0% of non-churners. El modelo aprendería el target directamente / The model would learn the target directly. |
-  | `last_complaint_date` raw | **T2 (leakage temporal / temporal leakage)**: 3.454 filas tienen fecha posterior a `reference_date` — información del futuro / 3,454 rows have a date after `reference_date` — future information. Derivé `days_since_complaint` capado a `reference_date` / Derived `days_since_complaint` capped at `reference_date`. |
+  | `last_complaint_date` raw | **T2 (leakage temporal / temporal leakage)**: 3.535 filas tienen fecha posterior a `reference_date` — información del futuro / 3,535 rows have a date after `reference_date` — future information. Derivé `days_since_complaint` capado a `reference_date` / Derived `days_since_complaint` capped at `reference_date`. |
   | Transactions con `transaction_date > reference_date` | **Trampa no documentada / Undocumented trap**: el CSV incluye transacciones Oct-Dic 2025 / the CSV includes Oct-Dec 2025 transactions. Un merchant con actividad futura claramente no está churning / A merchant with future activity is clearly not churning — filtrar estas filas en features produce leakage implícito / filtering these rows in features produces implicit leakage. |
   | `reference_date` | Constante en todo el dataset / Constant across the dataset |
   | `transaction_id` | Surrogate key sin valor predictivo / Surrogate key with no predictive value |   

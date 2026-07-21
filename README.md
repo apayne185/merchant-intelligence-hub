@@ -1,6 +1,8 @@
 # Merchant Intelligence Hub
 #### Payne, Anna
 
+[![CI](https://github.com/apayne185/merchant-intelligence-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/apayne185/merchant-intelligence-hub/actions/workflows/ci.yml)
+
 A data pipeline and risk-scoring project for merchant transaction data: ingestion, cleaning, KPI/SQL analysis, a churn-risk ML model, and a FastAPI service on top. Originally started as a technical assessment for the Getnet AI Lab Graduate Program, and extended independently since because the problem was worth continuing to build on.
 
 

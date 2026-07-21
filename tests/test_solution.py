@@ -3,7 +3,6 @@ Tests para las Partes 1-3 (pandas, ML).
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pandas as pd

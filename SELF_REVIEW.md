@@ -87,8 +87,8 @@
 ### P4 · Split de train/test sin validación cruzada
 *Train/test split without cross-validation*
 
-- **Qué falla**: El modelo de Parte 3 usa único split 80/20. Con 9982 merchants y solo 873 positivs, el test set tiene 174 churners, es suficiente para una estimación de AUC pero viene con alta varianza. Una estimación con 5 fold CV estratificado daría un intervalo de confianza más honesto.
-- *What fails: The Part 3 model uses one single 80/20 split. With 9982 merchants and only 873 positives, the test set has ~174 churners, which is  enough for an AUC estimate but with high variance. An estimate with a stratified 5 fold CV would give a more honest confidence interval.*
+- **Qué falla**: El modelo de Parte 3 usa único split 80/20. Con 9967 merchants y solo 871 positivos, el test set tiene 174 churners, es suficiente para una estimación de AUC pero viene con alta varianza. Una estimación con 5 fold CV estratificado daría un intervalo de confianza más honesto.
+- *What fails: The Part 3 model uses one single 80/20 split. With 9967 merchants and only 871 positives, the test set has ~174 churners, which is  enough for an AUC estimate but with high variance. An estimate with a stratified 5 fold CV would give a more honest confidence interval.*
 
 - **Cómo lo arreglaría**: `StratifiedKFold(n_splits=5)` en el loop de entrenamiento y reporte de media += std del AUC.
 - *How I would fix it: `StratifiedKFold(n_splits=5)` in the training loop and report of mean += std of AUC.*

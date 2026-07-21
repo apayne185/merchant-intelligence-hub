@@ -2,8 +2,8 @@
 Parte 5 · Bonus, el Detección de anillos de colusión (collusion rings)
 
 Ver análisis completo en DECISIONS.md (D12).
-Implementación parcial con NetworkX; sin los datos correctos (cardholder_id)
-el grafo no puede detectar colusión real entre merchants.
+Stub: sin los datos correctos (cardholder_id) el grafo no puede detectar
+colusión real entre merchants.
 """
 from __future__ import annotations
 

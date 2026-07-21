@@ -208,7 +208,9 @@ def build_agent(model_name: str = "gpt-4o-mini"):
 
 class _MockAgent:
     """
-    Stub determinístico para tests offline. NO es la solución final.
+    Stub determinístico para tests offline y para correr sin OPENAI_API_KEY
+    (MOCK_LLM=1). El agente real (con LLM real) es `_RealAgentAdapter`, más
+    abajo en este archivo — ver `build_agent()`.
 
     Reglas mínimas:
       - Si el texto detecta prompt injection → category=other, urgency=1.
