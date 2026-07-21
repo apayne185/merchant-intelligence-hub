@@ -334,6 +334,92 @@
 
 
 
+## Parte 4b · RAG retrieval — recuperación de casos históricos similares
+*RAG retrieval — retrieval of similar historical cases*
+
+### D17 · Vector store en el repo en vez de una base de datos vectorial real
+
+- **Qué hice**: Implementé `SimpleVectorStore` (`src/parte4_api/retrieval.py`) — una clase pequeña con `add()`/`query()` que hace búsqueda por similitud coseno por fuerza bruta sobre un array de numpy en memoria, en vez de usar chromadb/FAISS/pgvector.
+- *What I did: Implemented `SimpleVectorStore` (`src/parte4_api/retrieval.py`) — a small class with `add()`/`query()` doing brute-force cosine-similarity search over an in-memory numpy array, instead of using chromadb/FAISS/pgvector.*
+
+- **Por qué**: El corpus (`data/historical_complaints.json`) tiene 42 registros. Una búsqueda vectorial por fuerza bruta sobre esa cantidad tarda microsegundos; una base de datos vectorial real añadiría una dependencia pesada (chromadb trae onnxruntime) para resolver un problema de escala que no existe todavía.
+- *Why: The corpus (`data/historical_complaints.json`) has 42 records. Brute-force vector search over that count takes microseconds; a real vector database would add a heavy dependency (chromadb pulls in onnxruntime) to solve a scale problem that doesn't exist yet.*
+
+- **Qué descarté**: chromadb — evalué usarlo por ser el más reconocible como "vector store" para un lector técnico, pero decidí que demostrar saber cuándo NO sobre-diseñar es una señal más fuerte que una dependencia extra sin necesidad real. FAISS — más ligero que chromadb, pero sigue siendo ceremonia innecesaria para 42 filas.
+- *What I discarded: chromadb — considered using it since it's the most recognizable "vector store" to a technical reader, but decided that demonstrating knowing when NOT to over-engineer is a stronger signal than an unnecessary extra dependency. FAISS — lighter than chromadb, but still unnecessary ceremony for 42 rows.*
+
+- **Qué supuse**: Que el corpus se mantendrá en el rango de cientos, no miles/millones, de casos históricos. Si esto creciera a producción real con miles de casos por día, migraría a pgvector (ya versionado, sin infra nueva si ya se usa Postgres) o a un servicio gestionado (Pinecone/Weaviate) con un índice HNSW/IVF para evitar la búsqueda O(n) de fuerza bruta.
+- *What I assumed: That the corpus will stay in the hundreds, not thousands/millions, of historical cases. If this grew to real production scale with thousands of cases a day, I'd migrate to pgvector (already versioned, no new infra if Postgres is already in use) or a managed service (Pinecone/Weaviate) with an HNSW/IVF index to avoid the O(n) brute-force search.*
+
+---
+
+### D18 · Embeddings: TF-IDF (mock) vs. OpenAI (real) — no un modelo local descargado
+
+- **Qué hice**: `_MockEmbedder` usa `TfidfVectorizer` de scikit-learn (ya una dependencia) para MOCK_LLM=1; `_OpenAIEmbedder` usa `text-embedding-3-small` cuando hay una API key real. Ningún modelo de embeddings local (ej. sentence-transformers) se descarga ni se ejecuta.
+- *What I did: `_MockEmbedder` uses scikit-learn's `TfidfVectorizer` (already a dependency) for MOCK_LLM=1; `_OpenAIEmbedder` uses `text-embedding-3-small` when a real API key is present. No local embedding model (e.g. sentence-transformers) is downloaded or run.*
+
+- **Por qué**: El proyecto entero corre con `MOCK_LLM=1` sin costes ni llamadas de red — un modelo local de sentence-transformers rompería eso (descarga de ~90MB, tiempo de carga, una dependencia pesada nueva) solo para la ruta mock. TF-IDF es determinístico, instantáneo, y ya está disponible vía scikit-learn.
+- *Why: The whole project runs with `MOCK_LLM=1` at zero cost and no network calls — a local sentence-transformers model would break that (a ~90MB download, load time, a new heavy dependency) just for the mock path. TF-IDF is deterministic, instant, and already available via scikit-learn.*
+
+- **Qué descarté**: sentence-transformers local para el modo mock — descartado por el motivo anterior. Embeddings hasheados sin TF-IDF (bag-of-words puro) — TF-IDF da mejores resultados con casi el mismo coste.
+- *What I discarded: local sentence-transformers for mock mode — discarded for the reason above. Hashed embeddings without TF-IDF (pure bag-of-words) — TF-IDF gives better results at nearly the same cost.*
+
+- **Qué supuse**: Que TF-IDF (similitud léxica, no semántica) es una aproximación aceptable para demostrar el mecanismo de retrieval en modo mock, aunque no capture sinónimos o paráfrasis como lo haría un embedding semántico real. Esto es una limitación documentada, no un intento de simular calidad semántica real.
+- *What I assumed: That TF-IDF (lexical, not semantic, similarity) is an acceptable stand-in to demonstrate the retrieval mechanism in mock mode, even though it won't catch synonyms or paraphrasing the way a real semantic embedding would. This is a documented limitation, not an attempt to fake real semantic quality.*
+
+---
+
+### D19 · Cache del case store por modo (mock/real), no un único global
+
+- **Qué hice**: `get_case_store(mock: bool)` cachea el store construido en un diccionario `dict[bool, ...]`, indexado por modo, en vez de un único objeto global.
+- *What I did: `get_case_store(mock: bool)` caches the built store in a `dict[bool, ...]`, indexed by mode, instead of a single global object.*
+
+- **Por qué**: Los tests ejercitan ambos modos (mock y real) en el mismo proceso de pytest (`test_agent_adapter.py` fuerza `MOCK_LLM=0` con `monkeypatch` para un test específico). Un único cache global habría devuelto el embedder equivocado — construido para el modo anterior — al cambiar de modo dentro del mismo proceso.
+- *Why: Tests exercise both modes (mock and real) in the same pytest process (`test_agent_adapter.py` forces `MOCK_LLM=0` via `monkeypatch` for one specific test). A single global cache would have returned the wrong embedder — built for the previous mode — when switching modes within the same process.*
+
+- **Qué supuse**: Que construir el store es lo suficientemente barato (TF-IDF sobre 42 textos cortos) para que cachear por modo, en vez de invalidar/reconstruir explícitamente, sea aceptable incluso si ambos modos se usan en el mismo proceso de producción (lo cual no debería pasar — MOCK_LLM se fija por proceso/despliegue).
+- *What I assumed: That building the store is cheap enough (TF-IDF over 42 short texts) that caching per mode, rather than explicit invalidation/rebuilding, is fine even if both modes were ever used in the same production process (which shouldn't happen — MOCK_LLM is fixed per process/deployment).*
+
+---
+
+### D20 · Gestión de context window en retrieval: dedup + presupuesto de caracteres
+
+- **Qué hice**: `retrieve_similar_cases` ahora sobre-recupera `2k` candidatos, elimina casos con `resolution_notes` idéntico (`_dedupe_by_resolution`), y recorta el resultado final a un presupuesto total de caracteres (`_fit_to_budget`, default 800), truncando con "…" y descartando los casos peor rankeados si el presupuesto se agota.
+- *What I did: `retrieve_similar_cases` now over-fetches `2k` candidates, drops cases with identical `resolution_notes` (`_dedupe_by_resolution`), and trims the final result to a total character budget (`_fit_to_budget`, default 800), truncating with "…" and dropping the lowest-ranked cases once the budget runs out.*
+
+- **Por qué**: Sin esto, casos casi-duplicados (mismo incidente logueado dos veces, o dos casos resueltos igual) ocupan espacio de contexto sin aportar señal nueva, y no había ningún límite explícito a cuánto texto se inyecta en el prompt — un corpus futuro con notas más largas podría acercarse al límite de tokens del modelo sin ningún control.
+- *Why: Without this, near-duplicate cases (the same incident logged twice, or two cases resolved the same way) take up context space without adding new signal, and there was no explicit cap on how much text gets injected into the prompt — a future corpus with longer notes could approach the model's token limit with no control in place.*
+
+- **Qué descarté**: Un presupuesto en tokens reales (via `tiktoken`) en vez de caracteres — más preciso, pero es una dependencia nueva para un corpus de texto corto y en un idioma consistente donde caracteres es una aproximación razonable. Deduplicación semántica (embeddings similares, no solo texto idéntico) — más robusta pero más cara de calcular; el corpus actual no tiene casos semánticamente duplicados con texto distinto, así que no se justificaba todavía.
+- *What I discarded: A real token budget (via `tiktoken`) instead of characters — more precise, but a new dependency for a short-text, single-language-family corpus where characters are a reasonable approximation. Semantic deduplication (similar embeddings, not just identical text) — more robust but more expensive to compute; the current corpus has no semantically-duplicate cases with different text, so it wasn't justified yet.*
+
+- **Qué supuse**: Que sobre-recuperar `2k` es suficiente margen para que, tras deduplicar, sigan quedando `k` casos distintos en la mayoría de queries. Con un corpus mucho más denso en duplicados, este margen tendría que crecer o el dedup tendría que aplicarse a nivel de todo el corpus antes de rankear, no solo sobre el top-`2k`.
+- *What I assumed: That over-fetching `2k` is enough margin that, after deduping, `k` distinct cases remain for most queries. With a much more duplicate-dense corpus, this margin would need to grow, or dedup would need to run over the whole corpus before ranking, not just over the top-`2k`.*
+
+---
+
+### D21 · Golden-set eval harness — una porción real de D10
+
+- **Qué hice**: Construí `scripts/evaluate_classifier.py` + `data/golden_set.json` (28 ejemplos etiquetados, las 6 categorías, 3 idiomas, 3 casos de prompt injection). El script corre el golden set contra el agente y reporta accuracy general y por categoría, recall de `churn_threat`, tasa de detección de prompt injection, y precisión@k de retrieval (si los casos históricos recuperados comparten la categoría esperada).
+- *What I did: Built `scripts/evaluate_classifier.py` + `data/golden_set.json` (28 labeled examples, all 6 categories, 3 languages, 3 prompt-injection cases). The script runs the golden set against the agent and reports overall/per-category accuracy, `churn_threat` recall, prompt-injection detection rate, and retrieval precision@k (whether retrieved historical cases share the expected category).*
+
+- **Por qué**: D10 (arriba) describe una estrategia de evaluación completa pero nunca ejecutada — "qué haría", no "qué hice". Con 28 ejemplos (no 300) y el `_MockAgent` (no un LLM real), no reemplaza ese plan, pero da un artefacto real y corrible que demuestra el mecanismo de evaluación, en vez de dejarlo solo en prosa.
+- *Why: D10 (above) describes a complete evaluation strategy that was never actually run — "what I would do," not "what I did." With 28 examples (not 300) and `_MockAgent` (not a real LLM), it doesn't replace that plan, but it gives a real, runnable artifact demonstrating the evaluation mechanism, instead of leaving it only as prose.*
+
+- **Resultado honesto de correrlo**: contra `_MockAgent`, 32% accuracy general — 0% en 4/6 categorías porque el stub es reglas simples (detecta prompt injection y menciones de "cancelar/churn", todo lo demás cae en `other`), no un clasificador real. 100% de detección de prompt injection. **93% de precisión@k en retrieval** — esta cifra es la que importa: confirma que el retrieval (TF-IDF, D18) funciona razonablemente bien de forma independiente a la limitación conocida del mock. Correr `--real` con una `OPENAI_API_KEY` real daría el accuracy real del clasificador, que no se ha medido (ver P3 en `SELF_REVIEW.md`).
+- *Honest result from running it: against `_MockAgent`, 32% overall accuracy — 0% on 4/6 categories because the stub is simple rules (detects prompt injection and "cancel/churn" mentions, everything else falls into `other`), not a real classifier. 100% prompt-injection detection. **93% retrieval precision@k** — this is the number that matters: it confirms retrieval (TF-IDF, D18) works reasonably well independent of the mock's known limitation. Running `--real` with a real `OPENAI_API_KEY` would give the classifier's actual accuracy, which hasn't been measured (see `SELF_REVIEW.md` P3).*
+
+- **Qué descarté**: Un golden set de 300 ejemplos como en D10 — no justificable para un proyecto de portfolio sin un equipo de customer service etiquetando datos reales. LLM-as-judge para evaluar `reasoning` — añade coste y una llamada real a OpenAI por ejemplo evaluado, fuera de scope para una primera versión del harness.
+- *What I discarded: A 300-example golden set like D10 — not justifiable for a portfolio project without a customer service team labeling real data. LLM-as-judge to evaluate `reasoning` — adds cost and a real OpenAI call per evaluated example, out of scope for a first version of the harness.*
+
+- **Qué supuse**: Que 28 ejemplos, aunque estadísticamente débiles para conclusiones fuertes por categoría, son suficientes para validar que el harness en sí funciona correctamente (formas de datos correctas, métricas calculadas correctamente) — la confiabilidad estadística vendría de escalar el golden set, no de cambiar el harness.
+- *What I assumed: That 28 examples, while statistically weak for strong per-category conclusions, are enough to validate that the harness itself works correctly (correct data shapes, correctly computed metrics) — statistical reliability would come from scaling the golden set, not from changing the harness.*
+
+---
+
+
+
+
 ## Parte 5 · Pregunta-trampa (collusion rings)
 *Trick question  (collusion rings)*
 

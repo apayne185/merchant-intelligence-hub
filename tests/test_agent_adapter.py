@@ -39,6 +39,7 @@ def test_real_adapter_classify_maps_run_output_to_dict(real_agent_env: None) -> 
         requires_human_escalation=True,
         reasoning="menciona intención de cancelar",
         merchant_context_used=True,
+        similar_cases_used=True,
     )
     with patch.object(agent._agent, "run", return_value=_FakeRunOutput(fake_content)) as mock_run:
         result = agent.classify(merchant_id=10063716, email_text="voy a cancelar", locale="es")
@@ -49,3 +50,4 @@ def test_real_adapter_classify_maps_run_output_to_dict(real_agent_env: None) -> 
     assert result["urgency"] == 4
     assert result["requires_human_escalation"] is True
     assert result["merchant_context_used"] is True
+    assert result["similar_cases_used"] is True

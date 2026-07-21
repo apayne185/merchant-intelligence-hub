@@ -54,6 +54,15 @@ curl -s http://localhost:8000/health | python -m json.tool
 ```
      
 
+## Ejecutar eval del clasificador (golden set)
+*Run the classifier eval (golden set)*
+
+```bash
+MOCK_LLM=1 uv run python -m scripts.evaluate_classifier
+#outputs/eval_report.json — accuracy, churn_threat recall, prompt-injection
+#detection rate, retrieval category-precision@k. Ver DECISIONS.md D21.
+```
+
 
 
 
@@ -64,7 +73,7 @@ curl -s http://localhost:8000/health | python -m json.tool
 
 ```bash
 MOCK_LLM=1 uv run pytest tests/ -v
-#31 passed  
+#51 passed  
 ```   
 
 
@@ -116,7 +125,7 @@ uv run jupyter lab src/parte3_modeling.ipynb
 *Project structure*
 
 ```
-├── DECISIONS.md         # 16 decisiones técnicas documentadas / 16 technical decisions documented
+├── DECISIONS.md         # 21 decisiones técnicas documentadas / 21 technical decisions documented
 ├── ASSUMPTIONS.md       # 3 ambiguedades identificadas en el diseño del pipeline
 ├── SELF_REVIEW.md       # 5 problemas honestos de la solución 
 ├── TOOLS_USED.md     
@@ -125,16 +134,20 @@ uv run jupyter lab src/parte3_modeling.ipynb
 │   ├── parte1_pyspark.py       # mismas 4 funciones, PySpark DataFrame API + Delta Lake
 │   ├── parte2_sql.sql          #Q1-Q4 en Spark SQL 
 │   ├── parte3_modeling.ipynb   #pipeline LightGBM ejecutado 
-│   ├── parte4_api/             #FastAPI + Agno agent (mock + real)
+│   ├── parte4_api/             #FastAPI + Agno agent (mock + real) + RAG retrieval
 │   ├── parte5_bonus.py         #stub + analisis en DECISIONS.md D12    
 │   └── eda/eda.ipynb          # EDA completo con deteccion de trampas  
 ├── notebooks/
 │   └── databricks_parte1_pipeline.py  # notebook Databricks (Community Edition)
+├── scripts/
+│   └── evaluate_classifier.py  # golden-set eval harness (DECISIONS.md D21)
 ├── tests/ 
 │   ├── test_solution.py         #22 tests - Parte 1 pandas
 │   ├── test_parte1_pyspark.py   #17 tests - Parte 1 PySpark rewrite (requiere --extra pyspark)
-│   ├── test_api.py             #6 tests - Parte 4    (required)   
+│   ├── test_api.py             #7 tests - Parte 4    (required)   
 │   ├── test_agent_adapter.py   #2 tests - adaptador Agent real de Agno
+│   ├── test_retrieval.py       #14 tests - RAG retrieval (Parte 4b)
+│   ├── test_eval.py            #5 tests - eval harness (Parte 4b)
 │   └── test_bonus.py           #1 test  - Parte 5 (stub)
 └── outputs/
     ├── monthly_kpis.csv
@@ -144,6 +157,7 @@ uv run jupyter lab src/parte3_modeling.ipynb
     ├── quality_report_spark.json
     ├── merchants_at_risk_spark.csv
     ├── delta/                  # transactions_clean, monthly_kpis, merchants_at_risk (git-ignored)
+    ├── eval_report.json        # golden-set eval (Parte 4b, DECISIONS.md D21)
     ├── metrics.json
     ├── model.pkl
     ├── feature_importance.csv
@@ -163,5 +177,5 @@ uv run jupyter lab src/parte3_modeling.ipynb
 | 1 · Pandas | Completo  | 6 problemas de calidad detectados (5 trampas + 1 adicional) |
 | 2 · SQL | Completo | Q1-Q4 con partition pruning explicado |
 | 3 · ML | Ejecutado / Executed | ROC-AUC 0.58, PR-AUC 0.11 (sin leakage) |
-| 4 · API | Arranca / Starts | `/health` 200, mock + real Agent, 31 tests passing (48 con `--extra pyspark`) |
+| 4 · API | Arranca / Starts | `/health` 200, mock + real Agent, 51 tests passing (68 con `--extra pyspark`) |
 | 5 · Bonus! | Stub + análisis | Ver  DECISIONS.md D12 |

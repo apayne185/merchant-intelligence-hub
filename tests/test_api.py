@@ -68,6 +68,21 @@ def test_classify_happy_path(client: TestClient) -> None:
     assert isinstance(body["requires_human_escalation"], bool)
     assert len(body["reasoning"]) <= 300
     assert body["latency_ms"] >= 0
+    assert isinstance(body["merchant_context_used"], bool)
+    assert isinstance(body["similar_cases_used"], bool)
+
+
+def test_classify_retrieves_similar_historical_cases(client: TestClient) -> None:
+    # 42-entry historical_complaints.json corpus has several churn_threat
+    # cases — a cancellation email should retrieve at least one of them.
+    payload = {
+        "merchant_id": 10063716,
+        "email_text": "Cancelen mi cuenta ya, esto no funciona nunca.",
+        "locale": "es",
+    }
+    r = client.post("/classify", json=payload)
+    assert r.status_code == 200, r.text
+    assert r.json()["similar_cases_used"] is True
 
 
 # -----------------------------------------------------------------------------
