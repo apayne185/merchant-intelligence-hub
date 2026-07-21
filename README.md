@@ -73,7 +73,7 @@ MOCK_LLM=1 uv run python -m scripts.evaluate_classifier
 
 ```bash
 MOCK_LLM=1 uv run pytest tests/ -v
-#51 passed  
+#56 passed  
 ```   
 
 
@@ -145,9 +145,9 @@ uv run jupyter lab src/parte3_modeling.ipynb
 │   ├── test_solution.py         #22 tests - Parte 1 pandas
 │   ├── test_parte1_pyspark.py   #17 tests - Parte 1 PySpark rewrite (requiere --extra pyspark)
 │   ├── test_api.py             #7 tests - Parte 4    (required)   
-│   ├── test_agent_adapter.py   #2 tests - adaptador Agent real de Agno
-│   ├── test_retrieval.py       #14 tests - RAG retrieval (Parte 4b)
-│   ├── test_eval.py            #5 tests - eval harness (Parte 4b)
+│   ├── test_agent_adapter.py   #4 tests - adaptador Agent real de Agno
+│   ├── test_retrieval.py       #15 tests - RAG retrieval (Parte 4b)
+│   ├── test_eval.py            #7 tests - eval harness (Parte 4b)
 │   └── test_bonus.py           #1 test  - Parte 5 (stub)
 └── outputs/
     ├── monthly_kpis.csv
@@ -177,5 +177,5 @@ uv run jupyter lab src/parte3_modeling.ipynb
 | 1 · Pandas | Completo  | 6 problemas de calidad detectados (5 trampas + 1 adicional) |
 | 2 · SQL | Completo | Q1-Q4 con partition pruning explicado |
 | 3 · ML | Ejecutado / Executed | ROC-AUC 0.58, PR-AUC 0.11 (sin leakage) |
-| 4 · API | Arranca / Starts | `/health` 200, mock + real Agent, 51 tests passing (68 con `--extra pyspark`) |
+| 4 · API | Arranca / Starts | `/health` 200, mock + real Agent, 56 tests passing (73 con `--extra pyspark`) |
 | 5 · Bonus! | Stub + análisis | Ver  DECISIONS.md D12 |

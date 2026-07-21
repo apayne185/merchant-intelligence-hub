@@ -58,7 +58,15 @@ class SimpleVectorStore:
             return []
         sims = _cosine_similarity(vector, self._vectors)
         k = min(k, len(self._records))
-        top_idx = np.argsort(sims)[::-1][:k]
+        # lexsort with a fixed secondary key (original index), not argsort+
+        # reverse: numpy's default argsort isn't stable, and even a stable
+        # ascending sort reversed via [::-1] flips tie order too — same
+        # nondeterminism class already fixed once in parte3_modeling.ipynb's
+        # recall_at_k. With ties (two corpus entries equally similar to the
+        # query), this keeps results reproducible run-to-run instead of
+        # depending on numpy's internal tie-breaking.
+        order = np.lexsort((np.arange(len(sims)), -sims))
+        top_idx = order[:k]
         return [self._records[i] for i in top_idx]
 
 

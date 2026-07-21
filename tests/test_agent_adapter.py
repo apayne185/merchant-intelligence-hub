@@ -51,3 +51,44 @@ def test_real_adapter_classify_maps_run_output_to_dict(real_agent_env: None) -> 
     assert result["requires_human_escalation"] is True
     assert result["merchant_context_used"] is True
     assert result["similar_cases_used"] is True
+
+
+def test_real_adapter_classify_preserves_false_used_flags(real_agent_env: None) -> None:
+    # The only prior test hardcoded both *_used flags to True — that alone
+    # wouldn't catch a bug that silently coerced everything to True.
+    agent = build_agent()
+    fake_content = _LLMClassification(
+        category=Category.other,
+        urgency=1,
+        requires_human_escalation=False,
+        reasoning="consulta general",
+        merchant_context_used=False,
+        similar_cases_used=False,
+    )
+    with patch.object(agent._agent, "run", return_value=_FakeRunOutput(fake_content)):
+        result = agent.classify(merchant_id=1, email_text="pregunta simple", locale="es")
+
+    assert result["merchant_context_used"] is False
+    assert result["similar_cases_used"] is False
+
+
+def test_real_adapter_classify_handles_plain_dict_content(real_agent_env: None) -> None:
+    # Agno's RunOutput.content is documented as the response_model instance,
+    # but the adapter also accepts a plain dict (see the isinstance branch
+    # in _RealAgentAdapter.classify) — this path was previously untested.
+    agent = build_agent()
+    dict_content = {
+        "category": "billing",
+        "urgency": 2,
+        "requires_human_escalation": False,
+        "reasoning": "factura incorrecta",
+        "merchant_context_used": True,
+        "similar_cases_used": False,
+    }
+    with patch.object(agent._agent, "run", return_value=_FakeRunOutput(dict_content)):
+        result = agent.classify(merchant_id=42, email_text="factura mal", locale="es")
+
+    assert result["merchant_id"] == 42
+    assert result["category"] == "billing"
+    assert result["merchant_context_used"] is True
+    assert result["similar_cases_used"] is False

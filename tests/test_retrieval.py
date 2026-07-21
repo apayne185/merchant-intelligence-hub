@@ -40,6 +40,23 @@ def test_vector_store_returns_most_similar_first() -> None:
     assert [r["id"] for r in results] == [1, 3]
 
 
+def test_vector_store_ties_break_deterministically_by_original_index() -> None:
+    # Two records tied at identical cosine similarity to the query — the
+    # result order must be reproducible run-to-run (ascending by original
+    # index), not left to numpy's internal argsort tie-breaking.
+    store = SimpleVectorStore()
+    records = [{"id": 1}, {"id": 2}, {"id": 3}]
+    vectors = np.array([
+        [1.0, 0.0],  # tied with id=2
+        [1.0, 0.0],  # tied with id=1
+        [0.0, 1.0],  # not tied, least similar
+    ])
+    store.add(records, vectors)
+
+    results = store.query(np.array([1.0, 0.0]), k=2)
+    assert [r["id"] for r in results] == [1, 2]
+
+
 def test_vector_store_k_larger_than_corpus_does_not_crash() -> None:
     store = SimpleVectorStore()
     store.add([{"id": 1}], np.array([[1.0, 0.0]]))
