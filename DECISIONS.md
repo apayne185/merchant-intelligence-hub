@@ -398,6 +398,25 @@
 
 ---
 
+### D21 · Golden-set eval harness — una porción real de D10
+
+- **Qué hice**: Construí `scripts/evaluate_classifier.py` + `data/golden_set.json` (28 ejemplos etiquetados, las 6 categorías, 3 idiomas, 3 casos de prompt injection). El script corre el golden set contra el agente y reporta accuracy general y por categoría, recall de `churn_threat`, tasa de detección de prompt injection, y precisión@k de retrieval (si los casos históricos recuperados comparten la categoría esperada).
+- *What I did: Built `scripts/evaluate_classifier.py` + `data/golden_set.json` (28 labeled examples, all 6 categories, 3 languages, 3 prompt-injection cases). The script runs the golden set against the agent and reports overall/per-category accuracy, `churn_threat` recall, prompt-injection detection rate, and retrieval precision@k (whether retrieved historical cases share the expected category).*
+
+- **Por qué**: D10 (arriba) describe una estrategia de evaluación completa pero nunca ejecutada — "qué haría", no "qué hice". Con 28 ejemplos (no 300) y el `_MockAgent` (no un LLM real), no reemplaza ese plan, pero da un artefacto real y corrible que demuestra el mecanismo de evaluación, en vez de dejarlo solo en prosa.
+- *Why: D10 (above) describes a complete evaluation strategy that was never actually run — "what I would do," not "what I did." With 28 examples (not 300) and `_MockAgent` (not a real LLM), it doesn't replace that plan, but it gives a real, runnable artifact demonstrating the evaluation mechanism, instead of leaving it only as prose.*
+
+- **Resultado honesto de correrlo**: contra `_MockAgent`, 32% accuracy general — 0% en 4/6 categorías porque el stub es reglas simples (detecta prompt injection y menciones de "cancelar/churn", todo lo demás cae en `other`), no un clasificador real. 100% de detección de prompt injection. **93% de precisión@k en retrieval** — esta cifra es la que importa: confirma que el retrieval (TF-IDF, D18) funciona razonablemente bien de forma independiente a la limitación conocida del mock. Correr `--real` con una `OPENAI_API_KEY` real daría el accuracy real del clasificador, que no se ha medido (ver P3 en `SELF_REVIEW.md`).
+- *Honest result from running it: against `_MockAgent`, 32% overall accuracy — 0% on 4/6 categories because the stub is simple rules (detects prompt injection and "cancel/churn" mentions, everything else falls into `other`), not a real classifier. 100% prompt-injection detection. **93% retrieval precision@k** — this is the number that matters: it confirms retrieval (TF-IDF, D18) works reasonably well independent of the mock's known limitation. Running `--real` with a real `OPENAI_API_KEY` would give the classifier's actual accuracy, which hasn't been measured (see `SELF_REVIEW.md` P3).*
+
+- **Qué descarté**: Un golden set de 300 ejemplos como en D10 — no justificable para un proyecto de portfolio sin un equipo de customer service etiquetando datos reales. LLM-as-judge para evaluar `reasoning` — añade coste y una llamada real a OpenAI por ejemplo evaluado, fuera de scope para una primera versión del harness.
+- *What I discarded: A 300-example golden set like D10 — not justifiable for a portfolio project without a customer service team labeling real data. LLM-as-judge to evaluate `reasoning` — adds cost and a real OpenAI call per evaluated example, out of scope for a first version of the harness.*
+
+- **Qué supuse**: Que 28 ejemplos, aunque estadísticamente débiles para conclusiones fuertes por categoría, son suficientes para validar que el harness en sí funciona correctamente (formas de datos correctas, métricas calculadas correctamente) — la confiabilidad estadística vendría de escalar el golden set, no de cambiar el harness.
+- *What I assumed: That 28 examples, while statistically weak for strong per-category conclusions, are enough to validate that the harness itself works correctly (correct data shapes, correctly computed metrics) — statistical reliability would come from scaling the golden set, not from changing the harness.*
+
+---
+
 
 
 
