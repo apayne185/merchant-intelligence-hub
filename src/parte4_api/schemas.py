@@ -58,6 +58,9 @@ class ClassifyResponse(BaseModel):
     merchant_context_used: bool = Field(
         ..., description="True si el agente invocó la tool de contexto del merchant / True if the agent invoked the merchant context tool"
     )
+    similar_cases_used: bool = Field(
+        ..., description="True si el agente recuperó casos históricos similares (RAG) / True if the agent retrieved similar historical cases (RAG)"
+    )
     latency_ms: int
 
 

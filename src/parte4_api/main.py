@@ -92,6 +92,7 @@ def classify(req: ClassifyRequest, agent: AgentDep) -> ClassifyResponse:
             requires_human_escalation=True,
             reasoning="prompt_injection_detected",
             merchant_context_used=False,
+            similar_cases_used=False,
             latency_ms=int((time.perf_counter() - t0) * 1000),
         )
 
@@ -124,6 +125,7 @@ def classify(req: ClassifyRequest, agent: AgentDep) -> ClassifyResponse:
         requires_human_escalation=result["requires_human_escalation"],
         reasoning=reasoning,
         merchant_context_used=result.get("merchant_context_used", False),
+        similar_cases_used=result.get("similar_cases_used", False),
         latency_ms=int((time.perf_counter() - t0) * 1000),
     )
 

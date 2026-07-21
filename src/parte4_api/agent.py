@@ -122,6 +122,7 @@ from agno.models.openai import OpenAIChat
 from agno.tools import tool as agno_tool
 from pydantic import BaseModel, Field, conint
 
+from .retrieval import retrieve_similar_cases
 from .schemas import Category
 
 _AGENT_INSTRUCTIONS = """
@@ -129,11 +130,14 @@ Eres un clasificador de reclamaciones de merchants para un adquirente de pagos.
 
 Dado un email, debes:
 1. Llamar a merchant_context_tool con merchant_id para obtener contexto del merchant.
-2. Clasificar en una de: technical_issue, billing, onboarding, fraud, churn_threat, other.
-3. Asignar urgency 1-5 (5=crítico: bloqueo total o amenaza de cancelación inmediata).
-4. Si urgency >= 4 o category es churn_threat/fraud: requires_human_escalation=True
+2. Llamar a similar_cases_tool con el texto del email para recuperar casos históricos
+   similares (categoría, urgencia, cómo se resolvieron) y usarlos como referencia —
+   no los copies literalmente, úsalos para calibrar tu propia clasificación.
+3. Clasificar en una de: technical_issue, billing, onboarding, fraud, churn_threat, other.
+4. Asignar urgency 1-5 (5=crítico: bloqueo total o amenaza de cancelación inmediata).
+5. Si urgency >= 4 o category es churn_threat/fraud: requires_human_escalation=True
    y llamar a flag_human_review_tool con el motivo.
-5. Escribir reasoning conciso (≤ 300 chars).
+6. Escribir reasoning conciso (≤ 300 chars).
 Responde SIEMPRE en el schema estructurado.
 """
 
@@ -152,6 +156,15 @@ def flag_human_review_tool(merchant_id: int, reason: str) -> dict:
     return flag_for_human_review(merchant_id, reason)
 
 
+@agno_tool
+def similar_cases_tool(email_text: str, k: int = 3) -> list:
+    """Recupera los k casos históricos más similares (categoría, urgencia,
+    cómo se resolvieron) vía retrieval semántico/lexical sobre reclamaciones
+    pasadas — ver src/parte4_api/retrieval.py.
+    """
+    return retrieve_similar_cases(email_text, k=k, mock=is_mock_mode())
+
+
 class _LLMClassification(BaseModel):
     """response_model para el Agent real de Agno.
 
@@ -164,6 +177,7 @@ class _LLMClassification(BaseModel):
     requires_human_escalation: bool
     reasoning: str = Field(..., max_length=300)
     merchant_context_used: bool
+    similar_cases_used: bool
 
 
 class _RealAgentAdapter:
@@ -198,7 +212,7 @@ def build_agent(model_name: str = "gpt-4o-mini"):
 
     real_agent = Agent(
         model=OpenAIChat(id=model_name),
-        tools=[merchant_context_tool, flag_human_review_tool],
+        tools=[merchant_context_tool, flag_human_review_tool, similar_cases_tool],
         instructions=_AGENT_INSTRUCTIONS,
         output_schema=_LLMClassification,
         structured_outputs=True,
@@ -227,8 +241,10 @@ class _MockAgent:
                 "requires_human_escalation": True,
                 "reasoning": "prompt_injection_detected",
                 "merchant_context_used": False,
+                "similar_cases_used": False,
             }
         ctx = get_merchant_context(merchant_id)
+        similar_cases = retrieve_similar_cases(email_text, k=3, mock=True)
         if any(kw in email_text.lower() for kw in ["cancelar", "cancel", "churn"]):
             return {
                 "merchant_id": merchant_id,
@@ -237,6 +253,7 @@ class _MockAgent:
                 "requires_human_escalation": True,
                 "reasoning": "menciona intención de cancelar",
                 "merchant_context_used": bool(ctx.get("found", True) is not False),
+                "similar_cases_used": len(similar_cases) > 0,
             }
         return {
             "merchant_id": merchant_id,
@@ -245,4 +262,5 @@ class _MockAgent:
             "requires_human_escalation": False,
             "reasoning": "stub default",
             "merchant_context_used": False,
+            "similar_cases_used": len(similar_cases) > 0,
         }
