@@ -334,6 +334,57 @@
 
 
 
+## Parte 4b · RAG retrieval — recuperación de casos históricos similares
+*RAG retrieval — retrieval of similar historical cases*
+
+### D17 · Vector store en el repo en vez de una base de datos vectorial real
+
+- **Qué hice**: Implementé `SimpleVectorStore` (`src/parte4_api/retrieval.py`) — una clase pequeña con `add()`/`query()` que hace búsqueda por similitud coseno por fuerza bruta sobre un array de numpy en memoria, en vez de usar chromadb/FAISS/pgvector.
+- *What I did: Implemented `SimpleVectorStore` (`src/parte4_api/retrieval.py`) — a small class with `add()`/`query()` doing brute-force cosine-similarity search over an in-memory numpy array, instead of using chromadb/FAISS/pgvector.*
+
+- **Por qué**: El corpus (`data/historical_complaints.json`) tiene 42 registros. Una búsqueda vectorial por fuerza bruta sobre esa cantidad tarda microsegundos; una base de datos vectorial real añadiría una dependencia pesada (chromadb trae onnxruntime) para resolver un problema de escala que no existe todavía.
+- *Why: The corpus (`data/historical_complaints.json`) has 42 records. Brute-force vector search over that count takes microseconds; a real vector database would add a heavy dependency (chromadb pulls in onnxruntime) to solve a scale problem that doesn't exist yet.*
+
+- **Qué descarté**: chromadb — evalué usarlo por ser el más reconocible como "vector store" para un lector técnico, pero decidí que demostrar saber cuándo NO sobre-diseñar es una señal más fuerte que una dependencia extra sin necesidad real. FAISS — más ligero que chromadb, pero sigue siendo ceremonia innecesaria para 42 filas.
+- *What I discarded: chromadb — considered using it since it's the most recognizable "vector store" to a technical reader, but decided that demonstrating knowing when NOT to over-engineer is a stronger signal than an unnecessary extra dependency. FAISS — lighter than chromadb, but still unnecessary ceremony for 42 rows.*
+
+- **Qué supuse**: Que el corpus se mantendrá en el rango de cientos, no miles/millones, de casos históricos. Si esto creciera a producción real con miles de casos por día, migraría a pgvector (ya versionado, sin infra nueva si ya se usa Postgres) o a un servicio gestionado (Pinecone/Weaviate) con un índice HNSW/IVF para evitar la búsqueda O(n) de fuerza bruta.
+- *What I assumed: That the corpus will stay in the hundreds, not thousands/millions, of historical cases. If this grew to real production scale with thousands of cases a day, I'd migrate to pgvector (already versioned, no new infra if Postgres is already in use) or a managed service (Pinecone/Weaviate) with an HNSW/IVF index to avoid the O(n) brute-force search.*
+
+---
+
+### D18 · Embeddings: TF-IDF (mock) vs. OpenAI (real) — no un modelo local descargado
+
+- **Qué hice**: `_MockEmbedder` usa `TfidfVectorizer` de scikit-learn (ya una dependencia) para MOCK_LLM=1; `_OpenAIEmbedder` usa `text-embedding-3-small` cuando hay una API key real. Ningún modelo de embeddings local (ej. sentence-transformers) se descarga ni se ejecuta.
+- *What I did: `_MockEmbedder` uses scikit-learn's `TfidfVectorizer` (already a dependency) for MOCK_LLM=1; `_OpenAIEmbedder` uses `text-embedding-3-small` when a real API key is present. No local embedding model (e.g. sentence-transformers) is downloaded or run.*
+
+- **Por qué**: El proyecto entero corre con `MOCK_LLM=1` sin costes ni llamadas de red — un modelo local de sentence-transformers rompería eso (descarga de ~90MB, tiempo de carga, una dependencia pesada nueva) solo para la ruta mock. TF-IDF es determinístico, instantáneo, y ya está disponible vía scikit-learn.
+- *Why: The whole project runs with `MOCK_LLM=1` at zero cost and no network calls — a local sentence-transformers model would break that (a ~90MB download, load time, a new heavy dependency) just for the mock path. TF-IDF is deterministic, instant, and already available via scikit-learn.*
+
+- **Qué descarté**: sentence-transformers local para el modo mock — descartado por el motivo anterior. Embeddings hasheados sin TF-IDF (bag-of-words puro) — TF-IDF da mejores resultados con casi el mismo coste.
+- *What I discarded: local sentence-transformers for mock mode — discarded for the reason above. Hashed embeddings without TF-IDF (pure bag-of-words) — TF-IDF gives better results at nearly the same cost.*
+
+- **Qué supuse**: Que TF-IDF (similitud léxica, no semántica) es una aproximación aceptable para demostrar el mecanismo de retrieval en modo mock, aunque no capture sinónimos o paráfrasis como lo haría un embedding semántico real. Esto es una limitación documentada, no un intento de simular calidad semántica real.
+- *What I assumed: That TF-IDF (lexical, not semantic, similarity) is an acceptable stand-in to demonstrate the retrieval mechanism in mock mode, even though it won't catch synonyms or paraphrasing the way a real semantic embedding would. This is a documented limitation, not an attempt to fake real semantic quality.*
+
+---
+
+### D19 · Cache del case store por modo (mock/real), no un único global
+
+- **Qué hice**: `get_case_store(mock: bool)` cachea el store construido en un diccionario `dict[bool, ...]`, indexado por modo, en vez de un único objeto global.
+- *What I did: `get_case_store(mock: bool)` caches the built store in a `dict[bool, ...]`, indexed by mode, instead of a single global object.*
+
+- **Por qué**: Los tests ejercitan ambos modos (mock y real) en el mismo proceso de pytest (`test_agent_adapter.py` fuerza `MOCK_LLM=0` con `monkeypatch` para un test específico). Un único cache global habría devuelto el embedder equivocado — construido para el modo anterior — al cambiar de modo dentro del mismo proceso.
+- *Why: Tests exercise both modes (mock and real) in the same pytest process (`test_agent_adapter.py` forces `MOCK_LLM=0` via `monkeypatch` for one specific test). A single global cache would have returned the wrong embedder — built for the previous mode — when switching modes within the same process.*
+
+- **Qué supuse**: Que construir el store es lo suficientemente barato (TF-IDF sobre 42 textos cortos) para que cachear por modo, en vez de invalidar/reconstruir explícitamente, sea aceptable incluso si ambos modos se usan en el mismo proceso de producción (lo cual no debería pasar — MOCK_LLM se fija por proceso/despliegue).
+- *What I assumed: That building the store is cheap enough (TF-IDF over 42 short texts) that caching per mode, rather than explicit invalidation/rebuilding, is fine even if both modes were ever used in the same production process (which shouldn't happen — MOCK_LLM is fixed per process/deployment).*
+
+---
+
+
+
+
 ## Parte 5 · Pregunta-trampa (collusion rings)
 *Trick question  (collusion rings)*
 
