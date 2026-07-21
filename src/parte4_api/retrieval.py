@@ -145,23 +145,81 @@ def get_case_store(mock: bool) -> tuple[SimpleVectorStore, Embedder]:
     return _CASE_STORE_CACHE[mock]
 
 
-def retrieve_similar_cases(email_text: str, k: int = 3, mock: bool = True) -> list[dict[str, Any]]:
+# -----------------------------------------------------------------------------
+# Context-window management: retrieval doesn't just rank and return — it also
+# has to fit whatever it returns into the LLM's context alongside everything
+# else in the prompt. Two concrete concerns, both real production issues:
+#   1. Near-duplicate cases waste budget without adding signal.
+#   2. Unbounded resolution_notes length could blow past a token budget if
+#      the corpus ever included longer free-text notes than today's.
+# -----------------------------------------------------------------------------
+DEFAULT_MAX_CONTEXT_CHARS = 800  # total budget across all k cases' resolution_notes
+
+
+def _dedupe_by_resolution(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drops cases with an identical resolution_notes text. Near-duplicate
+    retrieved cases (same underlying incident logged twice, or two cases
+    resolved the same way) waste context budget without adding signal.
+    """
+    seen: set[str] = set()
+    deduped = []
+    for r in records:
+        key = r["resolution_notes"].strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(r)
+    return deduped
+
+
+def _fit_to_budget(records: list[dict[str, Any]], max_chars: int) -> list[dict[str, Any]]:
+    """Truncates resolution_notes so the total injected context stays under
+    a fixed character budget, dropping lower-ranked cases entirely once the
+    budget runs out. A character budget is a coarse stand-in for real token
+    accounting (see DECISIONS.md) — good enough given resolution_notes are
+    short, plain-text, single-language-family strings.
+    """
+    budget = max_chars
+    fitted = []
+    for r in records:
+        if budget <= 0:
+            break
+        notes = r["resolution_notes"]
+        if len(notes) > budget:
+            notes = notes[: max(0, budget - 1)].rstrip() + "…"
+        fitted.append({**r, "resolution_notes": notes})
+        budget -= len(notes)
+    return fitted
+
+
+def retrieve_similar_cases(
+    email_text: str,
+    k: int = 3,
+    mock: bool = True,
+    max_context_chars: int = DEFAULT_MAX_CONTEXT_CHARS,
+) -> list[dict[str, Any]]:
     """Retrieves the top-k historical complaints most similar to `email_text`.
 
     Returns each case's category/urgency/resolution_notes (synthetic data,
     no PII) so the agent can ground its classification in how similar past
     cases were actually handled, instead of classifying cold every time.
+    Deduplicates near-identical cases and enforces `max_context_chars` across
+    the returned notes — see the context-window-management block above.
     """
     store, embedder = get_case_store(mock=mock)
     if len(store) == 0:
         return []
     query_vec = embedder.embed([email_text])[0]
-    results = store.query(query_vec, k=k)
-    return [
+    # Over-fetch 2k: dedup can remove results, and we still want up to k
+    # distinct cases back afterward rather than silently returning fewer.
+    raw_results = store.query(query_vec, k=k * 2)
+    cases = [
         {
             "category": r["category"],
             "urgency": r["urgency"],
             "resolution_notes": r["resolution_notes"],
         }
-        for r in results
+        for r in raw_results
     ]
+    cases = _dedupe_by_resolution(cases)[:k]
+    return _fit_to_budget(cases, max_context_chars)

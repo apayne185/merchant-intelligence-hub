@@ -146,11 +146,15 @@ strategy) sections.*
 - **RAG retrieval**: tool `similar_cases_tool` recupera los k casos históricos
   más similares de `data/historical_complaints.json` (`retrieval.py`) para
   que el agente calibre su clasificación contra cómo se resolvieron casos
-  parecidos antes, en vez de clasificar en frío cada vez.
+  parecidos antes, en vez de clasificar en frío cada vez. Gestión de context
+  window: deduplica casos con resolución idéntica y recorta el resultado a
+  un presupuesto de caracteres (`DECISIONS.md` D20).
 *[EN]: - RAG retrieval: `similar_cases_tool` retrieves the k most similar
   historical cases from `data/historical_complaints.json` (`retrieval.py`)
   so the agent can calibrate its classification against how similar past
-  cases were resolved, instead of classifying cold every time.*
+  cases were resolved, instead of classifying cold every time. Context-window
+  management: deduplicates cases with identical resolutions and trims the
+  result to a character budget (`DECISIONS.md` D20).*
 
 ## Limitaciones conocidas
 *[EN]: Known limitations*

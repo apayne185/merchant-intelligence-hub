@@ -9,7 +9,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from src.parte4_api.retrieval import SimpleVectorStore, retrieve_similar_cases
+from src.parte4_api.retrieval import (
+    SimpleVectorStore,
+    _dedupe_by_resolution,
+    _fit_to_budget,
+    retrieve_similar_cases,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -66,3 +71,59 @@ def test_retrieve_similar_cases_churn_query_surfaces_churn_case() -> None:
 @pytest.mark.parametrize("k", [0, -1])
 def test_retrieve_similar_cases_non_positive_k_returns_empty(k: int) -> None:
     assert retrieve_similar_cases("cualquier texto", k=k, mock=True) == []
+
+
+def test_retrieve_similar_cases_respects_context_char_budget() -> None:
+    results = retrieve_similar_cases(
+        "El POS se reinicia solo", k=3, mock=True, max_context_chars=50
+    )
+    total_chars = sum(len(r["resolution_notes"]) for r in results)
+    assert total_chars <= 50
+
+
+def test_retrieve_similar_cases_zero_budget_returns_no_cases() -> None:
+    results = retrieve_similar_cases(
+        "El POS se reinicia solo", k=3, mock=True, max_context_chars=0
+    )
+    assert results == []
+
+
+# ---------------------------------------------------------------------------
+# Context-window management helpers
+# ---------------------------------------------------------------------------
+def test_dedupe_by_resolution_drops_identical_notes() -> None:
+    records = [
+        {"category": "a", "resolution_notes": "Same fix applied."},
+        {"category": "b", "resolution_notes": "Same fix applied."},
+        {"category": "c", "resolution_notes": "Different fix."},
+    ]
+    deduped = _dedupe_by_resolution(records)
+    assert len(deduped) == 2
+    assert [r["category"] for r in deduped] == ["a", "c"]
+
+
+def test_dedupe_by_resolution_is_case_and_whitespace_insensitive() -> None:
+    records = [
+        {"category": "a", "resolution_notes": "  Same Fix Applied.  "},
+        {"category": "b", "resolution_notes": "same fix applied."},
+    ]
+    assert len(_dedupe_by_resolution(records)) == 1
+
+
+def test_fit_to_budget_truncates_with_ellipsis() -> None:
+    records = [{"resolution_notes": "x" * 100}]
+    fitted = _fit_to_budget(records, max_chars=10)
+    assert len(fitted) == 1
+    assert len(fitted[0]["resolution_notes"]) == 10
+    assert fitted[0]["resolution_notes"].endswith("…")
+
+
+def test_fit_to_budget_drops_cases_once_budget_exhausted() -> None:
+    records = [
+        {"resolution_notes": "x" * 20},
+        {"resolution_notes": "y" * 20},
+        {"resolution_notes": "z" * 20},
+    ]
+    fitted = _fit_to_budget(records, max_chars=25)
+    assert len(fitted) < len(records)
+    assert sum(len(r["resolution_notes"]) for r in fitted) <= 25

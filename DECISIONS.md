@@ -382,6 +382,22 @@
 
 ---
 
+### D20 · Gestión de context window en retrieval: dedup + presupuesto de caracteres
+
+- **Qué hice**: `retrieve_similar_cases` ahora sobre-recupera `2k` candidatos, elimina casos con `resolution_notes` idéntico (`_dedupe_by_resolution`), y recorta el resultado final a un presupuesto total de caracteres (`_fit_to_budget`, default 800), truncando con "…" y descartando los casos peor rankeados si el presupuesto se agota.
+- *What I did: `retrieve_similar_cases` now over-fetches `2k` candidates, drops cases with identical `resolution_notes` (`_dedupe_by_resolution`), and trims the final result to a total character budget (`_fit_to_budget`, default 800), truncating with "…" and dropping the lowest-ranked cases once the budget runs out.*
+
+- **Por qué**: Sin esto, casos casi-duplicados (mismo incidente logueado dos veces, o dos casos resueltos igual) ocupan espacio de contexto sin aportar señal nueva, y no había ningún límite explícito a cuánto texto se inyecta en el prompt — un corpus futuro con notas más largas podría acercarse al límite de tokens del modelo sin ningún control.
+- *Why: Without this, near-duplicate cases (the same incident logged twice, or two cases resolved the same way) take up context space without adding new signal, and there was no explicit cap on how much text gets injected into the prompt — a future corpus with longer notes could approach the model's token limit with no control in place.*
+
+- **Qué descarté**: Un presupuesto en tokens reales (via `tiktoken`) en vez de caracteres — más preciso, pero es una dependencia nueva para un corpus de texto corto y en un idioma consistente donde caracteres es una aproximación razonable. Deduplicación semántica (embeddings similares, no solo texto idéntico) — más robusta pero más cara de calcular; el corpus actual no tiene casos semánticamente duplicados con texto distinto, así que no se justificaba todavía.
+- *What I discarded: A real token budget (via `tiktoken`) instead of characters — more precise, but a new dependency for a short-text, single-language-family corpus where characters are a reasonable approximation. Semantic deduplication (similar embeddings, not just identical text) — more robust but more expensive to compute; the current corpus has no semantically-duplicate cases with different text, so it wasn't justified yet.*
+
+- **Qué supuse**: Que sobre-recuperar `2k` es suficiente margen para que, tras deduplicar, sigan quedando `k` casos distintos en la mayoría de queries. Con un corpus mucho más denso en duplicados, este margen tendría que crecer o el dedup tendría que aplicarse a nivel de todo el corpus antes de rankear, no solo sobre el top-`2k`.
+- *What I assumed: That over-fetching `2k` is enough margin that, after deduping, `k` distinct cases remain for most queries. With a much more duplicate-dense corpus, this margin would need to grow, or dedup would need to run over the whole corpus before ranking, not just over the top-`2k`.*
+
+---
+
 
 
 

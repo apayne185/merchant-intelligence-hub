@@ -116,7 +116,7 @@ uv run jupyter lab src/parte3_modeling.ipynb
 *Project structure*
 
 ```
-├── DECISIONS.md         # 19 decisiones técnicas documentadas / 19 technical decisions documented
+├── DECISIONS.md         # 20 decisiones técnicas documentadas / 20 technical decisions documented
 ├── ASSUMPTIONS.md       # 3 ambiguedades identificadas en el diseño del pipeline
 ├── SELF_REVIEW.md       # 5 problemas honestos de la solución 
 ├── TOOLS_USED.md     
