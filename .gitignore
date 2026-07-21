@@ -42,8 +42,11 @@ htmlcov/
 # (los derivados en outputs/ sí se versionan)
 data/transactions_sample.csv
 
-# Outputs generados (entrégalos, no los ignores en tu zip)
+# Outputs generados
 # outputs/  ← deliberadamente NO ignorado
+
+# Roadmap/planning notes — not part of the public portfolio repo
+context/
 
 # Delta Lake tables (parte1_pyspark.py) — binarios regenerables, no se versionan
 outputs/delta/
