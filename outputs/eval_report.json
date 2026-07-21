@@ -1,0 +1,186 @@
+{
+  "mode": "mock",
+  "n_examples": 28,
+  "overall_accuracy": 0.3214,
+  "per_category_accuracy": {
+    "technical_issue": 0.0,
+    "billing": 0.0,
+    "onboarding": 0.0,
+    "fraud": 0.0,
+    "churn_threat": 0.5,
+    "other": 1.0
+  },
+  "churn_threat_recall": 0.5,
+  "prompt_injection_detection_rate": 1.0,
+  "retrieval_category_precision_at_k": 0.9286,
+  "results": [
+    {
+      "id": 1,
+      "expected_category": "technical_issue",
+      "predicted_category": "other",
+      "correct": false
+    },
+    {
+      "id": 2,
+      "expected_category": "technical_issue",
+      "predicted_category": "other",
+      "correct": false
+    },
+    {
+      "id": 3,
+      "expected_category": "technical_issue",
+      "predicted_category": "other",
+      "correct": false
+    },
+    {
+      "id": 4,
+      "expected_category": "billing",
+      "predicted_category": "other",
+      "correct": false
+    },
+    {
+      "id": 5,
+      "expected_category": "billing",
+      "predicted_category": "other",
+      "correct": false
+    },
+    {
+      "id": 6,
+      "expected_category": "billing",
+      "predicted_category": "other",
+      "correct": false
+    },
+    {
+      "id": 7,
+      "expected_category": "onboarding",
+      "predicted_category": "other",
+      "correct": false
+    },
+    {
+      "id": 8,
+      "expected_category": "onboarding",
+      "predicted_category": "other",
+      "correct": false
+    },
+    {
+      "id": 9,
+      "expected_category": "onboarding",
+      "predicted_category": "other",
+      "correct": false
+    },
+    {
+      "id": 10,
+      "expected_category": "fraud",
+      "predicted_category": "other",
+      "correct": false
+    },
+    {
+      "id": 11,
+      "expected_category": "fraud",
+      "predicted_category": "other",
+      "correct": false
+    },
+    {
+      "id": 12,
+      "expected_category": "fraud",
+      "predicted_category": "other",
+      "correct": false
+    },
+    {
+      "id": 13,
+      "expected_category": "churn_threat",
+      "predicted_category": "other",
+      "correct": false
+    },
+    {
+      "id": 14,
+      "expected_category": "churn_threat",
+      "predicted_category": "churn_threat",
+      "correct": true
+    },
+    {
+      "id": 15,
+      "expected_category": "churn_threat",
+      "predicted_category": "other",
+      "correct": false
+    },
+    {
+      "id": 16,
+      "expected_category": "other",
+      "predicted_category": "other",
+      "correct": true
+    },
+    {
+      "id": 17,
+      "expected_category": "other",
+      "predicted_category": "other",
+      "correct": true
+    },
+    {
+      "id": 18,
+      "expected_category": "other",
+      "predicted_category": "other",
+      "correct": true
+    },
+    {
+      "id": 19,
+      "expected_category": "other",
+      "predicted_category": "other",
+      "correct": true
+    },
+    {
+      "id": 20,
+      "expected_category": "other",
+      "predicted_category": "other",
+      "correct": true
+    },
+    {
+      "id": 21,
+      "expected_category": "other",
+      "predicted_category": "other",
+      "correct": true
+    },
+    {
+      "id": 22,
+      "expected_category": "technical_issue",
+      "predicted_category": "other",
+      "correct": false
+    },
+    {
+      "id": 23,
+      "expected_category": "billing",
+      "predicted_category": "other",
+      "correct": false
+    },
+    {
+      "id": 24,
+      "expected_category": "onboarding",
+      "predicted_category": "other",
+      "correct": false
+    },
+    {
+      "id": 25,
+      "expected_category": "fraud",
+      "predicted_category": "other",
+      "correct": false
+    },
+    {
+      "id": 26,
+      "expected_category": "churn_threat",
+      "predicted_category": "churn_threat",
+      "correct": true
+    },
+    {
+      "id": 27,
+      "expected_category": "other",
+      "predicted_category": "other",
+      "correct": true
+    },
+    {
+      "id": 28,
+      "expected_category": "technical_issue",
+      "predicted_category": "other",
+      "correct": false
+    }
+  ]
+}
