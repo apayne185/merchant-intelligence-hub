@@ -12,175 +12,233 @@
   },
   "churn_threat_recall": 0.5,
   "prompt_injection_detection_rate": 1.0,
-  "retrieval_category_precision_at_k": 0.9286,
+  "retrieval_category_precision_at_k": 0.8929,
+  "urgency_meets_minimum_rate": 0.4643,
+  "escalation_accuracy": 0.7857,
   "results": [
     {
       "id": 1,
       "expected_category": "technical_issue",
       "predicted_category": "other",
-      "correct": false
+      "correct": false,
+      "urgency_meets_minimum": false,
+      "escalation_correct": true
     },
     {
       "id": 2,
       "expected_category": "technical_issue",
       "predicted_category": "other",
-      "correct": false
+      "correct": false,
+      "urgency_meets_minimum": false,
+      "escalation_correct": true
     },
     {
       "id": 3,
       "expected_category": "technical_issue",
       "predicted_category": "other",
-      "correct": false
+      "correct": false,
+      "urgency_meets_minimum": false,
+      "escalation_correct": true
     },
     {
       "id": 4,
       "expected_category": "billing",
       "predicted_category": "other",
-      "correct": false
+      "correct": false,
+      "urgency_meets_minimum": false,
+      "escalation_correct": true
     },
     {
       "id": 5,
       "expected_category": "billing",
       "predicted_category": "other",
-      "correct": false
+      "correct": false,
+      "urgency_meets_minimum": false,
+      "escalation_correct": true
     },
     {
       "id": 6,
       "expected_category": "billing",
       "predicted_category": "other",
-      "correct": false
+      "correct": false,
+      "urgency_meets_minimum": false,
+      "escalation_correct": true
     },
     {
       "id": 7,
       "expected_category": "onboarding",
       "predicted_category": "other",
-      "correct": false
+      "correct": false,
+      "urgency_meets_minimum": true,
+      "escalation_correct": true
     },
     {
       "id": 8,
       "expected_category": "onboarding",
       "predicted_category": "other",
-      "correct": false
+      "correct": false,
+      "urgency_meets_minimum": true,
+      "escalation_correct": true
     },
     {
       "id": 9,
       "expected_category": "onboarding",
       "predicted_category": "other",
-      "correct": false
+      "correct": false,
+      "urgency_meets_minimum": true,
+      "escalation_correct": true
     },
     {
       "id": 10,
       "expected_category": "fraud",
       "predicted_category": "other",
-      "correct": false
+      "correct": false,
+      "urgency_meets_minimum": false,
+      "escalation_correct": false
     },
     {
       "id": 11,
       "expected_category": "fraud",
       "predicted_category": "other",
-      "correct": false
+      "correct": false,
+      "urgency_meets_minimum": false,
+      "escalation_correct": false
     },
     {
       "id": 12,
       "expected_category": "fraud",
       "predicted_category": "other",
-      "correct": false
+      "correct": false,
+      "urgency_meets_minimum": false,
+      "escalation_correct": false
     },
     {
       "id": 13,
       "expected_category": "churn_threat",
       "predicted_category": "other",
-      "correct": false
+      "correct": false,
+      "urgency_meets_minimum": false,
+      "escalation_correct": false
     },
     {
       "id": 14,
       "expected_category": "churn_threat",
       "predicted_category": "churn_threat",
-      "correct": true
+      "correct": true,
+      "urgency_meets_minimum": true,
+      "escalation_correct": true
     },
     {
       "id": 15,
       "expected_category": "churn_threat",
       "predicted_category": "other",
-      "correct": false
+      "correct": false,
+      "urgency_meets_minimum": false,
+      "escalation_correct": false
     },
     {
       "id": 16,
       "expected_category": "other",
       "predicted_category": "other",
-      "correct": true
+      "correct": true,
+      "urgency_meets_minimum": true,
+      "escalation_correct": true
     },
     {
       "id": 17,
       "expected_category": "other",
       "predicted_category": "other",
-      "correct": true
+      "correct": true,
+      "urgency_meets_minimum": true,
+      "escalation_correct": true
     },
     {
       "id": 18,
       "expected_category": "other",
       "predicted_category": "other",
-      "correct": true
+      "correct": true,
+      "urgency_meets_minimum": true,
+      "escalation_correct": true
     },
     {
       "id": 19,
       "expected_category": "other",
       "predicted_category": "other",
-      "correct": true
+      "correct": true,
+      "urgency_meets_minimum": true,
+      "escalation_correct": true
     },
     {
       "id": 20,
       "expected_category": "other",
       "predicted_category": "other",
-      "correct": true
+      "correct": true,
+      "urgency_meets_minimum": true,
+      "escalation_correct": true
     },
     {
       "id": 21,
       "expected_category": "other",
       "predicted_category": "other",
-      "correct": true
+      "correct": true,
+      "urgency_meets_minimum": true,
+      "escalation_correct": true
     },
     {
       "id": 22,
       "expected_category": "technical_issue",
       "predicted_category": "other",
-      "correct": false
+      "correct": false,
+      "urgency_meets_minimum": false,
+      "escalation_correct": true
     },
     {
       "id": 23,
       "expected_category": "billing",
       "predicted_category": "other",
-      "correct": false
+      "correct": false,
+      "urgency_meets_minimum": true,
+      "escalation_correct": true
     },
     {
       "id": 24,
       "expected_category": "onboarding",
       "predicted_category": "other",
-      "correct": false
+      "correct": false,
+      "urgency_meets_minimum": true,
+      "escalation_correct": true
     },
     {
       "id": 25,
       "expected_category": "fraud",
       "predicted_category": "other",
-      "correct": false
+      "correct": false,
+      "urgency_meets_minimum": false,
+      "escalation_correct": false
     },
     {
       "id": 26,
       "expected_category": "churn_threat",
       "predicted_category": "churn_threat",
-      "correct": true
+      "correct": true,
+      "urgency_meets_minimum": false,
+      "escalation_correct": true
     },
     {
       "id": 27,
       "expected_category": "other",
       "predicted_category": "other",
-      "correct": true
+      "correct": true,
+      "urgency_meets_minimum": true,
+      "escalation_correct": true
     },
     {
       "id": 28,
       "expected_category": "technical_issue",
       "predicted_category": "other",
-      "correct": false
+      "correct": false,
+      "urgency_meets_minimum": false,
+      "escalation_correct": true
     }
   ]
 }

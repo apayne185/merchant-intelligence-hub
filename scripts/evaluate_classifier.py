@@ -62,6 +62,8 @@ def evaluate(mock: bool = True) -> dict[str, Any]:
     injection_total = 0
     retrieval_hits = 0
     retrieval_total = 0
+    urgency_met = 0
+    escalation_correct = 0
     results: list[dict[str, Any]] = []
 
     for example in golden_set:
@@ -87,6 +89,17 @@ def evaluate(mock: bool = True) -> dict[str, Any]:
             if result["reasoning"] == "prompt_injection_detected":
                 injection_detected += 1
 
+        # expected_min_urgency is a floor, not an exact target: the model
+        # underestimating severity (missing an urgent case) is the failure
+        # mode that matters, not overestimating it.
+        urgency_ok = result["urgency"] >= example["expected_min_urgency"]
+        if urgency_ok:
+            urgency_met += 1
+
+        escalation_ok = result["requires_human_escalation"] == example["expected_requires_escalation"]
+        if escalation_ok:
+            escalation_correct += 1
+
         similar = retrieve_similar_cases(example["email_text"], k=3, mock=mock)
         if similar:
             retrieval_total += 1
@@ -99,6 +112,8 @@ def evaluate(mock: bool = True) -> dict[str, Any]:
                 "expected_category": example["expected_category"],
                 "predicted_category": predicted_category,
                 "correct": correct,
+                "urgency_meets_minimum": urgency_ok,
+                "escalation_correct": escalation_ok,
             }
         )
 
@@ -120,6 +135,8 @@ def evaluate(mock: bool = True) -> dict[str, Any]:
         "retrieval_category_precision_at_k": (
             round(retrieval_hits / retrieval_total, 4) if retrieval_total else None
         ),
+        "urgency_meets_minimum_rate": round(urgency_met / overall_total, 4) if overall_total else None,
+        "escalation_accuracy": round(escalation_correct / overall_total, 4) if overall_total else None,
         "results": results,
     }
 
@@ -144,6 +161,8 @@ def main() -> None:
     print(f"churn_threat recall:            {report['churn_threat_recall']}")
     print(f"Prompt injection detection rate:{report['prompt_injection_detection_rate']}")
     print(f"Retrieval category precision@k: {report['retrieval_category_precision_at_k']}")
+    print(f"Urgency >= expected minimum:     {report['urgency_meets_minimum_rate']}")
+    print(f"Escalation flag accuracy:        {report['escalation_accuracy']}")
     print("\nSaved to outputs/eval_report.json")
 
 

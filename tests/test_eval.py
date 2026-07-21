@@ -53,5 +53,29 @@ def test_evaluate_retrieval_precision_is_reasonably_high() -> None:
 def test_evaluate_results_have_expected_fields() -> None:
     report = evaluate(mock=True)
     for r in report["results"]:
-        assert {"id", "expected_category", "predicted_category", "correct"}.issubset(r.keys())
+        assert {
+            "id",
+            "expected_category",
+            "predicted_category",
+            "correct",
+            "urgency_meets_minimum",
+            "escalation_correct",
+        }.issubset(r.keys())
         assert isinstance(r["correct"], bool)
+        assert isinstance(r["urgency_meets_minimum"], bool)
+        assert isinstance(r["escalation_correct"], bool)
+
+
+def test_evaluate_reports_urgency_and_escalation_metrics() -> None:
+    # golden_set.json labels every example with expected_min_urgency and
+    # expected_requires_escalation — these must actually be checked, not
+    # just carried as unused fields in the data.
+    report = evaluate(mock=True)
+    assert 0.0 <= report["urgency_meets_minimum_rate"] <= 1.0
+    assert 0.0 <= report["escalation_accuracy"] <= 1.0
+
+
+def test_evaluate_is_deterministic_across_runs() -> None:
+    first = evaluate(mock=True)
+    second = evaluate(mock=True)
+    assert first == second

@@ -204,3 +204,20 @@ strategy) sections.*
   corpus (42 cases), but would need migrating to a real index
   (FAISS/pgvector/Pinecone) before growing to thousands of cases. See
   `DECISIONS.md` D17.*
+- **`merchant_context_used`/`similar_cases_used` are self-attested by the
+  LLM, not verified**: en el modo real, estos campos son parte del schema
+  estructurado que el LLM mismo rellena — nada del lado del código inspecciona
+  el historial real de tool calls de `run_output` para confirmar que la tool
+  correspondiente se invocó de verdad. Un LLM podría reportar `True` sin haber
+  llamado la tool (o `False` habiéndola llamado). En `_MockAgent` sí son
+  fiables (se derivan directamente de si la llamada a la tool devolvió
+  resultados), pero en el modo real son una afirmación del LLM sin
+  verificación cruzada.
+*[EN]: - `merchant_context_used`/`similar_cases_used` are self-attested by
+  the LLM, not verified: in real mode, these fields are part of the
+  structured schema the LLM itself fills in — nothing on the code side
+  inspects `run_output`'s actual tool-call history to confirm the
+  corresponding tool was really invoked. An LLM could report `True` without
+  having called the tool (or `False` having called it). In `_MockAgent`
+  these are reliable (derived directly from whether the tool call returned
+  results), but in real mode they're an LLM claim with no cross-check.*
