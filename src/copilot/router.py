@@ -15,7 +15,7 @@ from src.copilot.schemas import RouteDecision, ToolName
 from src.copilot.state import CopilotState
 
 _DATA_PATTERNS = re.compile(
-    r"\b(tpv|top merchants?|approval rate|yoy|year.over.year|volume|kpi)\b", re.IGNORECASE
+    r"\b(tpv|top merchants?|approval rate|yoy|year.over.year|volume|kpi|churn rate)\b", re.IGNORECASE
 )
 _RISK_PATTERNS = re.compile(
     r"\b(risk|churn|at.?risk|trending|predict|likely to (leave|cancel))\b", re.IGNORECASE

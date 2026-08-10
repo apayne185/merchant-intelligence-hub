@@ -19,7 +19,7 @@ def _fmt_pct(x: float | None) -> str:
     return "n/a" if x is None else f"{x:.0%}"
 
 
-def _summarize_data_analyst(results: dict[str, Any]) -> list[str]:
+def _summarize_data_analyst(results: dict[str, Any], merchant_id: int | None) -> list[str]:
     parts = []
     top = results.get("top_merchants_by_tpv") or []
     if top:
@@ -36,7 +36,12 @@ def _summarize_data_analyst(results: dict[str, Any]) -> list[str]:
     declines = [r for r in yoy if r["tpv_yoy_pct"] is not None and r["tpv_yoy_pct"] < 0]
     if declines:
         worst = min(declines, key=lambda r: r["tpv_yoy_pct"])
-        parts.append(f"TPV fell {_fmt_pct(worst['tpv_yoy_pct'])} YoY in {worst['month']}.")
+        # yoy_tpv_by_month is only ever computed for a specific merchant_id
+        # (see data_analyst_node) — name it explicitly, otherwise "TPV fell
+        # X% YoY" reads as if it's about the "top merchant" sentence above,
+        # which can be a different merchant entirely.
+        who = f"merchant {merchant_id}" if merchant_id is not None else "this merchant"
+        parts.append(f"TPV for {who} fell {_fmt_pct(worst['tpv_yoy_pct'])} YoY in {worst['month']}.")
     return parts
 
 
@@ -71,7 +76,7 @@ def synthesize_mock(state: CopilotState) -> str:
     parts: list[str] = []
 
     if "data_analyst" in results:
-        parts += _summarize_data_analyst(results["data_analyst"])
+        parts += _summarize_data_analyst(results["data_analyst"], merchant_id=state["merchant_id"])
     if "risk" in results:
         parts += _summarize_risk(results["risk"])
     if "grounding" in results:

@@ -67,6 +67,22 @@ def test_synthesize_mock_data_analyst_top_merchant() -> None:
     assert "42" in synthesize_mock(state)
 
 
+def test_synthesize_mock_yoy_decline_names_the_requested_merchant() -> None:
+    # yoy_tpv_by_month is only ever computed for state["merchant_id"] (see
+    # data_analyst_node) — the sentence must name it explicitly, otherwise
+    # it reads as if it's about whichever merchant "top_merchants_by_tpv"
+    # happens to mention, which can be a different merchant entirely.
+    state = initial_state("q", merchant_id=90001)
+    state["tool_results"] = {
+        "data_analyst": {
+            "top_merchants_by_tpv": [{"merchant_id": 90004, "tpv": 999.0, "approval_rate": 0.9}],
+            "yoy_tpv_by_month": [{"month": "2025-09-01", "tpv": 0.0, "tpv_prev_year": 636.97, "tpv_yoy_pct": -1.0}],
+        },
+    }
+    answer = synthesize_mock(state)
+    assert "TPV for merchant 90001 fell" in answer
+
+
 def test_synthesize_mock_combines_multiple_tools_in_fixed_order() -> None:
     state = initial_state("q")
     state["tool_results"] = {

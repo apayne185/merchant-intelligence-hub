@@ -25,6 +25,14 @@ def test_route_mock_risk_keywords() -> None:
     assert "risk" in route_mock("which merchants are trending toward churn?", None)
 
 
+def test_route_mock_churn_rate_question_routes_data_analyst() -> None:
+    # "churn rate by segment" is an aggregate-stats question that
+    # data_analyst.churn_rate_by_segment() directly answers — plain "churn"
+    # alone would only fire the risk (per-merchant scoring) pattern, which
+    # doesn't answer "what's the rate", so data_analyst must fire too.
+    assert "data_analyst" in route_mock("what is the churn rate by segment?", None)
+
+
 def test_route_mock_grounding_keywords() -> None:
     assert "grounding" in route_mock("what does our onboarding policy require?", None)
 
