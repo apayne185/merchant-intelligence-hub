@@ -11,107 +11,22 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
-import numpy as np
+from src.copilot.retrieval_core import Embedder, SimpleVectorStore, dedupe_by_field, fit_to_budget
+from src.copilot.retrieval_core import MockEmbedder as _MockEmbedder
+from src.copilot.retrieval_core import OpenAIEmbedder as _OpenAIEmbedder
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "data"
 HISTORICAL_COMPLAINTS_PATH = DATA_DIR / "historical_complaints.json"
 
-
-# -----------------------------------------------------------------------------
-# Vector store — brute-force cosine similarity, adequate for ~10s-100s of
-# records held in memory. Not meant to scale past that without swapping in a
-# real ANN index (FAISS/pgvector/Pinecone) — see DECISIONS.md.
-# -----------------------------------------------------------------------------
-def _cosine_similarity(query_vec: np.ndarray, matrix: np.ndarray) -> np.ndarray:
-    query_vec = query_vec.reshape(1, -1)
-    query_norm = np.linalg.norm(query_vec, axis=1, keepdims=True)
-    matrix_norm = np.linalg.norm(matrix, axis=1, keepdims=True)
-    query_norm = np.where(query_norm == 0, 1e-9, query_norm)
-    matrix_norm = np.where(matrix_norm == 0, 1e-9, matrix_norm)
-    sims = (matrix @ query_vec.T) / (matrix_norm * query_norm.T)
-    return sims.ravel()
-
-
-class SimpleVectorStore:
-    """Minimal in-memory vector store: add() + query() by cosine similarity."""
-
-    def __init__(self) -> None:
-        self._vectors: np.ndarray | None = None
-        self._records: list[dict[str, Any]] = []
-
-    def __len__(self) -> int:
-        return len(self._records)
-
-    def add(self, records: list[dict[str, Any]], vectors: np.ndarray) -> None:
-        self._records.extend(records)
-        self._vectors = vectors if self._vectors is None else np.vstack([self._vectors, vectors])
-
-    def query(self, vector: np.ndarray, k: int = 3) -> list[dict[str, Any]]:
-        # k <= 0 guarded explicitly: a negative k reaching the slice below
-        # would hit Python's negative-slice semantics ([:-1] drops the last
-        # element instead of returning nothing) and silently return almost
-        # the whole corpus instead of an empty result.
-        if not self._records or self._vectors is None or k <= 0:
-            return []
-        sims = _cosine_similarity(vector, self._vectors)
-        k = min(k, len(self._records))
-        # lexsort with a fixed secondary key (original index), not argsort+
-        # reverse: numpy's default argsort isn't stable, and even a stable
-        # ascending sort reversed via [::-1] flips tie order too — same
-        # nondeterminism class already fixed once in parte3_modeling.ipynb's
-        # recall_at_k. With ties (two corpus entries equally similar to the
-        # query), this keeps results reproducible run-to-run instead of
-        # depending on numpy's internal tie-breaking.
-        order = np.lexsort((np.arange(len(sims)), -sims))
-        top_idx = order[:k]
-        return [self._records[i] for i in top_idx]
-
-
-# -----------------------------------------------------------------------------
-# Embedders — real (OpenAI) vs. mock (offline, deterministic, no network call
-# or model download). Same mock/real split as `_MockAgent`/`_RealAgentAdapter`
-# in agent.py, for the same reason: MOCK_LLM=1 must work with zero cost and
-# zero external dependencies.
-# -----------------------------------------------------------------------------
-class Embedder(Protocol):
-    def embed(self, texts: list[str]) -> np.ndarray: ...
-
-
-class _MockEmbedder:
-    """Deterministic, offline stand-in for real embeddings.
-
-    TF-IDF over the corpus text, not a semantic embedding — it ranks lexical
-    overlap, not meaning. Good enough to demonstrate the retrieval mechanics
-    without a model download; real semantic similarity requires the OpenAI
-    embedder below.
-    """
-
-    def __init__(self, corpus_texts: list[str]) -> None:
-        from sklearn.feature_extraction.text import TfidfVectorizer
-
-        self._vectorizer = TfidfVectorizer(max_features=256)
-        if corpus_texts:
-            self._vectorizer.fit(corpus_texts)
-
-    def embed(self, texts: list[str]) -> np.ndarray:
-        return self._vectorizer.transform(texts).toarray()
-
-
-class _OpenAIEmbedder:
-    """Real embeddings via OpenAI's `text-embedding-3-small`."""
-
-    def __init__(self, model: str = "text-embedding-3-small") -> None:
-        from openai import OpenAI
-
-        self._client = OpenAI()
-        self._model = model
-
-    def embed(self, texts: list[str]) -> np.ndarray:
-        response = self._client.embeddings.create(model=self._model, input=texts)
-        return np.array([item.embedding for item in response.data])
+# SimpleVectorStore, Embedder, and the mock/real embedders now live in
+# src/copilot/retrieval_core.py — extracted so the Grounding tool's second
+# corpus (data/policy_docs.json) can share this mechanism instead of a
+# duplicate copy. See DECISIONS.md D22. Everything below (caching,
+# dedup/budget wrappers, retrieve_similar_cases) is this module's own
+# corpus-specific logic and is unchanged.
 
 
 # -----------------------------------------------------------------------------
@@ -168,16 +83,11 @@ def _dedupe_by_resolution(records: list[dict[str, Any]]) -> list[dict[str, Any]]
     """Drops cases with an identical resolution_notes text. Near-duplicate
     retrieved cases (same underlying incident logged twice, or two cases
     resolved the same way) waste context budget without adding signal.
+
+    Thin wrapper over the generic src.copilot.retrieval_core.dedupe_by_field
+    (D22) fixed to this corpus' text field.
     """
-    seen: set[str] = set()
-    deduped = []
-    for r in records:
-        key = r["resolution_notes"].strip().lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(r)
-    return deduped
+    return dedupe_by_field(records, field="resolution_notes")
 
 
 def _fit_to_budget(records: list[dict[str, Any]], max_chars: int) -> list[dict[str, Any]]:
@@ -186,18 +96,11 @@ def _fit_to_budget(records: list[dict[str, Any]], max_chars: int) -> list[dict[s
     budget runs out. A character budget is a coarse stand-in for real token
     accounting (see DECISIONS.md) — good enough given resolution_notes are
     short, plain-text, single-language-family strings.
+
+    Thin wrapper over the generic src.copilot.retrieval_core.fit_to_budget
+    (D22) fixed to this corpus' text field.
     """
-    budget = max_chars
-    fitted = []
-    for r in records:
-        if budget <= 0:
-            break
-        notes = r["resolution_notes"]
-        if len(notes) > budget:
-            notes = notes[: max(0, budget - 1)].rstrip() + "…"
-        fitted.append({**r, "resolution_notes": notes})
-        budget -= len(notes)
-    return fitted
+    return fit_to_budget(records, max_chars, field="resolution_notes")
 
 
 def retrieve_similar_cases(
