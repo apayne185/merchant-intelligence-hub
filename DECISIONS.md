@@ -564,6 +564,25 @@
 
 ---
 
+### D27 · `/ask` como app FastAPI independiente, no montada sobre `/classify`
+
+- **Qué hice**: `src/copilot/api.py` es una segunda app FastAPI (`uvicorn src.copilot.api:app`, puerto sugerido 8001), separada de `src/parte4_api/main.py` (`/classify`, puerto 8000) — no `app.mount(...)` de una dentro de la otra.
+- *What I did: `src/copilot/api.py` is a second FastAPI app (`uvicorn src.copilot.api:app`, suggested port 8001), separate from `src/parte4_api/main.py` (`/classify`, port 8000) — not one `app.mount(...)`-ed inside the other.*
+
+- **Por qué**: El copilot ya reutiliza `build_agent()` **en proceso** dentro de `complaint_classifier_node` (D25) — no llama a `/classify` por HTTP. Montar ambas apps juntas acoplaría sus ciclos de vida y mecanismos de `dependency_overrides` en los tests sin ningún beneficio funcional real hoy. Mantenerlas separadas también dice algo honesto: `/classify` sigue siendo un servicio real e independiente, no una fachada del copilot.
+- *Why: The copilot already reuses `build_agent()` **in-process** inside `complaint_classifier_node` (D25) — it doesn't call `/classify` over HTTP. Mounting both apps together would couple their lifecycles and test `dependency_overrides` mechanics with no real functional benefit today. Keeping them separate is also an honest signal: `/classify` remains a real, independent service, not a copilot facade.*
+
+- **Hallazgo al probarlo en vivo**: el primer request a `/ask` contra el CSV real (~200k filas, no versionado) tardó ~28s — coste de arranque en frío de `load_clean()` la primera vez que se llama en el proceso, no un problema recurrente: el segundo request tardó 65ms gracias al cache de `get_clean_transactions()` (`data_analyst.py`). Documentado aquí para que no se lea como un bug de latencia si alguien lo prueba en vivo.
+- *Finding from testing it live: the first request to `/ask` against the real CSV (~200k rows, unversioned) took ~28s — a cold-start cost from `load_clean()` running for the first time in the process, not a recurring problem: the second request took 65ms thanks to `get_clean_transactions()`'s cache (`data_analyst.py`). Documented here so it doesn't read as a latency bug if someone tries it live.*
+
+- **Qué descarté**: Reusar el `HealthResponse` de `src/parte4_api/schemas.py` en vez de definir uno nuevo — el contrato (`status`/`model`/`version`) es idéntico, así que reimplementarlo hubiera sido la misma duplicación innecesaria que D22/D25 evitan.
+- *What I discarded: Defining a new HealthResponse instead of reusing `src/parte4_api/schemas.py`'s — the contract (`status`/`model`/`version`) is identical, so reimplementing it would have been the same unnecessary duplication D22/D25 avoid.*
+
+- **Qué supuse**: Que el caller de `/ask` prefiere ver los tools que **realmente** se ejecutaron (`route`, deduplicado en orden de primera aparición) en vez de la lista cruda de `tool_calls` (que puede repetir una tool — `data_analyst` registra una entrada por cada sub-query SQL que corre).
+- *What I assumed: That an `/ask` caller wants to see which tools **actually** ran (`route`, deduplicated in first-occurrence order) rather than the raw `tool_calls` list (which can repeat a tool — `data_analyst` logs one entry per underlying SQL sub-query it runs).*
+
+---
+
 
 
 
