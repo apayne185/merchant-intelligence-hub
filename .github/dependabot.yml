@@ -1,0 +1,15 @@
+# Automated dependency updates — see DECISIONS.md D29.
+version: 2
+updates:
+  # Covers pyproject.toml / uv.lock.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Keeps actions/checkout, astral-sh/setup-uv, actions/setup-python
+  # (.github/workflows/ci.yml) pinned to current, patched versions.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
