@@ -59,6 +59,16 @@ dependencies = [
     "agno>=2.5,<3",
     "openai>=1.40,<2",
 
+    # Copilot orchestrator (src/copilot/) — LangGraph owns graph/state/control-flow
+    # only; LLM calls inside nodes still go through Agno (see DECISIONS.md D22) so
+    # there's exactly one agent-framework pattern in the repo, not two competing
+    # ones. No langchain-openai/chat-model dep needed as a result.
+    "langgraph>=1.2,<2",
+    # Real SQL execution for the Data Analyst tool (src/copilot/tools/data_analyst.py)
+    # over a pandas df — see DECISIONS.md D23 for why (parameterized queries, not
+    # LLM-generated SQL).
+    "duckdb>=1.5,<2",
+
     # Utilidades comunes
     "python-dotenv==1.0.1",
 ]
