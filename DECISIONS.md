@@ -466,6 +466,85 @@
 
 
 
+## Parte 6 · Merchant Intelligence Copilot — capa de agentes multi-tool
+*Merchant Intelligence Copilot — multi-tool agent layer*
+
+> El clasificador de reclamaciones (Parte 4/4b) pasa a ser una especialidad más
+> dentro de un sistema mayor: un orquestador que responde preguntas en lenguaje
+> natural sobre merchants, llamando herramientas reales (SQL/KPIs, el modelo de
+> churn) y recuperando contexto de políticas (RAG) con citas. Ver `src/copilot/`.
+> *The complaint classifier (Parte 4/4b) becomes one specialty inside a larger
+> system: an orchestrator that answers natural-language merchant questions by
+> calling real tools (SQL/KPIs, the churn model) and retrieving policy context
+> (RAG) with citations. See `src/copilot/`.*
+
+### D22 · Extracción de retrieval_core.py — vector store compartido entre corpus
+
+- **Qué hice**: Moví `SimpleVectorStore`, los embedders mock/real, y los helpers de dedup/presupuesto de contexto (antes solo en `src/parte4_api/retrieval.py`, D17-D20) a `src/copilot/retrieval_core.py`, generalizados para aceptar cualquier corpus (parametrizados por `text_field`/`dedupe_field` y cacheados por `(corpus_name, mock)` en vez de solo por `mock`). `retrieval.py` ahora importa de ahí y mantiene su propia lógica de caché específica del corpus de reclamaciones sin cambios.
+- *What I did: Moved `SimpleVectorStore`, the mock/real embedders, and the dedup/context-budget helpers (previously only in `src/parte4_api/retrieval.py`, D17-D20) to `src/copilot/retrieval_core.py`, generalized to accept any corpus (parameterized by `text_field`/`dedupe_field`, cached per `(corpus_name, mock)` instead of just `mock`). `retrieval.py` now imports from there and keeps its own complaints-corpus-specific caching logic unchanged.*
+
+- **Por qué**: El Grounding tool necesita un segundo corpus (`data/policy_docs.json`) con el mismo mecanismo de retrieval — over-fetch, cosine similarity, dedup, presupuesto de caracteres. Duplicar esa clase ya probada en vez de compartirla sería exactamente el tipo de reinvención innecesaria que D17-D19 argumentan evitar, solo que en la dirección opuesta (no añadir una dependencia nueva vs. no copiar código que ya funciona).
+- *Why: The Grounding tool needs a second corpus (`data/policy_docs.json`) with the same retrieval mechanism — over-fetch, cosine similarity, dedup, character budget. Duplicating that already-tested class instead of sharing it would be exactly the kind of unnecessary reinvention D17-D19 argue against, just in the opposite direction (not adding an unneeded dependency vs. not copying working code).*
+
+- **Qué descarté**: Reescribir `retrieval.py` para importar todo directamente sin capa de compatibilidad — descartado porque `tests/test_retrieval.py` importa `SimpleVectorStore`, `_dedupe_by_resolution`, `_fit_to_budget`, `retrieve_similar_cases` directamente desde `src.parte4_api.retrieval`; mantener esos nombres/firmas intactos evita tocar tests que no tienen nada que ver con el cambio. Verifiqué la suite completa (56 passed/1 skipped, sin cambios) inmediatamente después del refactor, antes de construir nada encima.
+- *What I discarded: Rewriting `retrieval.py` to import everything directly with no compatibility layer — discarded because `tests/test_retrieval.py` imports `SimpleVectorStore`, `_dedupe_by_resolution`, `_fit_to_budget`, `retrieve_similar_cases` directly from `src.parte4_api.retrieval`; keeping those names/signatures intact avoided touching tests unrelated to this change. Verified the full suite (56 passed/1 skipped, unchanged) immediately after the refactor, before building anything on top of it.*
+
+- **Qué supuse**: Que ningún código fuera de este repo importa `_MockEmbedder`/`_OpenAIEmbedder`/`build_case_store`/`get_case_store` directamente (solo usado internamente) — verificado por grep antes de renombrarlos sin guion bajo en el módulo compartido.
+- *What I assumed: That no code outside this repo imports `_MockEmbedder`/`_OpenAIEmbedder`/`build_case_store`/`get_case_store` directly (only used internally) — verified by grep before renaming them without a leading underscore in the shared module.*
+
+---
+
+### D23 · Data Analyst tool — SQL parametrizado sobre DuckDB, no SQL generado por LLM
+
+- **Qué hice**: `src/copilot/tools/data_analyst.py` registra el DataFrame de `load_clean()` en una conexión DuckDB y expone un conjunto **fijo** de 3 funciones (`top_merchants_by_tpv`, `churn_rate_by_segment`, `yoy_tpv_by_month`), adaptadas de Q1-Q3 en `src/parte2_sql.sql`. Solo argumentos tipados (validables con Pydantic en la capa de tool-calling) se bindean como parámetros (`?`) en templates SQL escritos a mano — nunca texto del usuario interpolado en el SQL.
+- *What I did: `src/copilot/tools/data_analyst.py` registers `load_clean()`'s DataFrame on a DuckDB connection and exposes a **fixed** set of 3 functions (`top_merchants_by_tpv`, `churn_rate_by_segment`, `yoy_tpv_by_month`), adapted from Q1-Q3 in `src/parte2_sql.sql`. Only typed arguments (Pydantic-validatable at the tool-calling layer) get bound as parameters (`?`) into hand-written SQL templates — never user text interpolated into SQL.*
+
+- **Por qué**: Dejar que un LLM genere SQL libre contra una conexión viva es una clase de riesgo real de inyección/exfiltración — una pregunta con prompt injection podría pedir un `DROP TABLE` o un scan sin límite disfrazado de pregunta de negocio. Fijar la forma de las queries de antemano y solo parametrizar argumentos elimina esa clase de riesgo por completo, sin perder la demostración de "el agente ejecuta SQL real", no solo describe datos.
+- *Why: Letting an LLM generate free-form SQL against a live connection is a real injection/exfiltration risk class — a prompt-injected question could ask for a `DROP TABLE` or an unbounded scan disguised as a business question. Fixing the query shapes up front and only parameterizing arguments eliminates that risk class entirely, without losing the "the agent executes real SQL" proof point, not just describing data.*
+
+- **Qué descarté**: Un esquema `country` en `top_merchants_by_tpv` calcado de Q1 — descartado porque el CSV real no tiene columna `country` (`data/README.md`); mantenerlo habría sido un parámetro que silenciosamente no hace nada. `yoy_tpv_by_month` con un self-join DuckDB calcado de Q3 — descartado en favor de reusar `monthly_kpis()` (pandas, ya testeado) y un merge explícito por `(year-1, month)`; DuckDB se usa donde aporta valor narrativo real (Q1/Q2), no de forma uniforme solo porque está disponible.
+- *What I discarded: A `country` param in `top_merchants_by_tpv` copied from Q1 — discarded because the real CSV has no `country` column (`data/README.md`); keeping it would have been a parameter that silently did nothing. `yoy_tpv_by_month` with a DuckDB self-join copied from Q3 — discarded in favor of reusing `monthly_kpis()` (pandas, already tested) plus an explicit `(year-1, month)` merge; DuckDB is used where it adds real narrative value (Q1/Q2), not uniformly just because it's available.*
+
+- **Qué supuse**: Que `min_merchants=20` (bajado del `>=100` de Q2) es razonable para el dataset real (~10k merchants); con el fixture pequeño (4 merchants) los tests pasan `min_merchants=1` explícitamente. Lo verificaría con el volumen real de merchants por segmento antes de fijar este default en producción.
+- *What I assumed: That `min_merchants=20` (lowered from Q2's `>=100`) is reasonable for the real dataset (~10k merchants); with the small fixture (4 merchants) tests pass `min_merchants=1` explicitly. I'd verify against real per-segment merchant volume before fixing this default in production.*
+
+---
+
+### D24 · Risk tool — port de feature engineering, SHAP por instancia, y un hallazgo honesto
+
+- **Qué hice**: `src/copilot/tools/risk.py:build_merchant_features()` reimplementa (no importa — el notebook no es import-safe) exactamente las celdas 5 y 7 de `src/parte3_modeling.ipynb` para construir las 20 features de un merchant en vivo. `score_merchant()` carga `outputs/model.pkl` y llama `predict_proba()` sobre esa fila cruda (el `ColumnTransformer` del pipeline ya hace imputación/escalado/encoding — no se reimplementa). `explain_drivers()` usa SHAP por instancia (celda 13 del notebook, aplicado a 1 fila en vez del test set completo) en vez de solo la importancia global de `outputs/feature_importance.csv`.
+- *What I did: `src/copilot/tools/risk.py:build_merchant_features()` reimplements (doesn't import — the notebook isn't import-safe) exactly cells 5 and 7 of `src/parte3_modeling.ipynb` to build a live merchant's 20 features. `score_merchant()` loads `outputs/model.pkl` and calls `predict_proba()` on that raw row (the pipeline's `ColumnTransformer` already does imputation/scaling/encoding — not reimplemented). `explain_drivers()` uses per-instance SHAP (notebook cell 13, applied to 1 row instead of the full test set) instead of only `outputs/feature_importance.csv`'s global importance.*
+
+- **Por qué SHAP por instancia**: `shap==0.46.0` ya es una dependencia fijada y el notebook ya construye el `TreeExplainer` exacto — no es una capacidad nueva, solo aplicada a una fila. Un usuario preguntando "¿por qué está marcado este merchant?" quiere una respuesta por instancia; la importancia global solo responde "qué importa en promedio", una respuesta bastante más débil para el caso de uso principal del Risk tool.
+- *Why per-instance SHAP: `shap==0.46.0` is already a pinned dependency and the notebook already builds the exact `TreeExplainer` — not a new capability, just applied to one row. A user asking "why is this merchant flagged" wants a per-instance answer; global importance only answers "what matters on average," a materially weaker answer for the Risk tool's main use case.*
+
+- **Hallazgo honesto al verificar contra el fixture**: el merchant diseñado como "alto riesgo" (90001 — TPV y approval rate colapsan, YoY entre -46% y -100% en jul-sep 2025, queja reciente) obtiene `churn_probability` **más baja** que un merchant sano (90003) al correr `score_merchant()` por primera vez de forma end-to-end. Verifiqué que no es un bug de feature engineering: `tpv_trend_3m_6m` sí distingue correctamente a ambos (0.23 vs 0.53, con ~0.5 como línea base de "estable" en una ventana de 3-de-6-meses). Es el ROC-AUC=0.58 (casi aleatorio, documentado en `outputs/model_card.md` y `SELF_REVIEW.md` P1) manifestándose de forma concreta en inferencia de un solo merchant en vivo — nunca antes ejercida end-to-end. No lo oculté ni ajusté el fixture para que "funcionara" — lo documenté aquí y en los tests (`tests/test_copilot_risk.py`), y cada respuesta de `score_merchant()` incluye `caveat` con este límite explícito, exactamente para que este tipo de discrepancia no llegue a un usuario sin contexto.
+- *Honest finding when verifying against the fixture: the merchant designed as "high risk" (90001 — TPV and approval rate collapse, YoY between -46% and -100% in Jul-Sep 2025, a recent complaint) gets a **lower** `churn_probability` than a healthy merchant (90003) when running `score_merchant()` end-to-end for the first time. Verified this isn't a feature-engineering bug: `tpv_trend_3m_6m` does correctly distinguish both (0.23 vs 0.53, with ~0.5 as the "stable" baseline for a 3-of-6-month window). It's ROC-AUC=0.58 (near-random, documented in `outputs/model_card.md` and `SELF_REVIEW.md` P1) showing up concretely in live single-merchant inference — never exercised end-to-end before. I didn't hide it or tune the fixture to "make it work" — documented here and in the tests (`tests/test_copilot_risk.py`), and every `score_merchant()` response carries `caveat` with this limitation explicit, exactly so this kind of discrepancy doesn't reach a user without context.*
+
+- **Qué descarté**: Cachear/batchear el feature engineering para todos los merchants a la vez — más eficiente para producción, pero `build_merchant_features()` recalcula sobre el DataFrame completo en cada llamada por simplicidad/fidelidad al notebook; aceptable a esta escala (fixture o CSV real de ~10k merchants), no a escala de un batch job diario. Bucketing de `risk_tier` por percentil real de la población en vez de umbrales fijos (0.10/0.20) — más principled pero requeriría puntuar a todos los merchants solo para tener percentiles, fuera de alcance para un tool que puntúa un merchant a la vez.
+- *What I discarded: Caching/batching feature engineering across all merchants at once — more production-efficient, but `build_merchant_features()` recomputes over the full DataFrame on every call for simplicity/fidelity to the notebook; acceptable at this scale (fixture or the real ~10k-merchant CSV), not at daily-batch-job scale. Bucketing `risk_tier` by real population percentile instead of fixed thresholds (0.10/0.20) — more principled but would require scoring every merchant just to get percentiles, out of scope for a tool that scores one merchant at a time.*
+
+- **Qué supuse**: Que `reference_date = df["reference_date"].max()` (igual que el notebook) es el punto de predicción correcto también en el copilot — no hay un concepto de "hoy" separado en los datos. Si el sistema pasara a producción real, el `reference_date` vendría de un reloj real, no del propio dataset.
+- *What I assumed: That `reference_date = df["reference_date"].max()` (same as the notebook) is the correct prediction point in the copilot too — there's no separate "today" concept in the data. If this moved to real production, `reference_date` would come from a real clock, not the dataset itself.*
+
+---
+
+### D25 · Complaint classifier como tool — reutilización de Agno sin duplicar
+
+- **Qué hice**: `src/copilot/tools/complaint_classifier.py:classify_complaint()` es un wrapper de 3 líneas sobre `build_agent()` de `src/parte4_api/agent.py` — no reimplementa clasificación, guardrails, ni el split mock/real.
+- *What I did: `src/copilot/tools/complaint_classifier.py:classify_complaint()` is a 3-line wrapper over `build_agent()` from `src/parte4_api/agent.py` — it doesn't reimplement classification, guardrails, or the mock/real split.*
+
+- **Por qué**: `build_agent()` ya contiene el split completo `_MockAgent`/`_RealAgentAdapter` (D7-D11), ambos leyendo `is_mock_mode()`. El copilot hereda ese comportamiento gratis en vez de necesitar su propia rama `MOCK_LLM` — es el mismo razonamiento de D22 (compartir en vez de duplicar), aplicado a un agente completo en vez de a una clase.
+- *Why: `build_agent()` already contains the full `_MockAgent`/`_RealAgentAdapter` split (D7-D11), both reading `is_mock_mode()`. The copilot inherits that behavior for free instead of needing its own `MOCK_LLM` branch — the same reasoning as D22 (share, don't duplicate), applied to a whole agent instead of a class.*
+
+- **Qué supuse**: Que el router (siguiente pieza, orquestador LangGraph) solo enruta aquí cuando la pregunta es una reclamación real pegada por el usuario, no una pregunta analítica ("¿qué merchants están en riesgo?") — este agente clasifica *una* reclamación, no responde preguntas generales. Documentado como advertencia explícita en el docstring del módulo para quien construya el router.
+- *What I assumed: That the router (next piece, the LangGraph orchestrator) only routes here when the question is an actual complaint pasted by the user, not an analytical question ("which merchants are at risk?") — this agent classifies *one* complaint, it doesn't answer general questions. Documented as an explicit warning in the module docstring for whoever builds the router.*
+
+---
+
+
+
+
 ## Decisiones extra  
 *Additional decisions*
 
