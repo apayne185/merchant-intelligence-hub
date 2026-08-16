@@ -60,7 +60,7 @@ dependencies = [
 
     # Notebook (Parte 3)
     "jupyter==1.0.0",
-    "ipykernel==6.29.5",
+    "ipykernel==7.3.0",
 
     # API stack (Parte 4) — uvicorn obligatorio
     "fastapi==0.115.0",
