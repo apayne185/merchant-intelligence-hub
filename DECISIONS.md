@@ -624,6 +624,25 @@
 
 ---
 
+### D30 · README reescrito alrededor del Copilot — qué se movió, qué no
+
+- **Qué hice**: `README.md` ahora abre con el Merchant Intelligence Copilot (pitch, quickstart, ejemplo de `/ask`, tabla de arquitectura), no con "pipeline de datos y risk-scoring". El pipeline original (Partes 1-5) se movió a una sección "Appendix" al final — sigue completo, con todos los comandos que ya funcionaban, no recortado ni resumido en exceso. `src/copilot/README.md` nuevo, con el mismo nivel de detalle que `src/parte4_api/README.md` (arquitectura, endpoints, tests, limitaciones conocidas) — no un README más corto o menos cuidado solo por ser la pieza nueva.
+- *What I did: `README.md` now opens with the Merchant Intelligence Copilot (pitch, quickstart, `/ask` example, architecture table), not "data pipeline and risk-scoring project". The original pipeline (Parts 1-5) moved to an "Appendix" section at the end — still complete, every command that already worked still there, not trimmed or over-summarized. New `src/copilot/README.md`, matching `src/parte4_api/README.md`'s level of detail (architecture, endpoints, tests, known limitations) — not a shorter or less-careful README just because it's the new piece.*
+
+- **Por qué no borrar/reescribir la narrativa de Partes 1-5 en vez de mover a un apéndice**: Es trabajo real, testeado (73 tests con `--extra pyspark`), y documentado en detalle en `DECISIONS.md`/`ASSUMPTIONS.md`/`SELF_REVIEW.md` con referencias a números de línea y decisiones específicas — reescribirlo habría roto esas referencias y descartado documentación honesta sin ninguna razón funcional. El copilot es una extensión real sobre este trabajo, no un reemplazo, así que el README debía reflejar eso literalmente: el pipeline sigue siendo la base, solo ya no es lo primero que ve un lector.
+- *Why not delete/rewrite the Parts 1-5 narrative instead of moving it to an appendix: It's real, tested work (73 tests with `--extra pyspark`), documented in detail in `DECISIONS.md`/`ASSUMPTIONS.md`/`SELF_REVIEW.md` with references to specific line numbers and decisions — rewriting it would have broken those references and discarded honest documentation for no functional reason. The copilot is a real extension on top of this work, not a replacement, so the README needed to literally reflect that: the pipeline is still the foundation, it's just no longer the first thing a reader sees.*
+
+- **Qué actualicé en `TOOLS_USED.md` y por qué**: Añadí una segunda fila a la tabla de LLMs (no reescribí la original) — la fila original documenta honestamente ~20% de asistencia de IA en las Partes 1-5; esta sesión construyó la práctica totalidad de `src/copilot/` de forma agéntica, dirigida por mí en cada milestone. Dejar la cifra original sin cambios habría subestimado materialmente cuánto de este repo tiene asistencia de IA, lo cual entra en conflicto directo con el propio principio de honestidad que el archivo existe para cumplir.
+- *What I updated in `TOOLS_USED.md` and why: Added a second row to the LLMs table (didn't rewrite the original) — the original row honestly documents ~20% AI assistance on Parts 1-5; this session built nearly all of `src/copilot/` agentically, directed by me at each milestone. Leaving the original figure unchanged would have materially understated how much of this repo has AI assistance, which directly conflicts with the file's own reason for existing.*
+
+- **Qué descarté**: Fusionar `src/parte4_api/main.py` y `src/copilot/api.py` en un único README de API — descartado por la misma razón que D27 mantiene las dos apps FastAPI separadas: son dos servicios reales e independientes, documentarlos como uno solo sería inexacto.
+- *What I discarded: Merging `src/parte4_api/main.py` and `src/copilot/api.py` into a single API README — discarded for the same reason D27 keeps the two FastAPI apps separate: they're two real, independent services, documenting them as one would be inaccurate.*
+
+- **Qué supuse**: Que un lector del README (reclutador, entrevistador técnico) decide en los primeros 10-15 segundos si el proyecto es interesante — de ahí que el pitch del Copilot, no el pipeline subyacente, tenga que ser lo primero que se lee, aunque el pipeline siga siendo real trabajo documentado en detalle más abajo.
+- *What I assumed: That a README reader (recruiter, technical interviewer) decides within the first 10-15 seconds whether the project is interesting — hence the Copilot pitch, not the underlying pipeline, has to be the first thing read, even though the pipeline remains real work documented in detail further down.*
+
+---
+
 
 
 

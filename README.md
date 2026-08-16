@@ -234,7 +234,7 @@ finding about its per-merchant inference behavior.*
 *Project structure*
 
 ```
-├── DECISIONS.md         # 29 decisiones técnicas documentadas / 29 technical decisions documented
+├── DECISIONS.md         # 30 decisiones técnicas documentadas / 30 technical decisions documented
 ├── ASSUMPTIONS.md       # 3 ambiguedades identificadas en el diseño del pipeline
 ├── SELF_REVIEW.md       # 5 problemas honestos de la solución
 ├── SECURITY.md          # datos sintéticos, pickle warning, guardrails / synthetic data, pickle warning, guardrails
