@@ -69,7 +69,7 @@ dependencies = [
 
     # Agentic framework (Parte 4) — OBLIGATORIO, no sustituir por LangChain/LlamaIndex
     "agno>=2.5,<3",
-    "openai>=1.40,<2",
+    "openai>=1.40,<4",
 
     # Copilot orchestrator (src/copilot/) — LangGraph owns graph/state/control-flow
     # only; LLM calls inside nodes still go through Agno (see DECISIONS.md D22) so
