@@ -1,0 +1,28 @@
+# Pre-commit hooks — see DECISIONS.md D29.
+#
+# Install once:      uv run pre-commit install
+# Run on all files:  uv run pre-commit run --all-files
+#
+# ruff pinned to the same version as pyproject.toml's `ruff==0.6.9` dev
+# dependency, so local hook output matches `make lint`/CI exactly.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+        # Scoped to the copilot code, not the whole repo: there's
+        # pre-existing lint debt in the notebooks and a couple of older
+        # files (see ci.yml's Lint step, advisory for the same reason) that
+        # a blocking local hook shouldn't silently reformat as a side
+        # effect of an unrelated commit. Widening this is a deliberate
+        # future cleanup pass, not something this hook should do on its own.
+        files: ^(src/copilot/|scripts/(evaluate_copilot|check_eval_floors|generate_copilot_fixture)\.py$|tests/(test_copilot_.*|conftest)\.py$)
+
+  # Secret scanning — a single static binary via pre-commit's own hook
+  # environment, no Python dependency added to pyproject.toml/uv.lock, no
+  # baseline file to maintain (unlike detect-secrets).
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks

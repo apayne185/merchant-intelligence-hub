@@ -1,0 +1,92 @@
+[
+  {
+    "id": "RP-01",
+    "title": "Onboarding KYC document checklist",
+    "category": "onboarding",
+    "text": "Before activation, every new merchant must submit: government-issued ID of the legal representative, proof of business registration, a bank statement or voided check for the settlement account, and proof of address dated within 90 days. Onboarding cannot move to 'active' status until all four documents are verified."
+  },
+  {
+    "id": "RP-02",
+    "title": "Segment classification thresholds",
+    "category": "onboarding",
+    "text": "Merchants are classified SMB (trailing-12-month TPV under $500k), MidMarket ($500k-$5M), or Enterprise (over $5M). Segment is re-evaluated quarterly based on trailing TPV and can move a merchant to a different support tier or pricing schedule automatically."
+  },
+  {
+    "id": "RP-03",
+    "title": "Approval-rate threshold triggering automatic review",
+    "category": "risk",
+    "text": "A merchant whose 30-day approval rate falls below 75% is automatically queued for a risk analyst review within 2 business days. Below 60% for 7 consecutive days, processing limits are reduced by 50% pending review — this protects against undetected technical failures or fraud rings, not just weak sales."
+  },
+  {
+    "id": "RP-04",
+    "title": "Churn-risk escalation policy",
+    "category": "escalation",
+    "text": "Merchants scored 'high' risk tier by the churn model (or flagged by the TPV-drop heuristic) are added to the retention team's weekly call list within 3 business days. Per the model card, the churn model's discrimination is weak (ROC-AUC 0.58) — a 'high' score should prompt a review call, not an automatic account action, and should be weighed alongside concrete KPI evidence (TPV trend, approval rate, recent complaints), not treated as authoritative on its own."
+  },
+  {
+    "id": "RP-05",
+    "title": "Complaint-to-human-escalation SLA",
+    "category": "escalation",
+    "text": "Complaints classified fraud or churn_threat, or with urgency >= 4, must reach a human agent within 1 business hour of being flagged. All others are queued for next-business-day review. This SLA applies regardless of whether the classification came from the automated triage agent or a manual report."
+  },
+  {
+    "id": "RP-06",
+    "title": "Fraud-flag procedure",
+    "category": "risk",
+    "text": "A merchant flagged for suspected fraud (unrecognized terminal activity, sudden geographic anomalies, or a cardholder dispute rate above 1%) has settlement held for up to 5 business days while the fraud team investigates. The merchant is notified within 24 hours with a case reference number; funds are released automatically if no fraud is confirmed within the hold window."
+  },
+  {
+    "id": "RP-07",
+    "title": "Chargeback and dispute handling",
+    "category": "billing",
+    "text": "Merchants have 10 business days to submit evidence for a disputed chargeback before it defaults to the cardholder. A merchant with a chargeback rate above 1% of transaction volume for 2 consecutive months is placed on a monitoring program and may face a rolling reserve on settlement."
+  },
+  {
+    "id": "RP-08",
+    "title": "Pricing-tier policy",
+    "category": "billing",
+    "text": "Standard pricing is assigned by segment (RP-02) and MCC at onboarding. A merchant may request a pricing review after 6 months of active processing if trailing volume qualifies for a better tier; approved changes take effect on the next billing cycle, never retroactively."
+  },
+  {
+    "id": "RP-09",
+    "title": "Data retention and PII policy",
+    "category": "compliance",
+    "text": "Transaction records are retained for 7 years for regulatory purposes. Free-text complaint content (emails, call notes) is retained for 2 years and PII within it (card numbers, phone numbers, emails) must be redacted before storage in any analytics or training corpus — this applies to every downstream system, including the automated triage agent's logs."
+  },
+  {
+    "id": "RP-10",
+    "title": "Merchant offboarding procedure",
+    "category": "onboarding",
+    "text": "A merchant requesting closure must have all pending settlements and disputes resolved first. Standard offboarding takes 5-10 business days. A merchant who cites a specific unresolved technical or billing issue as their reason for leaving should be routed to retention before offboarding proceeds, not processed automatically."
+  },
+  {
+    "id": "RP-11",
+    "title": "High-risk MCC monitoring list",
+    "category": "risk",
+    "text": "Merchant category codes associated with elevated chargeback or regulatory risk (e.g. telemarketing, online gambling, certain travel services) receive enhanced monitoring: lower default processing limits, monthly (not quarterly) risk review, and mandatory reserve accounts. The full MCC list is maintained by the risk team and reviewed annually."
+  },
+  {
+    "id": "RP-12",
+    "title": "SMB onboarding document checklist",
+    "category": "onboarding",
+    "text": "In addition to the standard KYC checklist (RP-01), SMB-segment merchants under $50k projected annual volume may submit a simplified beneficial-ownership declaration instead of full corporate registration documents, provided the legal representative is also the majority owner."
+  },
+  {
+    "id": "RP-13",
+    "title": "Account reinstatement policy",
+    "category": "escalation",
+    "text": "A merchant suspended for a compliance or fraud hold may request reinstatement once the underlying issue is resolved. Reinstatement requires risk-team sign-off and, for fraud-related suspensions, a 30-day clean processing history is required before reserve requirements are lifted."
+  },
+  {
+    "id": "RP-14",
+    "title": "Complaint category definitions",
+    "category": "escalation",
+    "text": "Complaint triage uses six categories: technical_issue (equipment/software failures), billing (fees, disputed charges), onboarding (activation, KYC, documentation), fraud (unauthorized activity), churn_threat (explicit cancellation intent or ultimatum), and other. A complaint mentioning multiple issues is classified by its most urgent underlying category, not the first one mentioned."
+  },
+  {
+    "id": "RP-15",
+    "title": "Responsible AI and model-usage policy",
+    "category": "compliance",
+    "text": "Any automated score or classification (churn risk, complaint triage) surfaced to staff must be presented with its known limitations, not as a bare number. Scores from models with unverified or weak discrimination (see individual model cards) may inform prioritization but must never be the sole basis for an account action like suspension or reserve changes without human review."
+  }
+]

@@ -1,0 +1,177 @@
+{
+  "mode": "mock",
+  "n_examples": 11,
+  "route_exact_match_rate": 1.0,
+  "route_recall_mean": 1.0,
+  "citation_hallucination_rate": 0.0,
+  "citation_recall_rate": 1.0,
+  "risk_caveat_mention_rate": 1.0,
+  "classification_accuracy": 1.0,
+  "facts_ok_rate": 1.0,
+  "results": [
+    {
+      "id": 1,
+      "question": "Which merchants are trending toward churn and why, and does anything in our onboarding policy flag them?",
+      "expected_route": [
+        "grounding",
+        "risk"
+      ],
+      "predicted_route": [
+        "grounding",
+        "risk"
+      ],
+      "route_exact_match": true,
+      "route_recall": 1.0,
+      "facts_ok": true,
+      "classification_ok": null
+    },
+    {
+      "id": 2,
+      "question": "Is merchant 90001 at risk of churning and why?",
+      "expected_route": [
+        "data_analyst",
+        "risk"
+      ],
+      "predicted_route": [
+        "data_analyst",
+        "risk"
+      ],
+      "route_exact_match": true,
+      "route_recall": 1.0,
+      "facts_ok": true,
+      "classification_ok": null
+    },
+    {
+      "id": 3,
+      "question": "Is this merchant at risk of churning and why?",
+      "expected_route": [
+        "data_analyst",
+        "risk"
+      ],
+      "predicted_route": [
+        "data_analyst",
+        "risk"
+      ],
+      "route_exact_match": true,
+      "route_recall": 1.0,
+      "facts_ok": true,
+      "classification_ok": null
+    },
+    {
+      "id": 4,
+      "question": "What is the top merchant by TPV this quarter?",
+      "expected_route": [
+        "data_analyst"
+      ],
+      "predicted_route": [
+        "data_analyst"
+      ],
+      "route_exact_match": true,
+      "route_recall": 1.0,
+      "facts_ok": true,
+      "classification_ok": null
+    },
+    {
+      "id": 5,
+      "question": "What is the churn rate by segment?",
+      "expected_route": [
+        "data_analyst",
+        "risk"
+      ],
+      "predicted_route": [
+        "data_analyst",
+        "risk"
+      ],
+      "route_exact_match": true,
+      "route_recall": 1.0,
+      "facts_ok": true,
+      "classification_ok": null
+    },
+    {
+      "id": 6,
+      "question": "What does onboarding require before activating a new SMB merchant?",
+      "expected_route": [
+        "grounding"
+      ],
+      "predicted_route": [
+        "grounding"
+      ],
+      "route_exact_match": true,
+      "route_recall": 1.0,
+      "facts_ok": true,
+      "classification_ok": null
+    },
+    {
+      "id": 7,
+      "question": "How long do merchants have to dispute a chargeback?",
+      "expected_route": [
+        "grounding"
+      ],
+      "predicted_route": [
+        "grounding"
+      ],
+      "route_exact_match": true,
+      "route_recall": 1.0,
+      "facts_ok": true,
+      "classification_ok": null
+    },
+    {
+      "id": 8,
+      "question": "What is our fraud-flag procedure?",
+      "expected_route": [
+        "grounding"
+      ],
+      "predicted_route": [
+        "grounding"
+      ],
+      "route_exact_match": true,
+      "route_recall": 1.0,
+      "facts_ok": true,
+      "classification_ok": null
+    },
+    {
+      "id": 9,
+      "question": "I want to cancel my account, this is unacceptable.",
+      "expected_route": [
+        "complaint_classifier"
+      ],
+      "predicted_route": [
+        "complaint_classifier"
+      ],
+      "route_exact_match": true,
+      "route_recall": 1.0,
+      "facts_ok": true,
+      "classification_ok": true
+    },
+    {
+      "id": 10,
+      "question": "why is this merchant at risk",
+      "expected_route": [
+        "data_analyst",
+        "risk"
+      ],
+      "predicted_route": [
+        "data_analyst",
+        "risk"
+      ],
+      "route_exact_match": true,
+      "route_recall": 1.0,
+      "facts_ok": true,
+      "classification_ok": null
+    },
+    {
+      "id": 11,
+      "question": "What is the YoY TPV trend for this merchant?",
+      "expected_route": [
+        "data_analyst"
+      ],
+      "predicted_route": [
+        "data_analyst"
+      ],
+      "route_exact_match": true,
+      "route_recall": 1.0,
+      "facts_ok": true,
+      "classification_ok": null
+    }
+  ]
+}

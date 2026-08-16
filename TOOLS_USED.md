@@ -8,10 +8,14 @@
 
 | Herramienta / Tool | Versión / modelo | Para qué la usé / What I used it for | % aproximado del código / Approximate % of code |
 |---|---|---|---:|
-| Claude Code (Anthropic) | claude-sonnet-4-6 | Setup del entorno, scaffolding inicial de funciones, creacion de los tablas en los README.mds, arreglar mis commentos en el code / Environment setup, initial function scaffolding, created the tables within README.md.s, fixed my comments in the code (they were messy) | ~20% |
+| Claude Code (Anthropic) | claude-sonnet-4-6 | Setup del entorno, scaffolding inicial de funciones, creacion de los tablas en los README.mds, arreglar mis commentos en el code / Environment setup, initial function scaffolding, created the tables within README.md.s, fixed my comments in the code (they were messy) | ~20% (Partes 1-5) |
+| Claude Code (Anthropic) | claude-sonnet-5 | Build de `src/copilot/` (agente completo): orquestador LangGraph, las 4 tools, la API, el golden-set eval, y las protecciones del repo, dirigido por mí en una sesión agéntica — arquitectura, alcance y cada decisión de diseño (framework, qué queda fuera, cómo se presenta el hallazgo de D24) fueron mías, revisadas y aprobadas en cada milestone, no generadas y aceptadas ciegamente / Build of `src/copilot/` (the whole agent): LangGraph orchestrator, the 4 tools, the API, the golden-set eval, and the repo protections, directed by me in an agentic session — architecture, scope, and every design decision (framework choice, what's out of scope, how the D24 finding is presented) were mine, reviewed and approved at each milestone, not generated and blindly accepted | ~90% (`src/copilot/` specifically; resto del repo sin cambios de esta fila / rest of the repo unchanged from the row above) |
 
 > El codigo generado fue revisado, adaptado y validado por mí. Los conteos reales (197913 filas con formato BR, 4182 duplicados, AUC = 0.58 ) son output de ejecuciones reales de el código, no inventados por el LLM
 > *All of the generated code was reviewed, adapted and validated by me. The real counts (197913 rows in BR format, 4182 duplicates, AUC= 0.58) are output from the actual code runs and not invented/hallucinated by the LLM.*
+>
+> Mismo principio para `src/copilot/`: el hallazgo de D24 (el modelo de churn puntúa al merchant "de riesgo" del fixture más bajo que al sano) es un resultado real de correr `score_merchant()`, no algo que pedí o edité — lo dejé documentado tal cual salió porque es honesto, no porque fuera conveniente.
+> *Same principle for `src/copilot/`: the D24 finding (the churn model scores the fixture's "at risk" merchant lower than the healthy one) is a real result from running `score_merchant()`, not something I asked for or edited — left documented as it came out because it's honest, not because it was convenient.*
 
 
 ---
@@ -34,9 +38,12 @@
 | Librería | Versión  | Por que la añadí  |
 |---|---|---|
 | `pandas` (bump) | 2.2.2 to 2.2.3 | porque pandas 2.2.2 no tiene wheel para Python 3.13 / pandas 2.2.2 has no wheel for Python 3.13 |
+| `langgraph` | >=1.2,<2 | orquestador del Merchant Intelligence Copilot — grafo/estado/control de flujo; las llamadas a LLM dentro de cada nodo siguen usando Agno (ya presente), sin segundo framework de agentes conviviendo. Ver DECISIONS.md D22/D26 / Merchant Intelligence Copilot orchestrator — graph/state/control-flow; LLM calls inside each node still go through Agno (already present), no second agent framework alongside it. See DECISIONS.md D22/D26 |
+| `duckdb` | >=1.5,<2 | ejecución SQL real (parametrizada, no generada por LLM) del Data Analyst tool sobre un DataFrame en memoria. Ver DECISIONS.md D23 / real (parameterized, not LLM-generated) SQL execution for the Data Analyst tool over an in-memory DataFrame. See DECISIONS.md D23 |
+| `pre-commit` | 4.0.1 | corre `.pre-commit-config.yaml` (ruff + gitleaks) localmente antes de cada commit. Ver DECISIONS.md D29 / runs `.pre-commit-config.yaml` (ruff + gitleaks) locally before each commit. See DECISIONS.md D29 |
 
-No añadí librerías nuevas. El starter ya incluye todas las necesarias (lightgbm, shap,agno, fastapi, pydantic)
-*I didn't add any new libraries, the starter already include all necessary ones (lightgbm, shap, agno, fastapi,pydantic).*
+El resto del starter original (pandas, sklearn, lightgbm, shap, agno, fastapi, pydantic) ya incluía todo lo necesario para las Partes 1-5; las 3 librerías de arriba son específicas de la capa del copilot (`src/copilot/`) añadida después.
+*The rest of the original starter (pandas, sklearn, lightgbm, shap, agno, fastapi, pydantic) already included everything needed for Parts 1-5; the 3 libraries above are specific to the copilot layer (`src/copilot/`) added afterward.*
 
 
 

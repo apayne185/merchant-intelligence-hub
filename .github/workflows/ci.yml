@@ -34,3 +34,20 @@ jobs:
         env:
           MOCK_LLM: "1"
         run: uv run pytest -v
+
+      - name: Eval — complaint classifier golden set
+        env:
+          MOCK_LLM: "1"
+        run: uv run python -m scripts.evaluate_classifier
+
+      - name: Eval — copilot golden set
+        env:
+          MOCK_LLM: "1"
+        run: uv run python -m scripts.evaluate_copilot
+
+      - name: Eval gate — hard reliability floors
+        # Unlike Lint above, this is NOT advisory — it fails the build.
+        # Floors are anchored to committed baseline values (DECISIONS.md
+        # D21, D28); both harnesses are deterministic under MOCK_LLM=1, so
+        # a failure here means a real regression, not noise. See D29.
+        run: uv run python -m scripts.check_eval_floors

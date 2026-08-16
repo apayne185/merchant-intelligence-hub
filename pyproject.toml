@@ -13,7 +13,10 @@ build-backend = "hatchling.build"
 # Install (fallback con pip):
 #     pip install -e ".[dev]"
 #
-# Run API:
+# Run the Merchant Intelligence Copilot:
+#     MOCK_LLM=1 uv run uvicorn src.copilot.api:app --reload --port 8001
+#
+# Run the complaint-classification API (Parte 4):
 #     MOCK_LLM=1 uv run uvicorn src.parte4_api.main:app --reload --port 8000
 #
 # Test:
@@ -24,15 +27,15 @@ build-backend = "hatchling.build"
 
 [project]
 name = "merchant-intelligence-hub"
-version = "0.2.0"
-description = "Data pipeline and risk-scoring project for merchant transaction data — pandas & PySpark/Delta Lake ETL, a churn-risk model, and a FastAPI service on top."
+version = "0.3.0"
+description = "Merchant Intelligence Copilot — a multi-agent system (LangGraph + Agno) answering natural-language merchant questions via real KPI/SQL tools, a churn-risk model, and policy RAG, with cited answers — built on a pandas/PySpark ETL and churn-risk ML pipeline underneath."
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
 license = { text = "MIT" }
 authors = [
     { name = "Anna Payne" },
 ]
-keywords = ["data-engineering", "etl", "pyspark", "databricks", "delta-lake", "pandas", "machine-learning"]
+keywords = ["ai-agents", "langgraph", "rag", "llm", "data-engineering", "machine-learning", "fastapi"]
 
 # -----------------------------------------------------------------------------
 # Core deps — necesarias para que la app y los tests arranquen
@@ -40,8 +43,17 @@ keywords = ["data-engineering", "etl", "pyspark", "databricks", "delta-lake", "p
 dependencies = [
     # Data & ML
     "pandas==2.2.3",
-    "numpy==1.26.4",
-    "scikit-learn==1.5.1",
+    # numpy 1.26.4 has no Python 3.13 wheel (last 1.26.x release, predates
+    # 3.13's Oct-2024 launch) — uv falls back to a from-source build, which
+    # is what made CI hang for 2+ hours instead of the ~1min local install.
+    # 2.1.3 is the earliest 2.x with cp313 wheels (verified via PyPI's file
+    # list), chosen to minimize behavioral distance from 1.26.4 rather than
+    # jumping to the newest 2.x. See DECISIONS.md D31 (same wheel-
+    # availability issue D13 already hit and fixed for pandas).
+    "numpy==2.1.3",
+    # 1.5.1 also has no cp313 wheel; 1.5.2 (patch release, same reason as
+    # numpy above) does. See DECISIONS.md D31.
+    "scikit-learn==1.5.2",
     "xgboost==2.1.1",
     "lightgbm==4.5.0",
     "shap==0.46.0",
@@ -59,6 +71,16 @@ dependencies = [
     "agno>=2.5,<3",
     "openai>=1.40,<2",
 
+    # Copilot orchestrator (src/copilot/) — LangGraph owns graph/state/control-flow
+    # only; LLM calls inside nodes still go through Agno (see DECISIONS.md D22) so
+    # there's exactly one agent-framework pattern in the repo, not two competing
+    # ones. No langchain-openai/chat-model dep needed as a result.
+    "langgraph>=1.2,<2",
+    # Real SQL execution for the Data Analyst tool (src/copilot/tools/data_analyst.py)
+    # over a pandas df — see DECISIONS.md D23 for why (parameterized queries, not
+    # LLM-generated SQL).
+    "duckdb>=1.5,<2",
+
     # Utilidades comunes
     "python-dotenv==1.0.1",
 ]
@@ -70,6 +92,9 @@ dev = [
     "pytest-asyncio==0.24.0",
     "httpx==0.27.2",
     "ruff==0.6.9",
+    # Runs .pre-commit-config.yaml locally (D29) — CI enforces the eval gate
+    # independently via ci.yml, this is for local hygiene before pushing.
+    "pre-commit==4.0.1",
 ]
 
 # Opcional para la Parte 5 bonus (collusion rings)
