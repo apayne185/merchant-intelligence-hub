@@ -13,7 +13,10 @@ build-backend = "hatchling.build"
 # Install (fallback con pip):
 #     pip install -e ".[dev]"
 #
-# Run API:
+# Run the Merchant Intelligence Copilot:
+#     MOCK_LLM=1 uv run uvicorn src.copilot.api:app --reload --port 8001
+#
+# Run the complaint-classification API (Parte 4):
 #     MOCK_LLM=1 uv run uvicorn src.parte4_api.main:app --reload --port 8000
 #
 # Test:
@@ -24,15 +27,15 @@ build-backend = "hatchling.build"
 
 [project]
 name = "merchant-intelligence-hub"
-version = "0.2.0"
-description = "Data pipeline and risk-scoring project for merchant transaction data — pandas & PySpark/Delta Lake ETL, a churn-risk model, and a FastAPI service on top."
+version = "0.3.0"
+description = "Merchant Intelligence Copilot — a multi-agent system (LangGraph + Agno) answering natural-language merchant questions via real KPI/SQL tools, a churn-risk model, and policy RAG, with cited answers — built on a pandas/PySpark ETL and churn-risk ML pipeline underneath."
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
 license = { text = "MIT" }
 authors = [
     { name = "Anna Payne" },
 ]
-keywords = ["data-engineering", "etl", "pyspark", "databricks", "delta-lake", "pandas", "machine-learning"]
+keywords = ["ai-agents", "langgraph", "rag", "llm", "data-engineering", "machine-learning", "fastapi"]
 
 # -----------------------------------------------------------------------------
 # Core deps — necesarias para que la app y los tests arranquen
