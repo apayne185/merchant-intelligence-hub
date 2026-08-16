@@ -56,7 +56,7 @@ dependencies = [
     "scikit-learn==1.5.2",
     "xgboost==2.1.1",
     "lightgbm==4.5.0",
-    "shap==0.46.0",
+    "shap==0.49.1",
 
     # Notebook (Parte 3)
     "jupyter==1.0.0",
