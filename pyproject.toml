@@ -102,7 +102,7 @@ bonus = [
     "networkx==3.4.2",
 ]
 pyspark = [
-    "delta-spark==3.2.1",
+    "delta-spark==4.3.1",
     "pyspark==3.5.3",
 ]
 
