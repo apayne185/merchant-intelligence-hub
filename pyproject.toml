@@ -82,7 +82,7 @@ dependencies = [
     "duckdb>=1.5,<2",
 
     # Utilidades comunes
-    "python-dotenv==1.0.1",
+    "python-dotenv==1.2.2",
 ]
 
 [project.optional-dependencies]
