@@ -643,6 +643,36 @@
 
 ---
 
+### D31 · CI colgado 2+ horas — `numpy`/`scikit-learn` sin wheel para Python 3.13, mismo problema que D13
+
+- **Qué hice**: Bumpeé `numpy==1.26.4` → `2.1.3` y `scikit-learn==1.5.1` → `1.5.2` en `pyproject.toml`.
+- *What I did: Bumped `numpy==1.26.4` → `2.1.3` and `scikit-learn==1.5.1` → `1.5.2` in `pyproject.toml`.*
+
+- **Qué fallaba**: Al abrir el PR, el job `test` de CI se quedó colgado 2+ horas en el paso "Install dependencies" (`uv sync --extra dev`), sin llegar siquiera a Lint. El log mostraba `Building scikit-learn==1.5.1` y `Building numpy==1.26.4` — sin wheel precompilado para Python 3.13, `uv` compila desde código fuente (C/Cython/Fortran), lento o efectivamente colgado en un runner compartido. Verifiqué en PyPI: `numpy` no tiene wheel `cp313` hasta la serie `2.x` (1.26.4 es el último release de la serie 1.26, anterior al lanzamiento de Python 3.13 en oct-2024); `scikit-learn` lo tiene desde `1.5.2`. Localmente nunca se notó porque el caché de `uv` ya tenía builds previos.
+- *What failed: On opening the PR, CI's `test` job hung 2+ hours on the "Install dependencies" step (`uv sync --extra dev`), never even reaching Lint. The log showed `Building scikit-learn==1.5.1` and `Building numpy==1.26.4` — with no precompiled Python 3.13 wheel, `uv` compiles from source (C/Cython/Fortran), slow or effectively hung on a shared runner. Verified on PyPI: `numpy` has no `cp313` wheel until the `2.x` series (1.26.4 is the last 1.26 release, predating Python 3.13's Oct-2024 launch); `scikit-learn` has one starting at `1.5.2`. Never noticed locally because `uv`'s cache already had prior builds.*
+
+- **Por qué numpy 2.1.3 y no la última 2.x**: Elegí la primera versión `2.x` con wheel `cp313` (verificado por la lista real de archivos en PyPI) en vez de la más reciente, para minimizar la distancia de comportamiento respecto a 1.26.4 — no hay razón para saltar más lejos de lo necesario en una dependencia que toca todo el pipeline.
+- *Why numpy 2.1.3 and not the latest 2.x: Chose the earliest `2.x` version with a `cp313` wheel (verified via PyPI's actual file listing) instead of the newest, to minimize behavioral distance from 1.26.4 — no reason to jump further than necessary on a dependency that touches the entire pipeline.*
+
+- **Verificación antes de commitear** (el punto de mayor riesgo real: `outputs/model.pkl` fue entrenado/pickleado bajo numpy 1.26.4/sklearn 1.5.1):
+  1. `joblib.load("outputs/model.pkl")` sigue cargando correctamente — sklearn emite `InconsistentVersionWarning` (esperado en cualquier diferencia de versión, incluso un patch release; no es un error).
+  2. `score_merchant()` sobre los 4 merchants del fixture da **exactamente los mismos** `churn_probability` que antes del bump (90001: 0.0007, 90002: 0.1349, 90003: 0.8217, 90004: 0.0289) — cero deriva numérica.
+  3. Suite completa: 138 passed / 1 skipped, sin cambios.
+  4. `check_eval_floors.py` sigue en verde con los mismos números.
+- *Verification before committing (the real point of risk: `outputs/model.pkl` was trained/pickled under numpy 1.26.4/sklearn 1.5.1):*
+  1. *`joblib.load("outputs/model.pkl")` still loads correctly — sklearn emits `InconsistentVersionWarning` (expected on any version difference, even a patch release; not an error).*
+  2. *`score_merchant()` on all 4 fixture merchants gives **exactly the same** `churn_probability` as before the bump (90001: 0.0007, 90002: 0.1349, 90003: 0.8217, 90004: 0.0289) — zero numerical drift.*
+  3. *Full suite: 138 passed / 1 skipped, unchanged.*
+  4. *`check_eval_floors.py` still green with the same numbers.*
+
+- **Qué descarté**: Bajar la versión de Python en CI a 3.12 para evitar el problema — descartado porque es un workaround que deja sin probar la versión de Python que el proyecto dice soportar (`requires-python` incluye 3.13, y D13 ya bumpeó pandas específicamente para esto), no una solución real. Re-entrenar/re-picklear `model.pkl` bajo las nuevas versiones para eliminar el warning por completo — descartado por ahora: el warning es inofensivo (verificado arriba) y regenerar un artefacto commiteado es un cambio más invasivo del necesario para desbloquear CI; queda como limpieza opcional futura, no parte de este fix.
+- *What I discarded: Downgrading CI's Python to 3.12 to sidestep the problem — discarded because it's a workaround that leaves the Python version the project claims to support (`requires-python` includes 3.13, and D13 already bumped pandas specifically for this) untested, not a real fix. Re-training/re-pickling `model.pkl` under the new versions to eliminate the warning entirely — discarded for now: the warning is harmless (verified above) and regenerating a committed artifact is a more invasive change than unblocking CI requires; left as optional future cleanup, not part of this fix.*
+
+- **Qué supuse**: Que los rangos de compatibilidad con numpy que declaran `lightgbm`/`xgboost`/`shap`/`pandas` (todos con cotas inferiores permisivas, ninguno excluye numpy 2.x explícitamente — verificado vía metadata de PyPI) reflejan compatibilidad real, no solo declarada. La verificación empírica (suite completa + predicciones idénticas del modelo) es la que realmente respalda esto, no la confianza en la metadata sola.
+- *What I assumed: That the numpy compatibility ranges `lightgbm`/`xgboost`/`shap`/`pandas` declare (all permissive lower bounds, none explicitly excludes numpy 2.x — verified via PyPI metadata) reflect real compatibility, not just declared. The empirical verification (full suite + identical model predictions) is what actually backs this up, not trusting the metadata alone.*
+
+---
+
 
 
 

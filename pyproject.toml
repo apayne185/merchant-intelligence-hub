@@ -43,8 +43,17 @@ keywords = ["ai-agents", "langgraph", "rag", "llm", "data-engineering", "machine
 dependencies = [
     # Data & ML
     "pandas==2.2.3",
-    "numpy==1.26.4",
-    "scikit-learn==1.5.1",
+    # numpy 1.26.4 has no Python 3.13 wheel (last 1.26.x release, predates
+    # 3.13's Oct-2024 launch) — uv falls back to a from-source build, which
+    # is what made CI hang for 2+ hours instead of the ~1min local install.
+    # 2.1.3 is the earliest 2.x with cp313 wheels (verified via PyPI's file
+    # list), chosen to minimize behavioral distance from 1.26.4 rather than
+    # jumping to the newest 2.x. See DECISIONS.md D31 (same wheel-
+    # availability issue D13 already hit and fixed for pandas).
+    "numpy==2.1.3",
+    # 1.5.1 also has no cp313 wheel; 1.5.2 (patch release, same reason as
+    # numpy above) does. See DECISIONS.md D31.
+    "scikit-learn==1.5.2",
     "xgboost==2.1.1",
     "lightgbm==4.5.0",
     "shap==0.46.0",
