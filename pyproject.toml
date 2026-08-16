@@ -99,7 +99,7 @@ dev = [
 
 # Opcional para la Parte 5 bonus (collusion rings)
 bonus = [
-    "networkx==3.3",
+    "networkx==3.4.2",
 ]
 pyspark = [
     "delta-spark==3.2.1",
