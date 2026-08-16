@@ -1,0 +1,29 @@
+.git/
+.venv/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+
+# Notebooks and their outputs aren't needed at runtime — only outputs/model.pkl is.
+notebooks/
+src/eda/
+*.ipynb
+
+# The real transactions CSV is huge (18MB) and gitignored anyway — never
+# send it into the build context even if it happens to exist locally.
+data/transactions_sample.csv
+
+# Unused PySpark side-output. Kept as explicit patterns (not a blanket
+# `outputs/`/`data/` ignore) because the Dockerfile COPYs specific files
+# from both directories — Docker's !-negation to re-include a file inside
+# an excluded directory is unreliable, so excluding the directory wholesale
+# here would silently break those COPY instructions.
+outputs/delta/
+outputs/monthly_kpis*.csv
+outputs/quality_report*.json
+outputs/merchants_at_risk*.csv
+
+# Terraform's own local state/cache — never belongs in an image.
+terraform/.terraform/
+terraform/*.tfstate*
