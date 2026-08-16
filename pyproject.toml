@@ -94,7 +94,7 @@ dev = [
     "ruff==0.6.9",
     # Runs .pre-commit-config.yaml locally (D29) — CI enforces the eval gate
     # independently via ci.yml, this is for local hygiene before pushing.
-    "pre-commit==4.0.1",
+    "pre-commit==4.6.2",
 ]
 
 # Opcional para la Parte 5 bonus (collusion rings)
