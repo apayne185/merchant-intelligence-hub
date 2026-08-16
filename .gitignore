@@ -55,3 +55,15 @@ outputs/delta/
 derby.log
 metastore_db/
 spark-warehouse/
+
+# Terraform (terraform/) — local state is deliberate (DECISIONS.md D33),
+# but state files themselves (may contain resource attributes/ARNs) and
+# the downloaded provider plugin cache never belong in git.
+terraform/.terraform/
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/*.tfstate.*.backup
+terraform/.terraform.tfstate.lock.info
+terraform/terraform.tfvars
+terraform/*.auto.tfvars
+terraform/crash.log

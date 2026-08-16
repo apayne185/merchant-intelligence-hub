@@ -1,0 +1,18 @@
+# Copy to terraform.tfvars (gitignored) and adjust if needed. Every
+# variable already has a sensible default in variables.tf, so this file is
+# optional documentation, not required to `terraform apply`.
+
+aws_region     = "us-east-1"
+project_name   = "merchant-copilot"
+image_tag      = "latest"
+fargate_cpu    = "512"  # 0.5 vCPU
+fargate_memory = "1024" # 1 GB
+desired_count  = 1
+
+# Set true only if you want a Secrets-Manager-backed OPENAI_API_KEY wired
+# in for demoing real (non-mock) mode later. Costs ~$0.40/month while it
+# exists — destroyed along with everything else on `terraform destroy`
+# (recovery_window_in_days = 0). The app runs MOCK_LLM=1 regardless of
+# this flag; it just controls whether the *capability* to inject a real
+# key is provisioned.
+enable_openai_secret = false
