@@ -90,7 +90,7 @@ dependencies = [
 dev = [
     "pytest==8.3.3",
     "pytest-asyncio==0.24.0",
-    "httpx==0.27.2",
+    "httpx==0.28.1",
     "ruff==0.6.9",
     # Runs .pre-commit-config.yaml locally (D29) — CI enforces the eval gate
     # independently via ci.yml, this is for local hygiene before pushing.
