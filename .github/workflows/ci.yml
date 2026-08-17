@@ -19,6 +19,17 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Lockfile freshness check
+        # `uv sync` (below) silently reconciles pyproject.toml/uv.lock
+        # drift on the fly without failing — which is exactly why this repo
+        # accumulated real drift 4 times over via dependabot merges
+        # (shap, pre-commit, pyspark, ruff all had a stale uv.lock even
+        # though pyproject.toml was correctly bumped) before a `--frozen`
+        # sync (in the Dockerfile) finally hit it as a hard build failure.
+        # `uv lock --check` catches this immediately instead. See
+        # DECISIONS.md D33.
+        run: uv lock --check
+
       - name: Install dependencies
         run: uv sync --extra dev
 

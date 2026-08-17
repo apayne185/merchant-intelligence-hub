@@ -22,8 +22,10 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+import joblib
 import numpy as np
 import pandas as pd
+import shap
 from src.copilot.tools.data_analyst import get_clean_transactions
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -149,10 +151,39 @@ def load_model(model_path: str | Path | None = None) -> Any:
     resolved = Path(model_path) if model_path is not None else DEFAULT_MODEL_PATH
     key = str(resolved.resolve())
     if key not in _MODEL_CACHE:
-        import joblib
-
         _MODEL_CACHE[key] = joblib.load(resolved)
     return _MODEL_CACHE[key]
+
+
+_EXPLAINER_CACHE: dict[int, Any] = {}
+
+
+def _get_explainer(model: Any) -> Any:
+    """Cached shap.TreeExplainer, keyed by the model object's identity (not
+    a path — explain_drivers() only ever receives an already-loaded model,
+    and load_model() itself returns the same cached object for a given
+    path, so id(model) is a stable, correct key). Purely a function of the
+    model, with no per-merchant dependency, so building a fresh one on
+    every explain_drivers() call was pure repeated work (tree-structure
+    parsing over the whole LightGBM booster) for an identical result every
+    time."""
+    key = id(model)
+    if key not in _EXPLAINER_CACHE:
+        _EXPLAINER_CACHE[key] = shap.TreeExplainer(model.named_steps["clf"])
+    return _EXPLAINER_CACHE[key]
+
+
+# Warms _MODEL_CACHE/_EXPLAINER_CACHE for DEFAULT_MODEL_PATH at import time
+# (module import happens once at process startup via graph.py — see its
+# docstring). Without this, `import shap`/`import joblib` above pay only
+# ~0.5s of the real cost: joblib.load()'s deserialization transitively
+# imports lightgbm and rebuilds the sklearn Pipeline (~1s measured), and
+# shap.TreeExplainer() parses the whole booster (~0.25s measured) — both
+# still deferred to whichever live request first routes to "risk" without
+# this call, exactly the startup-vs-first-request latency shift
+# terraform/ecs.tf's health_check_grace_period_seconds is meant to absorb.
+if DEFAULT_MODEL_PATH.exists():
+    _get_explainer(load_model())
 
 
 _GLOBAL_IMPORTANCE_CACHE: list[str] | None = None
@@ -178,10 +209,8 @@ def explain_drivers(model: Any, X: pd.DataFrame, top_n: int = 3) -> list[dict[st
     for why per-instance beats global-only for "why is this merchant
     flagged" questions.
     """
-    import shap
-
     X_prep = model.named_steps["prep"].transform(X)
-    explainer = shap.TreeExplainer(model.named_steps["clf"])
+    explainer = _get_explainer(model)
     with warnings.catch_warnings():
         # Same known-benign warning src/parte3_modeling.ipynb silences
         # (cell 1): shap's LightGBM-binary-classifier output-format notice,
@@ -192,7 +221,14 @@ def explain_drivers(model: Any, X: pd.DataFrame, top_n: int = 3) -> list[dict[st
     row_shap = np.asarray(sv)[0]
 
     global_top = set(_load_global_top_features())
-    order = np.argsort(-np.abs(row_shap))[:top_n]
+    # lexsort with a fixed secondary key (original index), not plain
+    # argsort: numpy's argsort isn't tie-break stable, so two features
+    # landing at the exact same |shap_value| (plausible for tree-path-
+    # unused features at 0.0) could otherwise flip which one ranks 3rd/4th
+    # across runs/numpy versions — same nondeterminism class already fixed
+    # in retrieval_core.py's SimpleVectorStore.query and the parte3
+    # notebook's recall_at_k.
+    order = np.lexsort((np.arange(len(row_shap)), -np.abs(row_shap)))[:top_n]
 
     drivers = []
     for idx in order:

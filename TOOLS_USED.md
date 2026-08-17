@@ -10,12 +10,16 @@
 |---|---|---|---:|
 | Claude Code (Anthropic) | claude-sonnet-4-6 | Setup del entorno, scaffolding inicial de funciones, creacion de los tablas en los README.mds, arreglar mis commentos en el code / Environment setup, initial function scaffolding, created the tables within README.md.s, fixed my comments in the code (they were messy) | ~20% (Partes 1-5) |
 | Claude Code (Anthropic) | claude-sonnet-5 | Build de `src/copilot/` (agente completo): orquestador LangGraph, las 4 tools, la API, el golden-set eval, y las protecciones del repo, dirigido por mí en una sesión agéntica — arquitectura, alcance y cada decisión de diseño (framework, qué queda fuera, cómo se presenta el hallazgo de D24) fueron mías, revisadas y aprobadas en cada milestone, no generadas y aceptadas ciegamente / Build of `src/copilot/` (the whole agent): LangGraph orchestrator, the 4 tools, the API, the golden-set eval, and the repo protections, directed by me in an agentic session — architecture, scope, and every design decision (framework choice, what's out of scope, how the D24 finding is presented) were mine, reviewed and approved at each milestone, not generated and blindly accepted | ~90% (`src/copilot/` specifically; resto del repo sin cambios de esta fila / rest of the repo unchanged from the row above) |
+| Claude Code (Anthropic) | claude-sonnet-5 | `Dockerfile` + `terraform/` (despliegue AWS del Copilot) — mismo patrón: yo decidí el alcance (solo Copilot, sin RDS/S3, estado local) antes de que se escribiera código; verificación real, no solo "compiló" (build + run + curl desde la shell del host, no `docker exec`) / `Dockerfile` + `terraform/` (AWS deployment of the Copilot) — same pattern: I decided scope (Copilot-only, no RDS/S3, local state) before any code was written; real verification, not just "it compiled" (build + run + curl from the host shell, not `docker exec`) | 100% of new files (`Dockerfile`, `terraform/*`) |
 
 > El codigo generado fue revisado, adaptado y validado por mí. Los conteos reales (197913 filas con formato BR, 4182 duplicados, AUC = 0.58 ) son output de ejecuciones reales de el código, no inventados por el LLM
 > *All of the generated code was reviewed, adapted and validated by me. The real counts (197913 rows in BR format, 4182 duplicates, AUC= 0.58) are output from the actual code runs and not invented/hallucinated by the LLM.*
 >
 > Mismo principio para `src/copilot/`: el hallazgo de D24 (el modelo de churn puntúa al merchant "de riesgo" del fixture más bajo que al sano) es un resultado real de correr `score_merchant()`, no algo que pedí o edité — lo dejé documentado tal cual salió porque es honesto, no porque fuera conveniente.
 > *Same principle for `src/copilot/`: the D24 finding (the churn model scores the fixture's "at risk" merchant lower than the healthy one) is a real result from running `score_merchant()`, not something I asked for or edited — left documented as it came out because it's honest, not because it was convenient.*
+>
+> El Terraform nunca se aplicó contra una cuenta AWS real (sin credenciales en el entorno) — dicho explícitamente en `terraform/README.md`, no implicado como si estuviera en producción.
+> *The Terraform was never applied against a real AWS account (no credentials in the environment) — stated explicitly in `terraform/README.md`, not implied as if it were live.*
 
 
 ---

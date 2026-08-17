@@ -53,25 +53,41 @@ def main() -> None:
     failures: list[str] = []
     reports: dict[str, dict] = {}
 
+    # `metric not in report` (the key was never written — a real script
+    # bug) and `report[metric] is None` (the key IS present, but
+    # legitimately not applicable this run — evaluate_copilot.py writes
+    # None for citation_recall_rate/risk_caveat_mention_rate/
+    # classification_accuracy when zero golden-set examples exercised
+    # that metric) are different situations and must not be conflated:
+    # collapsing them into one "missing from report" failure means
+    # editing the golden set to remove the one example that exercises a
+    # metric silently turns into a false-alarm CI failure indistinguishable
+    # from an actually broken report.
     for filename, metric, minimum in FLOORS:
         report = reports.setdefault(filename, _load(filename))
         if report is None:
             failures.append(f"{filename} not found — run the eval script first")
             continue
-        value = report.get(metric)
+        if metric not in report:
+            failures.append(f"{filename}: metric '{metric}' missing from report (script bug)")
+            continue
+        value = report[metric]
         if value is None:
-            failures.append(f"{filename}: metric '{metric}' missing from report")
-        elif value < minimum:
+            continue  # not applicable this run — nothing to check, not a failure
+        if value < minimum:
             failures.append(f"{filename}: {metric} = {value} < required floor {minimum}")
 
     for filename, metric, maximum in CEILINGS:
         report = reports.setdefault(filename, _load(filename))
         if report is None:
             continue  # already reported above
-        value = report.get(metric)
+        if metric not in report:
+            failures.append(f"{filename}: metric '{metric}' missing from report (script bug)")
+            continue
+        value = report[metric]
         if value is None:
-            failures.append(f"{filename}: metric '{metric}' missing from report")
-        elif value > maximum:
+            continue
+        if value > maximum:
             failures.append(f"{filename}: {metric} = {value} > allowed ceiling {maximum}")
 
     if failures:
@@ -82,9 +98,13 @@ def main() -> None:
 
     print("All eval floors met:")
     for filename, metric, minimum in FLOORS:
-        print(f"  {filename}: {metric} = {reports[filename][metric]} (>= {minimum})")
+        value = reports[filename].get(metric)
+        status = "skipped, not applicable this run" if value is None else f"= {value} (>= {minimum})"
+        print(f"  {filename}: {metric} {status}")
     for filename, metric, maximum in CEILINGS:
-        print(f"  {filename}: {metric} = {reports[filename][metric]} (<= {maximum})")
+        value = reports[filename].get(metric)
+        status = "skipped, not applicable this run" if value is None else f"= {value} (<= {maximum})"
+        print(f"  {filename}: {metric} {status}")
 
 
 if __name__ == "__main__":

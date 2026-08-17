@@ -159,6 +159,25 @@ protections" below.*
 Detalle completo en `DECISIONS.md` D29.
 
 
+## Desplegar en AWS (Terraform)
+*Deploy to AWS (Terraform)*
+
+`terraform/` despliega el Copilot en ECS Fargate detrás de un ALB, en una
+VPC mínima dedicada — sin RDS/S3 (razones en `DECISIONS.md` D33), estado
+local, `MOCK_LLM=1` por defecto (coste cero). **No desplegado actualmente**
+— es IaC lista para aplicar bajo demanda, no un servicio en vivo. Runbook
+completo (prerequisitos, `apply`/`destroy`, coste estimado ~$0.15-0.30 por
+sesión de demo o ~$35-58/mes si se olvida destruir) en
+[`terraform/README.md`](terraform/README.md).
+*[EN]: `terraform/` deploys the Copilot to ECS Fargate behind an ALB, in a
+minimal dedicated VPC — no RDS/S3 (reasons in `DECISIONS.md` D33), local
+state, `MOCK_LLM=1` by default (zero cost). **Not currently deployed** —
+this is IaC ready to apply on-demand, not a live service. Full runbook
+(prerequisites, `apply`/`destroy`, estimated cost ~$0.15-0.30 per demo
+session or ~$35-58/month if you forget to tear down) in
+[`terraform/README.md`](terraform/README.md).*
+
+
 ---
 
 

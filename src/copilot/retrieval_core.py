@@ -21,6 +21,7 @@ from collections.abc import Callable
 from typing import Any, Protocol
 
 import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 
 # -----------------------------------------------------------------------------
@@ -47,6 +48,15 @@ class SimpleVectorStore:
 
     def __len__(self) -> int:
         return len(self._records)
+
+    @property
+    def records(self) -> list[dict[str, Any]]:
+        """The exact records this store was built from — lets callers (e.g.
+        an eval harness's hallucination check) inspect what's actually
+        cached and being served, instead of re-reading the source file and
+        risking a stale/live desync once the store is cached. See
+        DECISIONS.md D34/D35."""
+        return list(self._records)
 
     def add(self, records: list[dict[str, Any]], vectors: np.ndarray) -> None:
         self._records.extend(records)
@@ -91,8 +101,6 @@ class MockEmbedder:
     """
 
     def __init__(self, corpus_texts: list[str]) -> None:
-        from sklearn.feature_extraction.text import TfidfVectorizer
-
         self._vectorizer = TfidfVectorizer(max_features=256)
         if corpus_texts:
             self._vectorizer.fit(corpus_texts)

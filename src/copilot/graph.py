@@ -11,6 +11,27 @@ matter how many specialist tools fire. See DECISIONS.md D26.
 Node functions here adapt each pure tool function (src/copilot/tools/*.py)
 into a CopilotState update — the tools themselves stay framework-agnostic
 (no LangGraph/schema imports), only this module knows about graph state.
+
+Tool imports are module-level (not deferred inside each node function)
+deliberately: this makes graph.py's own import — which happens once at
+process startup, e.g. via api.py's module load — pay the one-time cost of
+pandas/sklearn/duckdb/langgraph/agno up front, matching terraform/ecs.tf's
+health_check_grace_period_seconds, which is sized for exactly that cost.
+With deferred imports, that cost would instead land on whichever live
+request is first to route to each specialist node after a task restart —
+a surprise multi-second latency spike on a real user's question instead of
+on startup where it's already budgeted for.
+
+This module's own imports aren't sufficient by themselves, though: `import
+shap`/joblib's model deserialization (which transitively imports lightgbm)
+and sklearn's TfidfVectorizer construction were still one layer deeper —
+inside src/copilot/tools/risk.py and src/copilot/retrieval_core.py — and a
+prior review pass missed them (see DECISIONS.md D34/D35). Fixed by
+promoting those imports to module level in their own files, plus an eager
+`_get_explainer(load_model())` warm-up call at the bottom of risk.py, since
+model deserialization + TreeExplainer construction (~1.3s measured) is
+paid by joblib.load()/shap.TreeExplainer() being *called*, not merely
+imported — promoting the import statements alone doesn't trigger either.
 """
 from __future__ import annotations
 
@@ -21,6 +42,16 @@ from langgraph.graph import END, START, StateGraph
 from src.copilot.router import router_node
 from src.copilot.state import CopilotState
 from src.copilot.synthesis import synthesize_node
+from src.copilot.tools.complaint_classifier import classify_complaint
+from src.copilot.tools.data_analyst import (
+    churn_rate_by_segment,
+    get_clean_transactions,
+    top_merchants_by_tpv,
+    yoy_tpv_by_month,
+)
+from src.copilot.tools.grounding import retrieve_policy
+from src.copilot.tools.risk import score_merchant
+from src.parte1_pandas import merchants_at_risk
 
 TOOL_NODES = ["data_analyst", "risk", "grounding", "complaint_classifier"]
 
@@ -35,13 +66,6 @@ def _pop(state: CopilotState) -> list[str]:
 
 
 def data_analyst_node(state: CopilotState) -> dict:
-    from src.copilot.tools.data_analyst import (
-        churn_rate_by_segment,
-        get_clean_transactions,
-        top_merchants_by_tpv,
-        yoy_tpv_by_month,
-    )
-
     df = get_clean_transactions()
     ref_date = df["reference_date"].max()
     start = (ref_date - pd.Timedelta(days=90)).strftime("%Y-%m-%d")
@@ -114,10 +138,6 @@ def data_analyst_node(state: CopilotState) -> dict:
 
 
 def risk_node(state: CopilotState) -> dict:
-    from src.copilot.tools.data_analyst import get_clean_transactions
-    from src.copilot.tools.risk import score_merchant
-    from src.parte1_pandas import merchants_at_risk
-
     df = get_clean_transactions()
 
     if state["merchant_id"] is not None:
@@ -157,8 +177,6 @@ def risk_node(state: CopilotState) -> dict:
 
 
 def grounding_node(state: CopilotState) -> dict:
-    from src.copilot.tools.grounding import retrieve_policy
-
     docs = retrieve_policy(state["question"], k=3, mock=state["mock"])
     citations = [
         {"source_type": "policy_doc", "id": d["id"], "title": d["title"], "excerpt": d["text"][:400]}
@@ -178,8 +196,6 @@ def grounding_node(state: CopilotState) -> dict:
 
 
 def complaint_classifier_node(state: CopilotState) -> dict:
-    from src.copilot.tools.complaint_classifier import classify_complaint
-
     result = classify_complaint(state["merchant_id"] or 0, state["question"], locale=state["locale"])
     tool_calls = [{
         "tool": "complaint_classifier",
