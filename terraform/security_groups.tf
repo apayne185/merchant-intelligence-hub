@@ -15,19 +15,19 @@
 # there's no NAT gateway as a fallback path. See DECISIONS.md D33.
 
 resource "aws_security_group" "alb" {
-  name        = "${var.project_name}-alb-sg"
+  name        = local.alb_sg_name
   description = "Merchant Copilot ALB — inbound HTTP from the internet, outbound to the ECS task only."
   vpc_id      = aws_vpc.main.id
 
-  tags = { Name = "${var.project_name}-alb-sg" }
+  tags = { Name = local.alb_sg_name }
 }
 
 resource "aws_security_group" "task" {
-  name        = "${var.project_name}-task-sg"
+  name        = local.task_sg_name
   description = "Merchant Copilot ECS task — inbound from the ALB only, outbound HTTPS for ECR/CloudWatch."
   vpc_id      = aws_vpc.main.id
 
-  tags = { Name = "${var.project_name}-task-sg" }
+  tags = { Name = local.task_sg_name }
 }
 
 resource "aws_vpc_security_group_ingress_rule" "alb_http_in" {

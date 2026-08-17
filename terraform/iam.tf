@@ -11,7 +11,7 @@
 # task role "just in case" — that over-privileges it for nothing.
 
 resource "aws_iam_role" "execution" {
-  name = "${var.project_name}-execution-role"
+  name = local.execution_role_name
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -24,7 +24,7 @@ resource "aws_iam_role" "execution" {
     }]
   })
 
-  tags = { Name = "${var.project_name}-execution-role" }
+  tags = { Name = local.execution_role_name }
 }
 
 resource "aws_iam_role_policy_attachment" "execution_managed" {
@@ -40,10 +40,10 @@ resource "aws_iam_role_policy_attachment" "execution_managed" {
 # DECISIONS.md D33.
 resource "aws_secretsmanager_secret" "openai_api_key" {
   count                   = var.enable_openai_secret ? 1 : 0
-  name                    = "${var.project_name}-openai-api-key"
+  name                    = local.openai_secret_name
   recovery_window_in_days = 0
 
-  tags = { Name = "${var.project_name}-openai-api-key" }
+  tags = { Name = local.openai_secret_name }
 }
 
 # AmazonECSTaskExecutionRolePolicy does NOT include secretsmanager:GetSecretValue

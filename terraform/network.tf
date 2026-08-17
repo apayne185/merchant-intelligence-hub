@@ -49,7 +49,12 @@ resource "aws_route_table" "public" {
 # the internet at all — a failure mode terraform validate can't catch,
 # since it's live routing behavior, not a syntax error. See DECISIONS.md D33.
 resource "aws_route_table_association" "public" {
-  count          = 2
+  # Derived from aws_subnet.public's own count, not a second independent
+  # "2" literal — widening to a 3rd AZ only requires changing the subnet
+  # resource; a hardcoded count here could silently mismatch and leave a
+  # subnet unassociated to the IGW route, which terraform validate can't
+  # catch either.
+  count          = length(aws_subnet.public)
   subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public.id
 }

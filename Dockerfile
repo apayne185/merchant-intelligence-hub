@@ -12,7 +12,14 @@
 #     docker run --rm -p 8001:8001 -e MOCK_LLM=1 merchant-copilot:latest
 #     curl localhost:8001/health
 
-FROM python:3.13-slim AS builder
+# --platform=linux/amd64 pinned explicitly on both stages, not just
+# documented via the `buildx --platform` build command above — a plain
+# `docker build` (skipping that flag, e.g. on an arm64 dev machine) would
+# otherwise silently produce an arm64 image that pushes and applies
+# cleanly, then fails only when Fargate tries to run it against
+# terraform/ecs.tf's runtime_platform{cpu_architecture="X86_64"}. See
+# DECISIONS.md D33.
+FROM --platform=linux/amd64 python:3.13-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
@@ -33,7 +40,7 @@ COPY src/ ./src/
 RUN uv sync --frozen
 
 
-FROM python:3.13-slim AS runtime
+FROM --platform=linux/amd64 python:3.13-slim AS runtime
 
 # LightGBM's Linux wheel (outputs/model.pkl, loaded by
 # src/copilot/tools/risk.py) dynamically links libgomp.so.1, which isn't on

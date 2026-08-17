@@ -1,7 +1,7 @@
 resource "aws_ecs_cluster" "main" {
-  name = "${var.project_name}-cluster"
+  name = local.cluster_name
 
-  tags = { Name = "${var.project_name}-cluster" }
+  tags = { Name = local.cluster_name }
 }
 
 # Declared explicitly with retention_in_days set — otherwise ECS
