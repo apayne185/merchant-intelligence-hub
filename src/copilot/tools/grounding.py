@@ -31,11 +31,20 @@ def _load_policy_docs() -> list[dict[str, Any]]:
     return json.loads(POLICY_DOCS_PATH.read_text())
 
 
-def known_policy_ids() -> set[str]:
-    """All ids in the corpus — used by the eval harness's citation-
-    hallucination check (a cited id must exist here) without needing a full
-    retrieval call."""
-    return {d["id"] for d in _load_policy_docs()}
+def known_policy_ids(mock: bool = True) -> set[str]:
+    """All ids in the corpus actually being served — used by the eval
+    harness's citation-hallucination check (a cited id must exist here)
+    without needing a full retrieval call.
+
+    Reads from the same cached corpus store retrieve_policy() serves from
+    (get_corpus_store(..., mock=mock)), not a fresh re-read of
+    policy_docs.json — the store is cached for the process lifetime on
+    first use, so re-reading the file directly could desync from what's
+    actually served if the file changed after that first call. See
+    DECISIONS.md D34/D35.
+    """
+    store, _ = get_corpus_store(CORPUS_NAME, _load_policy_docs, text_field="text", mock=mock)
+    return {d["id"] for d in store.records}
 
 
 def retrieve_policy(

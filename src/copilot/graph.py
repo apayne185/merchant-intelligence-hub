@@ -15,12 +15,23 @@ into a CopilotState update — the tools themselves stay framework-agnostic
 Tool imports are module-level (not deferred inside each node function)
 deliberately: this makes graph.py's own import — which happens once at
 process startup, e.g. via api.py's module load — pay the one-time cost of
-pandas/sklearn/shap/lightgbm/duckdb/langgraph/agno up front, matching
-terraform/ecs.tf's health_check_grace_period_seconds, which is sized for
-exactly that cost. With deferred imports, that cost would instead land on
-whichever live request is first to route to each specialist node after a
-task restart — a surprise multi-second latency spike on a real user's
-question instead of on startup where it's already budgeted for.
+pandas/sklearn/duckdb/langgraph/agno up front, matching terraform/ecs.tf's
+health_check_grace_period_seconds, which is sized for exactly that cost.
+With deferred imports, that cost would instead land on whichever live
+request is first to route to each specialist node after a task restart —
+a surprise multi-second latency spike on a real user's question instead of
+on startup where it's already budgeted for.
+
+This module's own imports aren't sufficient by themselves, though: `import
+shap`/joblib's model deserialization (which transitively imports lightgbm)
+and sklearn's TfidfVectorizer construction were still one layer deeper —
+inside src/copilot/tools/risk.py and src/copilot/retrieval_core.py — and a
+prior review pass missed them (see DECISIONS.md D34/D35). Fixed by
+promoting those imports to module level in their own files, plus an eager
+`_get_explainer(load_model())` warm-up call at the bottom of risk.py, since
+model deserialization + TreeExplainer construction (~1.3s measured) is
+paid by joblib.load()/shap.TreeExplainer() being *called*, not merely
+imported — promoting the import statements alone doesn't trigger either.
 """
 from __future__ import annotations
 

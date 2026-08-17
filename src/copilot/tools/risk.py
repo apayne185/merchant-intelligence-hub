@@ -22,8 +22,10 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+import joblib
 import numpy as np
 import pandas as pd
+import shap
 from src.copilot.tools.data_analyst import get_clean_transactions
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -149,8 +151,6 @@ def load_model(model_path: str | Path | None = None) -> Any:
     resolved = Path(model_path) if model_path is not None else DEFAULT_MODEL_PATH
     key = str(resolved.resolve())
     if key not in _MODEL_CACHE:
-        import joblib
-
         _MODEL_CACHE[key] = joblib.load(resolved)
     return _MODEL_CACHE[key]
 
@@ -169,10 +169,21 @@ def _get_explainer(model: Any) -> Any:
     time."""
     key = id(model)
     if key not in _EXPLAINER_CACHE:
-        import shap
-
         _EXPLAINER_CACHE[key] = shap.TreeExplainer(model.named_steps["clf"])
     return _EXPLAINER_CACHE[key]
+
+
+# Warms _MODEL_CACHE/_EXPLAINER_CACHE for DEFAULT_MODEL_PATH at import time
+# (module import happens once at process startup via graph.py — see its
+# docstring). Without this, `import shap`/`import joblib` above pay only
+# ~0.5s of the real cost: joblib.load()'s deserialization transitively
+# imports lightgbm and rebuilds the sklearn Pipeline (~1s measured), and
+# shap.TreeExplainer() parses the whole booster (~0.25s measured) — both
+# still deferred to whichever live request first routes to "risk" without
+# this call, exactly the startup-vs-first-request latency shift
+# terraform/ecs.tf's health_check_grace_period_seconds is meant to absorb.
+if DEFAULT_MODEL_PATH.exists():
+    _get_explainer(load_model())
 
 
 _GLOBAL_IMPORTANCE_CACHE: list[str] | None = None
