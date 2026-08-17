@@ -9,10 +9,14 @@ fargate_cpu    = "512"  # 0.5 vCPU
 fargate_memory = "1024" # 1 GB
 desired_count  = 1
 
+# "1" (default) = zero-cost, deterministic mock mode. Only set to "0"
+# alongside enable_openai_secret = true below, once the secret is actually
+# populated with a real key — these two are deliberately independent, so
+# enabling the secret alone never silently starts spending on OpenAI calls.
+mock_llm = "1"
+
 # Set true only if you want a Secrets-Manager-backed OPENAI_API_KEY wired
 # in for demoing real (non-mock) mode later. Costs ~$0.40/month while it
 # exists — destroyed along with everything else on `terraform destroy`
-# (recovery_window_in_days = 0). The app runs MOCK_LLM=1 regardless of
-# this flag; it just controls whether the *capability* to inject a real
-# key is provisioned.
+# (recovery_window_in_days = 0).
 enable_openai_secret = false

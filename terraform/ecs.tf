@@ -45,9 +45,11 @@ resource "aws_ecs_task_definition" "app" {
         protocol      = "tcp"
       }]
       environment = [
-        # Zero-cost, deterministic by default — same MOCK_LLM=1 pattern
-        # used everywhere else in this repo. See DECISIONS.md D22.
-        { name = "MOCK_LLM", value = "1" },
+        # var.mock_llm, not a hardcoded literal — controllable via tfvars
+        # without hand-editing this file. Defaults to "1": zero-cost,
+        # deterministic mock mode (DECISIONS.md D22), same pattern used
+        # everywhere else in this repo.
+        { name = "MOCK_LLM", value = var.mock_llm },
       ]
       secrets = var.enable_openai_secret ? [
         { name = "OPENAI_API_KEY", valueFrom = aws_secretsmanager_secret.openai_api_key[0].arn },
@@ -74,9 +76,11 @@ resource "aws_ecs_service" "app" {
   launch_type     = "FARGATE"
 
   # Gives the task time to finish its (heavy) import chain — pandas,
-  # sklearn, shap, lightgbm, duckdb, langgraph, agno all import at module
-  # load — before ALB health-check failures start counting against it.
-  # See DECISIONS.md D33.
+  # sklearn, shap, lightgbm, duckdb, langgraph, agno all import eagerly at
+  # module load (src/copilot/graph.py imports every tool at the top of the
+  # file specifically so this cost lands here, at startup, not on
+  # whichever live request is first to route to a given node) — before
+  # ALB health-check failures start counting against it. See DECISIONS.md D33.
   health_check_grace_period_seconds = 60
 
   network_configuration {

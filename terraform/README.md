@@ -93,12 +93,17 @@ exactly what it's about to create before it creates anything.
 
 ## Real (non-mock) mode
 
-Set `enable_openai_secret = true` in a `terraform.tfvars` (copy
-`terraform.tfvars.example`) before applying, then populate the created
-Secrets Manager secret with a real key and change `MOCK_LLM` to `0` (or
-remove it) in `ecs.tf`'s container definition, then re-apply. Not done by
-default — the whole point of this deployment is a zero-cost, deterministic
-demo.
+Two independent `terraform.tfvars` settings (copy `terraform.tfvars.example`),
+deliberately not coupled — enabling the secret alone never silently starts
+spending on OpenAI calls:
+
+1. `enable_openai_secret = true`, apply, then populate the created Secrets
+   Manager secret with a real key.
+2. `mock_llm = "0"`, apply again — this is what actually switches the
+   running container out of mock mode.
+
+Not done by default — the whole point of this deployment is a zero-cost,
+deterministic demo.
 
 ## What was and wasn't verified
 

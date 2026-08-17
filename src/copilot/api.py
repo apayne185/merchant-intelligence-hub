@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -43,12 +44,15 @@ app = FastAPI(
 )
 
 
+@lru_cache(maxsize=1)
 def get_graph():
-    """Factory for the compiled graph. Cheap to (re)compile — the tool
-    modules themselves cache their own expensive state (dataframes, models,
-    vector stores), not the graph object. Tests override this via
-    app.dependency_overrides, same pattern as src/parte4_api/main.py's
-    get_agent()/AgentDep.
+    """Factory for the compiled graph — cached: the graph's structure
+    (nodes/edges) is 100% static, so recompiling it fresh on every request
+    was pure repeated LangGraph build/compile/validation work for a
+    byte-identical result each time. `lru_cache` doesn't interfere with
+    tests overriding this via `app.dependency_overrides`, same pattern as
+    src/parte4_api/main.py's get_agent()/AgentDep — overriding replaces the
+    callable entirely, regardless of whether the default is cached.
     """
     return build_graph()
 

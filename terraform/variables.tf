@@ -46,6 +46,12 @@ variable "log_retention_days" {
   default     = 7
 }
 
+variable "mock_llm" {
+  description = "Value for the container's MOCK_LLM env var. \"1\" (default) = zero-cost, deterministic mock mode (DECISIONS.md D22) — same pattern used everywhere else in this repo. Set to \"0\" only alongside enable_openai_secret=true, once the secret is actually populated with a real key, to demo real (non-mock) mode. The two are independent flags: enabling the secret does NOT switch this on its own — that's intentional, so applying a secret never silently starts spending on OpenAI calls."
+  type        = string
+  default     = "1"
+}
+
 variable "enable_openai_secret" {
   description = "If true, provisions an empty-by-default Secrets Manager secret for OPENAI_API_KEY, wired into the task definition, so real (non-mock) mode can be demoed later by populating it and forcing a new deployment, without touching Terraform again. The app runs with MOCK_LLM=1 regardless of this flag — see DECISIONS.md D33 for the cost/recovery-window tradeoff."
   type        = bool
