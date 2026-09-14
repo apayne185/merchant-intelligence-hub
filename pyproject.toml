@@ -63,7 +63,7 @@ dependencies = [
     "ipykernel==7.3.0",
 
     # API stack (Parte 4) — uvicorn obligatorio
-    "fastapi==0.115.0",
+    "fastapi==0.141.1",
     "uvicorn[standard]==0.30.6",
     "pydantic==2.9.2",
 
