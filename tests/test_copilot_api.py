@@ -61,6 +61,13 @@ def test_ask_flagship_question(client: TestClient, force_fixture_csv: None) -> N
     assert body["mode"] == "mock"
     assert body["latency_ms"] >= 0
 
+    # Trace should have one span per node that actually ran (route +
+    # each routed tool + synthesize), all with a non-negative duration —
+    # see DECISIONS.md D37.
+    traced_nodes = {span["node"] for span in body["trace"]}
+    assert {"route", "risk", "grounding", "synthesize"}.issubset(traced_nodes)
+    assert all(span["duration_ms"] >= 0 for span in body["trace"])
+
 
 def test_ask_merchant_specific_question(client: TestClient, force_fixture_csv: None) -> None:
     payload = {"question": "Is this merchant at risk of churning and why?", "merchant_id": 90001}
@@ -91,11 +98,15 @@ def test_ask_response_matches_schema_fields(client: TestClient, force_fixture_cs
     r = client.post("/ask", json={"question": "What does onboarding require?"})
     assert r.status_code == 200
     body = r.json()
-    assert set(body.keys()) == {"question", "route", "answer", "citations", "tool_calls", "mode", "latency_ms"}
+    assert set(body.keys()) == {
+        "question", "route", "answer", "citations", "tool_calls", "mode", "latency_ms", "trace",
+    }
     for c in body["citations"]:
         assert set(c.keys()) == {"source_type", "id", "title", "excerpt"}
     for tc in body["tool_calls"]:
         assert set(tc.keys()) == {"tool", "args", "summary"}
+    for span in body["trace"]:
+        assert set(span.keys()) == {"node", "duration_ms"}
 
 
 def test_ask_invalid_input_missing_question(client: TestClient) -> None:
