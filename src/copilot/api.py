@@ -24,8 +24,9 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException
 from src.copilot.graph import build_graph
-from src.copilot.schemas import AskRequest, AskResponse
+from src.copilot.schemas import AskRequest, AskResponse, NodeTiming
 from src.copilot.state import initial_state
+from src.copilot.tracing import get_trace, traced
 from src.parte4_api.agent import is_mock_mode
 
 # Reused as-is (D22/D25's "share, don't duplicate" reasoning): the health
@@ -76,18 +77,31 @@ def health() -> HealthResponse:
 @app.post("/ask", response_model=AskResponse)
 def ask(req: AskRequest, graph: GraphDep) -> AskResponse:
     """Answers a natural-language merchant question by routing it through
-    the orchestrator graph."""
+    the orchestrator graph. The whole request runs inside a root
+    "copilot.ask" span (src/copilot/tracing.py) so every node span
+    graph.invoke() produces nests under it, sharing one trace_id — that
+    trace_id is what `trace` in the response is filtered by.
+    """
     t0 = time.perf_counter()
     mock = is_mock_mode()
 
     state = initial_state(req.question, merchant_id=req.merchant_id, locale=req.locale, mock=mock)
-    try:
-        result = graph.invoke(state)
-    except Exception:
-        # No exponer str(exc) al cliente — same reasoning as /classify:
-        # could leak request URLs, model config, or SDK stack traces.
-        logger.exception("copilot /ask failed for question=%r", req.question)
-        raise HTTPException(status_code=502, detail="copilot_error") from None
+    with traced("copilot.ask", mock=mock) as root_span:
+        trace_id = root_span.get_span_context().trace_id
+        try:
+            result = graph.invoke(state)
+        except Exception:
+            # No exponer str(exc) al cliente — same reasoning as /classify:
+            # could leak request URLs, model config, or SDK stack traces.
+            logger.exception("copilot /ask failed for question=%r", req.question)
+            raise HTTPException(status_code=502, detail="copilot_error") from None
+
+    node_spans = get_trace(trace_id)
+    trace_summary = [
+        NodeTiming(node=s["name"].removeprefix("copilot.node."), duration_ms=s["duration_ms"])
+        for s in node_spans
+        if s["name"] != "copilot.ask" and s["duration_ms"] is not None
+    ]
 
     # Distinct tools that actually fired, in first-occurrence order — not
     # the raw tool_calls list, which can have repeats (data_analyst logs
@@ -102,6 +116,7 @@ def ask(req: AskRequest, graph: GraphDep) -> AskResponse:
         tool_calls=result["tool_calls"],
         mode="mock" if mock else "real",
         latency_ms=int((time.perf_counter() - t0) * 1000),
+        trace=trace_summary,
     )
 
 

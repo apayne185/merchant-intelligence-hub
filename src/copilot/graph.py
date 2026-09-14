@@ -51,6 +51,7 @@ from src.copilot.tools.data_analyst import (
 )
 from src.copilot.tools.grounding import retrieve_policy
 from src.copilot.tools.risk import score_merchant
+from src.copilot.tracing import traced_node
 from src.parte1_pandas import merchants_at_risk
 
 TOOL_NODES = ["data_analyst", "risk", "grounding", "complaint_classifier"]
@@ -230,12 +231,20 @@ def build_graph():
     """Compiles the orchestrator graph. No checkpointer: /ask is stateless
     single-turn Q&A in this version — LangGraph's persistence layer would be
     unjustified complexity for that (see DECISIONS.md D26).
+
+    Every node is wrapped in an OTel span (src/copilot/tracing.py) here at
+    graph-construction time, not inside each node function — the node
+    functions above stay framework-agnostic (no tracing imports), matching
+    this module's own "tools don't know about graph state" boundary. A
+    no-op exporter by default (DECISIONS.md D37) means this costs a span
+    object per node per request even when tracing isn't configured, but
+    changes no behavior.
     """
     graph = StateGraph(CopilotState)
-    graph.add_node("route", router_node)
+    graph.add_node("route", traced_node("route", router_node))
     for name, fn in _NODE_FNS.items():
-        graph.add_node(name, fn)
-    graph.add_node("synthesize", synthesize_node)
+        graph.add_node(name, traced_node(name, fn))
+    graph.add_node("synthesize", traced_node("synthesize", synthesize_node))
 
     graph.add_edge(START, "route")
     path_map = {**{name: name for name in TOOL_NODES}, "synthesize": "synthesize"}

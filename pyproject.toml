@@ -81,6 +81,12 @@ dependencies = [
     # LLM-generated SQL).
     "duckdb>=1.5,<2",
 
+    # Observability (src/copilot/tracing.py) — standard OTel SDK API/span
+    # model, console/JSON exporter only, no collector to run. See
+    # DECISIONS.md D37 for why this over a hand-rolled tracer.
+    "opentelemetry-api==1.44.0",
+    "opentelemetry-sdk==1.44.0",
+
     # Utilidades comunes
     "python-dotenv==1.2.2",
 ]

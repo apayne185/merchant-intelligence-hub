@@ -32,6 +32,15 @@ class ToolCallRecord(BaseModel):
     summary: str = Field(..., max_length=300)
 
 
+class NodeTiming(BaseModel):
+    """One graph-node span's timing, from src/copilot/tracing.py — lets a
+    caller see which node was the bottleneck for this specific request,
+    not just the total latency_ms."""
+
+    node: str
+    duration_ms: float
+
+
 class RouteDecision(BaseModel):
     """Structured output for the real-mode router's Agno agent — no tools
     attached, classification + argument extraction only. Mirrors agent.py's
@@ -62,3 +71,4 @@ class AskResponse(BaseModel):
     tool_calls: list[ToolCallRecord]
     mode: Literal["mock", "real"]
     latency_ms: int
+    trace: list[NodeTiming] = Field(default_factory=list)

@@ -152,6 +152,49 @@ assertion (`tests/test_evaluate_retrieval.py`), not a separate
 `check_eval_floors.py` gate. See DECISIONS.md D36.*
 
 
+## Observabilidad (tracing por nodo)
+*Observability (per-node tracing)*
+
+Cada `POST /ask` devuelve un campo `trace`: cuánto tardó cada nodo del
+grafo (`route`, `data_analyst`, `risk`, `grounding`,
+`complaint_classifier`, `synthesize`), no solo el `latency_ms` total.
+
+```bash
+curl -s -X POST http://localhost:8001/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question": "Which merchants are trending toward churn?"}' \
+  | python -m json.tool
+# ... "trace": [{"node": "route", "duration_ms": 0.2}, {"node": "risk", "duration_ms": 777.2}, ...]
+```
+
+Implementado con el SDK real de OpenTelemetry (`src/copilot/tracing.py`) —
+mismo modelo de datos/API estándar de la industria, sin correr un
+collector. Por defecto es un no-op (cero overhead de exportación); un
+exportador real se activa vía env var:
+
+```bash
+COPILOT_TRACE_EXPORTER=console  uvicorn src.copilot.api:app --port 8001  # spans a stdout
+COPILOT_TRACE_EXPORTER=file     uvicorn src.copilot.api:app --port 8001  # spans a outputs/traces.jsonl
+```
+
+Ver DECISIONS.md D37 — incluye un hallazgo real (no relacionado con
+tracing) encontrado durante la verificación: la ruta heurística de
+`risk_node` sin `merchant_id` degrada mal contra el CSV real de ~200k
+filas (nunca ejercitada por tests/CI, que siempre fuerzan el fixture
+pequeño) — documentado, no arreglado, fuera de alcance de esta feature.
+*[EN]: Every `POST /ask` returns a `trace` field: how long each graph node
+took (`route`, `data_analyst`, `risk`, `grounding`,
+`complaint_classifier`, `synthesize`), not just the total `latency_ms`.
+Implemented with the real OpenTelemetry SDK (`src/copilot/tracing.py`) —
+the same industry-standard data model/API, no collector to run. No-op by
+default (zero export overhead); a real exporter is opt-in via env var (see
+above). See DECISIONS.md D37 — includes a real finding (unrelated to
+tracing) found during verification: `risk_node`'s heuristic path without a
+`merchant_id` degrades badly against the real ~200k-row CSV (never
+exercised by tests/CI, which always force the small fixture) — documented,
+not fixed, out of scope for this feature.*
+
+
 ## Protecciones del repo
 *Repo protections*
 
@@ -288,6 +331,7 @@ finding about its per-merchant inference behavior.*
 │   │   ├── router.py            #   route_mock() / route_real()
 │   │   ├── synthesis.py         #   synthesize_mock() / synthesize_real()
 │   │   ├── retrieval_core.py    #   vector store compartido (también usado por parte4_api/retrieval.py)
+│   │   ├── tracing.py           #   spans OTel por nodo, no-op por defecto (DECISIONS.md D37)
 │   │   └── tools/                #   data_analyst.py, risk.py, grounding.py, complaint_classifier.py
 │   ├── parte1_pandas.py        #4 funciones implementadas
 │   ├── parte1_pyspark.py       # mismas 4 funciones, PySpark DataFrame API + Delta Lake
