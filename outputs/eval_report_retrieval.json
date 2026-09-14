@@ -1,0 +1,378 @@
+{
+  "mode": "mock (TF-IDF)",
+  "corpus_size": 15,
+  "n_queries": 15,
+  "mrr": 0.9222,
+  "recall_at_k": {
+    "1": 0.8667,
+    "3": 1.0,
+    "5": 1.0
+  },
+  "category_precision_at_k": {
+    "1": 0.8667,
+    "3": 0.4889,
+    "5": 0.3333
+  },
+  "per_query": [
+    {
+      "query": "what documents does a new merchant need to submit before we activate their account?",
+      "expected_doc_ids": [
+        "RP-01"
+      ],
+      "top_5_retrieved": [
+        "RP-01",
+        "RP-07",
+        "RP-12",
+        "RP-10",
+        "RP-15"
+      ],
+      "reciprocal_rank": 1.0,
+      "recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "category_precision_at_k": {
+        "1": 1.0,
+        "3": 0.6667,
+        "5": 0.6
+      }
+    },
+    {
+      "query": "how do we decide if a merchant counts as SMB, MidMarket, or Enterprise?",
+      "expected_doc_ids": [
+        "RP-02"
+      ],
+      "top_5_retrieved": [
+        "RP-02",
+        "RP-10",
+        "RP-06",
+        "RP-08",
+        "RP-15"
+      ],
+      "reciprocal_rank": 1.0,
+      "recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "category_precision_at_k": {
+        "1": 1.0,
+        "3": 0.6667,
+        "5": 0.4
+      }
+    },
+    {
+      "query": "a merchant's approval rate has dropped this month, does that trigger anything automatically?",
+      "expected_doc_ids": [
+        "RP-03"
+      ],
+      "top_5_retrieved": [
+        "RP-03",
+        "RP-06",
+        "RP-02",
+        "RP-10",
+        "RP-04"
+      ],
+      "reciprocal_rank": 1.0,
+      "recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "category_precision_at_k": {
+        "1": 1.0,
+        "3": 0.6667,
+        "5": 0.4
+      }
+    },
+    {
+      "query": "the churn model flagged a merchant as high risk, what happens next?",
+      "expected_doc_ids": [
+        "RP-04"
+      ],
+      "top_5_retrieved": [
+        "RP-04",
+        "RP-15",
+        "RP-11",
+        "RP-05",
+        "RP-06"
+      ],
+      "reciprocal_rank": 1.0,
+      "recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "category_precision_at_k": {
+        "1": 1.0,
+        "3": 0.3333,
+        "5": 0.4
+      }
+    },
+    {
+      "query": "how fast does a complaint about possible fraud need to reach a human agent?",
+      "expected_doc_ids": [
+        "RP-05"
+      ],
+      "top_5_retrieved": [
+        "RP-05",
+        "RP-14",
+        "RP-15",
+        "RP-06",
+        "RP-09"
+      ],
+      "reciprocal_rank": 1.0,
+      "recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "category_precision_at_k": {
+        "1": 1.0,
+        "3": 0.6667,
+        "5": 0.4
+      }
+    },
+    {
+      "query": "we suspect fraudulent activity on a merchant's terminal, what's the procedure?",
+      "expected_doc_ids": [
+        "RP-06"
+      ],
+      "top_5_retrieved": [
+        "RP-06",
+        "RP-07",
+        "RP-08",
+        "RP-14",
+        "RP-04"
+      ],
+      "reciprocal_rank": 1.0,
+      "recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "category_precision_at_k": {
+        "1": 1.0,
+        "3": 0.3333,
+        "5": 0.2
+      }
+    },
+    {
+      "query": "how long does a merchant have to contest a chargeback before it's decided against them?",
+      "expected_doc_ids": [
+        "RP-07"
+      ],
+      "top_5_retrieved": [
+        "RP-07",
+        "RP-10",
+        "RP-03",
+        "RP-09",
+        "RP-11"
+      ],
+      "reciprocal_rank": 1.0,
+      "recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "category_precision_at_k": {
+        "1": 1.0,
+        "3": 0.3333,
+        "5": 0.2
+      }
+    },
+    {
+      "query": "can a merchant ask for a better pricing tier after they've been active a while?",
+      "expected_doc_ids": [
+        "RP-08"
+      ],
+      "top_5_retrieved": [
+        "RP-08",
+        "RP-06",
+        "RP-02",
+        "RP-01",
+        "RP-10"
+      ],
+      "reciprocal_rank": 1.0,
+      "recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "category_precision_at_k": {
+        "1": 1.0,
+        "3": 0.3333,
+        "5": 0.2
+      }
+    },
+    {
+      "query": "how long do we keep transaction records and complaint text, and does PII need to be removed?",
+      "expected_doc_ids": [
+        "RP-09"
+      ],
+      "top_5_retrieved": [
+        "RP-09",
+        "RP-07",
+        "RP-15",
+        "RP-14",
+        "RP-10"
+      ],
+      "reciprocal_rank": 1.0,
+      "recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "category_precision_at_k": {
+        "1": 1.0,
+        "3": 0.6667,
+        "5": 0.4
+      }
+    },
+    {
+      "query": "a merchant wants to close their account but has an unresolved billing dispute, what do we do?",
+      "expected_doc_ids": [
+        "RP-10"
+      ],
+      "top_5_retrieved": [
+        "RP-10",
+        "RP-06",
+        "RP-15",
+        "RP-04",
+        "RP-01"
+      ],
+      "reciprocal_rank": 1.0,
+      "recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "category_precision_at_k": {
+        "1": 1.0,
+        "3": 0.3333,
+        "5": 0.4
+      }
+    },
+    {
+      "query": "does a merchant in a high-risk category like online gambling get extra monitoring?",
+      "expected_doc_ids": [
+        "RP-11"
+      ],
+      "top_5_retrieved": [
+        "RP-11",
+        "RP-04",
+        "RP-15",
+        "RP-07",
+        "RP-12"
+      ],
+      "reciprocal_rank": 1.0,
+      "recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "category_precision_at_k": {
+        "1": 1.0,
+        "3": 0.3333,
+        "5": 0.2
+      }
+    },
+    {
+      "query": "does a small merchant under $50k in volume need the full corporate registration paperwork?",
+      "expected_doc_ids": [
+        "RP-12"
+      ],
+      "top_5_retrieved": [
+        "RP-12",
+        "RP-11",
+        "RP-01",
+        "RP-08",
+        "RP-07"
+      ],
+      "reciprocal_rank": 1.0,
+      "recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "category_precision_at_k": {
+        "1": 1.0,
+        "3": 0.6667,
+        "5": 0.4
+      }
+    },
+    {
+      "query": "a merchant suspended for fraud wants their account reinstated, what's required?",
+      "expected_doc_ids": [
+        "RP-13"
+      ],
+      "top_5_retrieved": [
+        "RP-06",
+        "RP-13",
+        "RP-03",
+        "RP-01",
+        "RP-15"
+      ],
+      "reciprocal_rank": 0.5,
+      "recall_at_k": {
+        "1": 0.0,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "category_precision_at_k": {
+        "1": 0.0,
+        "3": 0.3333,
+        "5": 0.2
+      }
+    },
+    {
+      "query": "what are the categories used to classify an incoming customer complaint?",
+      "expected_doc_ids": [
+        "RP-14"
+      ],
+      "top_5_retrieved": [
+        "RP-15",
+        "RP-04",
+        "RP-14",
+        "RP-09",
+        "RP-06"
+      ],
+      "reciprocal_rank": 0.3333,
+      "recall_at_k": {
+        "1": 0.0,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "category_precision_at_k": {
+        "1": 0.0,
+        "3": 0.6667,
+        "5": 0.4
+      }
+    },
+    {
+      "query": "can staff suspend a merchant's account based only on an automated risk score?",
+      "expected_doc_ids": [
+        "RP-15"
+      ],
+      "top_5_retrieved": [
+        "RP-15",
+        "RP-04",
+        "RP-11",
+        "RP-07",
+        "RP-08"
+      ],
+      "reciprocal_rank": 1.0,
+      "recall_at_k": {
+        "1": 1.0,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "category_precision_at_k": {
+        "1": 1.0,
+        "3": 0.3333,
+        "5": 0.2
+      }
+    }
+  ]
+}

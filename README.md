@@ -129,6 +129,29 @@ gate over this report and the complaint classifier's — see "Repo
 protections" below.*
 
 
+## Benchmark de retrieval (recall@k / MRR)
+*Retrieval benchmark (recall@k / MRR)*
+
+```bash
+MOCK_LLM=1 uv run python -m scripts.evaluate_retrieval
+# recall@1/3/5, MRR — TF-IDF (mock) sobre data/policy_docs.json
+uv run python -m scripts.evaluate_retrieval --both   # mock vs. OpenAI embeddings, lado a lado (requiere OPENAI_API_KEY)
+```
+
+A diferencia de `evaluate_copilot.py` (que valida citas end-to-end), este
+harness aísla la calidad del retriever en sí — recall@k y MRR sobre
+`data/golden_set_retrieval.json` (15 preguntas, una por cada policy doc).
+Piso documentado en modo mock: recall@3 100%, MRR ≥ 0.92, impuesto como
+aserción de pytest (`tests/test_evaluate_retrieval.py`), no como gate
+separado en `check_eval_floors.py`. Ver DECISIONS.md D36.
+*[EN]: Unlike `evaluate_copilot.py` (which validates end-to-end citations),
+this harness isolates retriever quality itself — recall@k and MRR over
+`data/golden_set_retrieval.json` (15 queries, one per policy doc).
+Documented mock-mode floor: recall@3 100%, MRR ≥ 0.92, enforced as a pytest
+assertion (`tests/test_evaluate_retrieval.py`), not a separate
+`check_eval_floors.py` gate. See DECISIONS.md D36.*
+
+
 ## Protecciones del repo
 *Repo protections*
 
@@ -278,10 +301,12 @@ finding about its per-merchant inference behavior.*
 ├── data/
 │   ├── transactions_sample.csv        # ~200k filas, no versionado / not versioned (.gitignore)
 │   ├── copilot_fixture_transactions.csv  # 222 filas, versionado, usado por tests/eval del copilot
-│   └── policy_docs.json               # 15 documentos de política sintéticos (RAG del Grounding agent)
+│   ├── policy_docs.json               # 15 documentos de política sintéticos (RAG del Grounding agent)
+│   └── golden_set_retrieval.json      # 15 queries, benchmark de retrieval (DECISIONS.md D36)
 ├── scripts/
 │   ├── evaluate_classifier.py  # golden-set eval del clasificador de reclamaciones (DECISIONS.md D21)
 │   ├── evaluate_copilot.py     # golden-set eval del copilot (DECISIONS.md D28)
+│   ├── evaluate_retrieval.py   # benchmark recall@k/MRR del retriever, mock vs. real (DECISIONS.md D36)
 │   ├── check_eval_floors.py    # gate de CI sobre ambos reportes (DECISIONS.md D29)
 │   └── generate_copilot_fixture.py  # generador determinístico del fixture de arriba
 ├── tests/
@@ -297,8 +322,9 @@ finding about its per-merchant inference behavior.*
     ├── monthly_kpis.csv, quality_report.json, merchants_at_risk.csv
     ├── monthly_kpis_spark.csv, quality_report_spark.json, merchants_at_risk_spark.csv
     ├── delta/                  # transactions_clean, monthly_kpis, merchants_at_risk (git-ignored)
-    ├── eval_report.json          # golden-set eval clasificador (DECISIONS.md D21)
-    ├── eval_report_copilot.json  # golden-set eval copilot (DECISIONS.md D28)
+    ├── eval_report.json           # golden-set eval clasificador (DECISIONS.md D21)
+    ├── eval_report_copilot.json   # golden-set eval copilot (DECISIONS.md D28)
+    ├── eval_report_retrieval.json # benchmark recall@k/MRR del retriever (DECISIONS.md D36)
     ├── metrics.json, model.pkl, feature_importance.csv, model_card.md
 ```
 
