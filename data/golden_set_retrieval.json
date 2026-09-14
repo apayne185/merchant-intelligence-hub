@@ -1,0 +1,62 @@
+[
+  {
+    "query": "what documents does a new merchant need to submit before we activate their account?",
+    "expected_doc_ids": ["RP-01"]
+  },
+  {
+    "query": "how do we decide if a merchant counts as SMB, MidMarket, or Enterprise?",
+    "expected_doc_ids": ["RP-02"]
+  },
+  {
+    "query": "a merchant's approval rate has dropped this month, does that trigger anything automatically?",
+    "expected_doc_ids": ["RP-03"]
+  },
+  {
+    "query": "the churn model flagged a merchant as high risk, what happens next?",
+    "expected_doc_ids": ["RP-04"]
+  },
+  {
+    "query": "how fast does a complaint about possible fraud need to reach a human agent?",
+    "expected_doc_ids": ["RP-05"]
+  },
+  {
+    "query": "we suspect fraudulent activity on a merchant's terminal, what's the procedure?",
+    "expected_doc_ids": ["RP-06"]
+  },
+  {
+    "query": "how long does a merchant have to contest a chargeback before it's decided against them?",
+    "expected_doc_ids": ["RP-07"]
+  },
+  {
+    "query": "can a merchant ask for a better pricing tier after they've been active a while?",
+    "expected_doc_ids": ["RP-08"]
+  },
+  {
+    "query": "how long do we keep transaction records and complaint text, and does PII need to be removed?",
+    "expected_doc_ids": ["RP-09"]
+  },
+  {
+    "query": "a merchant wants to close their account but has an unresolved billing dispute, what do we do?",
+    "expected_doc_ids": ["RP-10"]
+  },
+  {
+    "query": "does a merchant in a high-risk category like online gambling get extra monitoring?",
+    "expected_doc_ids": ["RP-11"]
+  },
+  {
+    "query": "does a small merchant under $50k in volume need the full corporate registration paperwork?",
+    "expected_doc_ids": ["RP-12"]
+  },
+  {
+    "query": "a merchant suspended for fraud wants their account reinstated, what's required?",
+    "expected_doc_ids": ["RP-13"]
+  },
+  {
+    "query": "what are the categories used to classify an incoming customer complaint?",
+    "expected_doc_ids": ["RP-14"]
+  },
+  {
+    "query": "can staff suspend a merchant's account based only on an automated risk score?",
+    "expected_doc_ids": ["RP-15"]
+  }
+]

@@ -56,6 +56,17 @@ jobs:
           MOCK_LLM: "1"
         run: uv run python -m scripts.evaluate_copilot
 
+      - name: Eval — retrieval quality benchmark (mock embedder)
+        # Informational report, not a hard gate here — the floors this
+        # benchmark cares about (recall@3, MRR) are already enforced as
+        # pytest assertions in tests/test_evaluate_retrieval.py, which runs
+        # as part of the Test step above. This step just regenerates
+        # outputs/eval_report_retrieval.json so it stays in sync with the
+        # committed golden set. See DECISIONS.md D36.
+        env:
+          MOCK_LLM: "1"
+        run: uv run python -m scripts.evaluate_retrieval
+
       - name: Eval gate — hard reliability floors
         # Unlike Lint above, this is NOT advisory — it fails the build.
         # Floors are anchored to committed baseline values (DECISIONS.md

@@ -1,4 +1,4 @@
-.PHONY: setup test test-api run run-copilot eval eval-copilot precommit lint clean help
+.PHONY: setup test test-api run run-copilot eval eval-copilot eval-retrieval precommit lint clean help
 
 # Gestor de dependencias por defecto: uv (https://docs.astral.sh/uv/).
 # Si no tienes uv: curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -12,6 +12,7 @@ help:
 	@echo "  make run         - arranca la API de reclamaciones (Parte 4, puerto 8000, MOCK_LLM=1)"
 	@echo "  make eval        - eval golden-set del clasificador de reclamaciones"
 	@echo "  make eval-copilot- eval golden-set del copilot"
+	@echo "  make eval-retrieval - benchmark recall@k/MRR del retriever (mock vs. real embeddings)"
 	@echo "  make precommit   - corre los hooks de pre-commit (ruff + gitleaks) sobre todo el repo"
 	@echo "  make lint        - chequeos con ruff"
 	@echo "  make clean       - elimina caches, .venv y artefactos build"
@@ -37,6 +38,9 @@ eval:
 
 eval-copilot:
 	MOCK_LLM=1 uv run python -m scripts.evaluate_copilot
+
+eval-retrieval:
+	MOCK_LLM=1 uv run python -m scripts.evaluate_retrieval
 
 precommit:
 	uv run pre-commit run --all-files
