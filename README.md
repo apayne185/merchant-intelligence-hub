@@ -225,6 +225,31 @@ exercised by tests/CI, which always force the small fixture) — documented,
 not fixed, out of scope for this feature.*
 
 
+## Backend Azure OpenAI (opcional)
+*Azure OpenAI backend (optional)*
+
+```bash
+export AZURE_OPENAI_ENDPOINT="https://<tu-recurso>.openai.azure.com/"
+export AZURE_OPENAI_API_KEY="..."
+export OPENAI_API_VERSION="2024-02-01"
+export AZURE_OPENAI_EMBEDDING_DEPLOYMENT="tu-deployment-de-embeddings"  # opcional, default text-embedding-3-small
+```
+
+Con `AZURE_OPENAI_ENDPOINT` configurado, tanto el Grounding tool como el
+retrieval de reclamaciones históricas (Parte 4) enrutan embeddings reales
+a través de Azure OpenAI en vez de api.openai.com — sin flag adicional,
+sin dependencia nueva (`openai.AzureOpenAI` ya viene en el SDK `openai`
+pineado). Sin esa variable, el comportamiento es exactamente el mismo de
+siempre (OpenAI plano en modo real, TF-IDF en `MOCK_LLM=1`). Ver
+DECISIONS.md D39.
+*[EN]: With `AZURE_OPENAI_ENDPOINT` configured, both the Grounding tool
+and the historical-complaints retrieval (Part 4) route real embeddings
+through Azure OpenAI instead of api.openai.com — no extra flag, no new
+dependency (`openai.AzureOpenAI` already ships in the pinned `openai`
+SDK). Without that variable, behavior is exactly as before (plain OpenAI
+in real mode, TF-IDF under `MOCK_LLM=1`). See DECISIONS.md D39.*
+
+
 ## Protecciones del repo
 *Repo protections*
 
