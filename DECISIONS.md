@@ -846,6 +846,156 @@
 
 ---
 
+### D38 · Multi-modal PDF/OCR ingestion — un pipeline nuevo alimentando el corpus existente, no un mecanismo de retrieval nuevo
+
+- **Qué faltaba**: El Grounding tool solo servía `data/policy_docs.json`
+  — 15 documentos de política escritos a mano, JSON limpio desde el
+  principio. El JD objetivo de esta ronda de mejoras pide explícitamente
+  "multi-modal integration (voice, text, image, PDF)" y un pipeline de
+  "Ingest, Enrich, Embed" (OCR, chunking, embeddings, indexado) — ninguna
+  ruta real de ingesta de documentos existía.
+- *What was missing: The Grounding tool only served `data/policy_docs.json`
+  — 15 hand-written policy documents, clean JSON from the start. This
+  round's target JD explicitly asks for "multi-modal integration (voice,
+  text, image, PDF)" and an "Ingest, Enrich, Embed" pipeline (OCR,
+  chunking, embeddings, indexing) — no real document-ingestion path
+  existed.*
+
+- **Qué hice**: `src/copilot/tools/ingestion.py` — extracción de texto
+  página por página vía `pypdf` (puro Python, sin binario de sistema,
+  siempre disponible), con fallback a OCR (`pytesseract` sobre imágenes
+  embebidas que `pypdf` ya expone vía `page.images`, sin necesitar
+  `pdf2image`/poppler como segundo binario de sistema) solo cuando una
+  página no tiene capa de texto real. `chunk_text()` parte el texto
+  extraído en límites de párrafo, con fallback a límites de oración para
+  un párrafo individual demasiado largo. `ingest_and_index()` persiste el
+  resultado como `data/ingested_docs/<prefix>.json`, en la misma forma
+  exacta `{id, title, category, text}` que `data/policy_docs.json` — y
+  ahí es donde se conecta con el Grounding tool: `grounding._load_policy_docs()`
+  ahora fusiona ambas fuentes en un solo corpus antes de indexarlo, en vez
+  de ser un segundo tool/nodo separado con sus propios patrones de router.
+  Una pregunta no necesita saber si la política citada vino del JSON
+  escrito a mano o de un PDF ingerido — ambos se buscan juntos por los
+  mismos `retrieve_policy()`/`known_policy_ids()`.
+- *What I did: `src/copilot/tools/ingestion.py` — per-page text extraction
+  via `pypdf` (pure Python, no system binary, always available), falling
+  back to OCR (`pytesseract` over embedded images `pypdf` already exposes
+  via `page.images`, avoiding `pdf2image`/poppler as a second system
+  binary) only when a page has no real text layer. `chunk_text()` splits
+  extracted text on paragraph boundaries, falling back to sentence
+  boundaries for a single paragraph that's still too long on its own.
+  `ingest_and_index()` persists the result as
+  `data/ingested_docs/<prefix>.json`, in the exact same
+  `{id, title, category, text}` shape as `data/policy_docs.json` — and
+  that's where it connects to the Grounding tool:
+  `grounding._load_policy_docs()` now merges both sources into one corpus
+  before indexing it, rather than being a second, separate tool/node with
+  its own router patterns. A question doesn't need to know whether the
+  cited policy came from the hand-written JSON or an ingested PDF — both
+  are searched together through the same `retrieve_policy()`/
+  `known_policy_ids()`.*
+
+- **Por qué OCR real requiere una comprobación explícita, no solo un
+  import**: `pytesseract` es una librería Python que se importa sin
+  problema sin el binario `tesseract` instalado — pero *llamar* a
+  `pytesseract.image_to_string()` sin el binario falla en tiempo de
+  ejecución. `tesseract` no está instalado en esta máquina ni en CI (y
+  añadirlo como dependencia de sistema real, vía `apt-get` en CI y en el
+  Dockerfile junto al `libgomp1` ya documentado en D33, rompería la
+  invariante de este repo de que `MOCK_LLM=1` y la suite de tests
+  funcionan solos, offline, sin dependencias de sistema). `is_ocr_available()`
+  comprueba `shutil.which("tesseract")` explícitamente — no la
+  importabilidad de `pytesseract` — así que una página sin capa de texto
+  en un entorno sin `tesseract` se marca honestamente como "unavailable"
+  (con `OCR_UNAVAILABLE_MARKER`, no un string vacío silencioso) en vez de
+  fingir un OCR que nunca corrió. El mismo split real/mock que
+  `OpenAIEmbedder` vs `MockEmbedder` en `retrieval_core.py`, aplicado a
+  OCR en vez de embeddings.
+- *Why real OCR needs an explicit check, not just an import:
+  `pytesseract` is a Python library that imports fine without the
+  `tesseract` binary installed — but *calling*
+  `pytesseract.image_to_string()` without the binary fails at runtime.
+  `tesseract` isn't installed on this machine or in CI (and adding it as
+  a real system dependency, via `apt-get` in CI and the Dockerfile
+  alongside the already-documented `libgomp1` from D33, would break this
+  repo's invariant that `MOCK_LLM=1` and the test suite work standalone,
+  offline, with zero system dependencies). `is_ocr_available()` checks
+  `shutil.which("tesseract")` explicitly — not `pytesseract`'s
+  importability — so a page with no text layer in an environment without
+  `tesseract` is honestly marked "unavailable" (via
+  `OCR_UNAVAILABLE_MARKER`, not a silent empty string) instead of
+  pretending OCR ran when it didn't. The same real/mock split as
+  `OpenAIEmbedder` vs `MockEmbedder` in `retrieval_core.py`, applied to
+  OCR instead of embeddings.*
+
+- **Verificado**: PDFs de prueba construidos en memoria con el propio
+  `PdfWriter` de `pypdf` (un content stream escrito a mano con operadores
+  `BT`/`Tj`/`ET`) en vez de assets binarios commiteados — 29 tests nuevos
+  entre `test_copilot_ingestion.py` (extracción, chunking, persistencia) y
+  la extensión de `test_copilot_grounding.py` (fusión de corpus,
+  incluyendo que las aserciones existentes de "exactamente 15 docs" siguen
+  pasando cuando no se ingirió nada). Suite completa: 172 passed / 1
+  skipped. `evaluate_copilot.py` y `check_eval_floors.py` sin cambios
+  (`data/ingested_docs/` no existe en un checkout limpio ni en CI, así que
+  `known_policy_ids()` cae naturalmente de vuelta a los 15 docs
+  originales).
+- *Verified: Test PDFs built in-memory with `pypdf`'s own `PdfWriter` (a
+  hand-written content stream using `BT`/`Tj`/`ET` operators) rather than
+  committed binary assets — 29 new tests between `test_copilot_ingestion.py`
+  (extraction, chunking, persistence) and the extension to
+  `test_copilot_grounding.py` (corpus merge, including that the existing
+  "exactly 15 docs" assertions still pass when nothing's been ingested).
+  Full suite: 172 passed / 1 skipped. `evaluate_copilot.py` and
+  `check_eval_floors.py` unchanged (`data/ingested_docs/` doesn't exist on
+  a fresh checkout or in CI, so `known_policy_ids()` naturally falls back
+  to the original 15 docs).*
+
+- **Qué descarté**: `pdf2image` (rasteriza una página PDF completa a
+  imagen vía poppler) como el camino "estándar" para dar entrada a OCR —
+  descartado porque poppler sería un *segundo* binario de sistema junto a
+  `tesseract`, cuando `pypdf`'s propio `page.images` ya da acceso directo
+  a imágenes ráster embebidas sin necesitar un paso de renderizado — cubre
+  el caso real (una página escaneada es una imagen de página completa
+  embebida en el PDF, no contenido vectorial que necesite rasterizarse)
+  con una dependencia de sistema menos. Un nodo/tool separado
+  `ingested_docs` en el grafo con sus propios patrones de router —
+  descartado (decisión explícita del usuario) a favor de fusionar en el
+  corpus existente del Grounding tool: menos superficie nueva, y una
+  pregunta no necesita enrutarse de forma diferente solo porque la fuente
+  del documento cambió de formato.
+- *What I discarded: `pdf2image` (rasterizes a whole PDF page to an image
+  via poppler) as the "standard" way to feed OCR — discarded because
+  poppler would be a *second* system binary alongside `tesseract`, when
+  `pypdf`'s own `page.images` already gives direct access to embedded
+  raster images without a render step — covers the real case (a scanned
+  page is one full-page image embedded in the PDF, not vector content
+  needing rasterizing) with one fewer system dependency. A separate
+  `ingested_docs` graph node/tool with its own router patterns —
+  discarded (explicit user decision) in favor of merging into the
+  Grounding tool's existing corpus: less new surface, and a question
+  doesn't need to route differently just because the document's source
+  format changed.*
+
+- **Qué asumí**: Que un chunker simple por párrafo/oración (sin overlap,
+  sin awareness de tokens) es suficiente para el tipo de documento que
+  este repo maneja — folletos de política, formularios KYC — no el caso de
+  long-context-window que un chunker de producción necesitaría optimizar.
+  También asumí que un directorio `data/ingested_docs/` vacío/ausente en
+  un checkout limpio es el estado correcto por defecto — el pipeline de
+  ingesta es de propósito general, no atado a un documento fuente
+  específico, así que no hay un PDF de ejemplo "canónico" que debiera
+  pre-sembrarse ahí.
+- *What I assumed: That a simple paragraph/sentence chunker (no overlap,
+  no token-awareness) is sufficient for the kind of document this repo
+  handles — policy booklets, KYC forms — not the long-context-window case
+  a production chunker would need to optimize for. Also assumed an
+  empty/absent `data/ingested_docs/` directory on a fresh checkout is the
+  correct default state — the ingestion pipeline is general-purpose, not
+  tied to one specific source document, so there's no "canonical" sample
+  PDF that should be pre-seeded there.*
+
+---
+
 
 
 
