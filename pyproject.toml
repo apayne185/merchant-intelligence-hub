@@ -42,7 +42,7 @@ keywords = ["ai-agents", "langgraph", "rag", "llm", "data-engineering", "machine
 # -----------------------------------------------------------------------------
 dependencies = [
     # Data & ML
-    "pandas==2.2.3",
+    "pandas==2.3.3",
     # numpy 1.26.4 has no Python 3.13 wheel (last 1.26.x release, predates
     # 3.13's Oct-2024 launch) — uv falls back to a from-source build, which
     # is what made CI hang for 2+ hours instead of the ~1min local install.
