@@ -81,6 +81,16 @@ dependencies = [
     # LLM-generated SQL).
     "duckdb>=1.5,<2",
 
+    # Multi-modal ingestion (src/copilot/tools/ingestion.py) — pypdf is
+    # pure-Python (no system binary), so PDF text extraction always works.
+    # pytesseract/Pillow import fine standalone too; only *calling*
+    # pytesseract.image_to_string() needs the tesseract system binary,
+    # gated behind an availability check so MOCK_LLM=1 and tests never
+    # require it — see DECISIONS.md D38.
+    "pypdf==6.18.1",
+    "pytesseract==0.3.13",
+    "Pillow==12.3.0",
+
     # Utilidades comunes
     "python-dotenv==1.2.2",
 ]
