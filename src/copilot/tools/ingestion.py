@@ -4,10 +4,14 @@ Ingestion tool — PDF (text + scanned/image) document intake for RAG.
 Extends the Grounding tool's corpus model (data/policy_docs.json, a flat
 JSON list of {id, title, category, text}) to documents that don't start
 out as clean JSON: a real PDF, uploaded once and turned into the same
-record shape via extraction -> chunking -> the existing
-retrieval_core.get_corpus_store() machinery. See DECISIONS.md D38 for why
-this is a separate ingestion *pipeline* feeding the same corpus format,
-not a new retrieval mechanism.
+record shape via extraction -> chunking -> data/ingested_docs/*.json.
+src.copilot.tools.grounding._load_policy_docs() merges those files into
+its own corpus loader, so retrieval stays a single unified search over
+retrieval_core's vector-store machinery — this module never queries
+anything itself, it only produces records grounding.py's existing
+retrieve_policy()/known_policy_ids() already know how to serve. See
+DECISIONS.md D38 for why this is a separate ingestion *pipeline* feeding
+one shared corpus, not a second retrieval mechanism.
 
 Two extraction paths per page, tried in order:
   1. pypdf text extraction — pure-Python, no system binary, always
@@ -33,18 +37,15 @@ from pathlib import Path
 from typing import Any
 
 from pypdf import PdfReader
-from src.copilot.retrieval_core import dedupe_by_field, fit_to_budget, get_corpus_store
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = REPO_ROOT / "data"
 INGESTED_DOCS_DIR = DATA_DIR / "ingested_docs"
 
-CORPUS_NAME = "ingested_docs"
-DEFAULT_MAX_CONTEXT_CHARS = 800
 # Chunk size for splitting extracted page text into corpus records — same
-# order of magnitude as DEFAULT_MAX_CONTEXT_CHARS (D20's budget), so a
-# single retrieved chunk doesn't itself blow the context budget before
-# fit_to_budget() even gets to truncate it.
+# order of magnitude as grounding.py's DEFAULT_MAX_CONTEXT_CHARS (D20's
+# budget), so a single retrieved chunk doesn't itself blow the context
+# budget before fit_to_budget() even gets to truncate it.
 DEFAULT_CHUNK_CHARS = 600
 
 OCR_UNAVAILABLE_MARKER = "[page has no extractable text layer; OCR not available in this environment]"
@@ -174,52 +175,19 @@ def ingest_and_index(
     max_chunk_chars: int = DEFAULT_CHUNK_CHARS,
 ) -> list[dict[str, Any]]:
     """Runs ingest_pdf() and persists the result as
-    data/ingested_docs/<doc_id_prefix>.json, so a later process (or the
-    same one, after this file's module-level corpus-store cache is
-    invalidated by restarting) can find it via _load_ingested_docs(). One
-    file per source document rather than one shared file for every
-    ingested PDF — an ingest re-run for the same doc_id_prefix cleanly
-    overwrites just that document's file, and a caller can inspect what a
-    specific ingestion produced without loading everything else ingested.
+    data/ingested_docs/<doc_id_prefix>.json — the next call to
+    grounding.retrieve_policy()/known_policy_ids() picks it up
+    automatically via grounding._load_policy_docs()'s merge of this
+    directory (subject to retrieval_core's per-process corpus-store cache,
+    same as any other change to policy_docs.json — see DECISIONS.md
+    D34/D35). One file per source document rather than one shared file for
+    every ingested PDF — an ingest re-run for the same doc_id_prefix
+    cleanly overwrites just that document's file, and a caller can inspect
+    what a specific ingestion produced without loading everything else
+    ingested.
     """
     records = ingest_pdf(pdf_path, doc_id_prefix, title, category, max_chunk_chars)
     INGESTED_DOCS_DIR.mkdir(parents=True, exist_ok=True)
     out_path = INGESTED_DOCS_DIR / f"{doc_id_prefix}.json"
     out_path.write_text(json.dumps(records, indent=2))
     return records
-
-
-def _load_ingested_docs() -> list[dict[str, Any]]:
-    if not INGESTED_DOCS_DIR.exists():
-        return []
-    records: list[dict[str, Any]] = []
-    for path in sorted(INGESTED_DOCS_DIR.glob("*.json")):
-        records.extend(json.loads(path.read_text()))
-    return records
-
-
-def known_ingested_ids(mock: bool = True) -> set[str]:
-    """Mirrors grounding.py's known_policy_ids() — same
-    hallucination-check use case (DECISIONS.md D34/D35), same reasoning
-    for reading the cached store rather than re-reading disk."""
-    store, _ = get_corpus_store(CORPUS_NAME, _load_ingested_docs, text_field="text", mock=mock)
-    return {d["id"] for d in store.records}
-
-
-def retrieve_ingested(
-    query_text: str,
-    k: int = 3,
-    mock: bool = True,
-    max_context_chars: int = DEFAULT_MAX_CONTEXT_CHARS,
-) -> list[dict[str, Any]]:
-    """Retrieves the top-k ingested-document chunks most similar to
-    `query_text`. Identical shape to grounding.py's retrieve_policy() —
-    intentionally, so the orchestrator (or a future graph node) can treat
-    ingested PDFs as just another citeable corpus."""
-    store, embedder = get_corpus_store(CORPUS_NAME, _load_ingested_docs, text_field="text", mock=mock)
-    if len(store) == 0:
-        return []
-    query_vec = embedder.embed([query_text])[0]
-    raw_results = store.query(query_vec, k=k * 2)
-    docs = dedupe_by_field(raw_results, field="text")[:k]
-    return fit_to_budget(docs, max_context_chars, field="text")

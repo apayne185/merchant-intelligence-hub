@@ -7,6 +7,15 @@ DECISIONS.md D22) for a second, independent corpus (data/policy_docs.json)
 instead of a duplicate retrieval implementation. Same anti-overengineering
 reasoning as DECISIONS.md D17-D19: ~15 records, brute-force cosine search is
 still microseconds — no vector DB warranted.
+
+The corpus this tool searches is policy_docs.json PLUS any PDFs run through
+src.copilot.tools.ingestion.ingest_and_index() (data/ingested_docs/*.json)
+— one merged corpus, not two separately-queried ones stitched together
+after the fact. ingest_and_index() deliberately produces records in this
+exact {id, title, category, text} shape so a scanned/ingested policy PDF
+and a hand-written policy_docs.json entry are indistinguishable to
+retrieval — a question doesn't need to know or care which pipeline
+produced the document it cites. See DECISIONS.md D38.
 """
 from __future__ import annotations
 
@@ -15,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from src.copilot.retrieval_core import dedupe_by_field, fit_to_budget, get_corpus_store
+from src.copilot.tools import ingestion as ingestion_module
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = REPO_ROOT / "data"
@@ -26,9 +36,19 @@ DEFAULT_MAX_CONTEXT_CHARS = 800
 
 
 def _load_policy_docs() -> list[dict[str, Any]]:
-    if not POLICY_DOCS_PATH.exists():
-        return []
-    return json.loads(POLICY_DOCS_PATH.read_text())
+    """Reads ingestion_module.INGESTED_DOCS_DIR (not a `from ... import
+    INGESTED_DOCS_DIR` bound name) specifically so tests can monkeypatch
+    the ingestion module's attribute and have this function see it — a
+    bare-name import would freeze the path at this module's own import
+    time, making that monkeypatch a silent no-op."""
+    records: list[dict[str, Any]] = []
+    if POLICY_DOCS_PATH.exists():
+        records.extend(json.loads(POLICY_DOCS_PATH.read_text()))
+    ingested_dir = ingestion_module.INGESTED_DOCS_DIR
+    if ingested_dir.exists():
+        for path in sorted(ingested_dir.glob("*.json")):
+            records.extend(json.loads(path.read_text()))
+    return records
 
 
 def known_policy_ids(mock: bool = True) -> set[str]:

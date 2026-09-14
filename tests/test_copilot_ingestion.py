@@ -18,33 +18,15 @@ import pytest
 from pypdf import PdfWriter
 from pypdf.generic import DictionaryObject, NameObject
 from pypdf.generic._data_structures import ContentStream
-from src.copilot.retrieval_core import _CORPUS_STORE_CACHE
 from src.copilot.tools import ingestion as ing_module
 from src.copilot.tools.ingestion import (
-    CORPUS_NAME,
     OCR_UNAVAILABLE_MARKER,
     chunk_text,
     extract_pdf_pages,
     ingest_and_index,
     ingest_pdf,
     is_ocr_available,
-    known_ingested_ids,
-    retrieve_ingested,
 )
-
-
-@pytest.fixture(autouse=True)
-def _reset_ingested_corpus_cache():
-    """retrieval_core.get_corpus_store() caches by (corpus_name, mock) for
-    the process lifetime (D19) — every test in this file uses the same
-    CORPUS_NAME ("ingested_docs") with different underlying data, so
-    without clearing the cache between tests, only the first test to call
-    known_ingested_ids()/retrieve_ingested() would ever see real data;
-    every test after it would see that first test's stale cached store.
-    """
-    _CORPUS_STORE_CACHE.pop((CORPUS_NAME, True), None)
-    yield
-    _CORPUS_STORE_CACHE.pop((CORPUS_NAME, True), None)
 
 
 def _add_text_page(writer: PdfWriter, text: str) -> None:
@@ -184,9 +166,12 @@ def test_ingest_pdf_custom_category(tmp_path: Path) -> None:
 
 
 # -----------------------------------------------------------------------------
-# ingest_and_index / known_ingested_ids / retrieve_ingested — the persisted,
-# retrievable end of the pipeline. INGESTED_DOCS_DIR is monkeypatched to a
-# tmp_path per test so these never touch the real data/ingested_docs/.
+# ingest_and_index — persists to disk. Retrieval over the result is tested
+# in tests/test_copilot_grounding.py, since grounding._load_policy_docs()
+# is what actually merges data/ingested_docs/*.json into the searchable
+# corpus (see DECISIONS.md D38) — this module never queries anything
+# itself. INGESTED_DOCS_DIR is monkeypatched to a tmp_path so this never
+# touches the real data/ingested_docs/.
 # -----------------------------------------------------------------------------
 def test_ingest_and_index_persists_one_json_file_per_doc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ing_module, "INGESTED_DOCS_DIR", tmp_path / "ingested_docs")
@@ -197,29 +182,13 @@ def test_ingest_and_index_persists_one_json_file_per_doc(tmp_path: Path, monkeyp
     assert (out_dir / "CB.json").exists()
 
 
-def test_known_ingested_ids_reflects_indexed_docs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ingest_and_index_overwrites_same_prefix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ing_module, "INGESTED_DOCS_DIR", tmp_path / "ingested_docs")
-    pdf = _build_pdf(tmp_path, ["Onboarding requires a valid ID."])
-    ingest_and_index(pdf, doc_id_prefix="OB", title="Onboarding Guide")
+    pdf_v1 = _build_pdf(tmp_path, ["Version one text."])
+    ingest_and_index(pdf_v1, doc_id_prefix="V", title="Doc")
 
-    assert known_ingested_ids() == {"OB-001"}
+    pdf_v2 = _build_pdf(tmp_path, ["Version two text, completely different."])
+    records = ingest_and_index(pdf_v2, doc_id_prefix="V", title="Doc")
 
-
-def test_known_ingested_ids_empty_when_nothing_ingested(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ing_module, "INGESTED_DOCS_DIR", tmp_path / "ingested_docs")
-    assert known_ingested_ids() == set()
-
-
-def test_retrieve_ingested_finds_relevant_chunk(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ing_module, "INGESTED_DOCS_DIR", tmp_path / "ingested_docs")
-    pdf = _build_pdf(tmp_path, ["Refund requests must be submitted within 30 days of purchase."])
-    ingest_and_index(pdf, doc_id_prefix="RF", title="Refund Policy")
-
-    results = retrieve_ingested("refund window in days")
-    assert len(results) == 1
-    assert "30 days" in results[0]["text"]
-
-
-def test_retrieve_ingested_returns_empty_for_empty_corpus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ing_module, "INGESTED_DOCS_DIR", tmp_path / "ingested_docs")
-    assert retrieve_ingested("anything") == []
+    assert len(records) == 1
+    assert "Version two" in records[0]["text"]
