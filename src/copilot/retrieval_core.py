@@ -17,11 +17,20 @@ is unchanged by this extraction.
 """
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from typing import Any, Protocol
 
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
+
+# AZURE_OPENAI_ENDPOINT is the one env var Microsoft's SDK docs treat as
+# "Azure is configured" — api_key/api_version have same-named non-Azure
+# fallbacks (AZURE_OPENAI_API_KEY isn't the same var as OPENAI_API_KEY, but
+# both mean "some OpenAI-compatible API key exists"), while an Azure
+# resource endpoint URL has no ambiguous non-Azure meaning. So it's what
+# _select_real_embedder() below branches on. See DECISIONS.md D39.
+_AZURE_ENDPOINT_ENV_VAR = "AZURE_OPENAI_ENDPOINT"
 
 
 # -----------------------------------------------------------------------------
@@ -123,6 +132,53 @@ class OpenAIEmbedder:
         return np.array([item.embedding for item in response.data])
 
 
+class AzureOpenAIEmbedder:
+    """Real embeddings via an Azure OpenAI resource — same
+    embeddings.create() call shape as OpenAIEmbedder, but against an
+    Azure-hosted deployment instead of api.openai.com. See DECISIONS.md
+    D39 for why this is a third branch alongside Mock/OpenAI rather than a
+    replacement for either.
+
+    `model` here is the Azure **deployment name**, not the underlying
+    model id (e.g. "text-embedding-3-small") — Azure OpenAI resources
+    route by deployment, a resource-specific name an admin chose when
+    creating the deployment, which may or may not match the model id
+    itself. Defaults to AZURE_OPENAI_EMBEDDING_DEPLOYMENT so this can be
+    swapped without a code change if a deployment gets renamed.
+    """
+
+    def __init__(self, model: str | None = None) -> None:
+        from openai import AzureOpenAI
+
+        # AzureOpenAI() with no args already reads AZURE_OPENAI_API_KEY,
+        # AZURE_OPENAI_ENDPOINT, and OPENAI_API_VERSION from the
+        # environment (see the openai SDK's own docstring) — no need to
+        # thread them through here ourselves, same as OpenAIEmbedder
+        # leaning on OpenAI()'s OPENAI_API_KEY auto-read above.
+        self._client = AzureOpenAI()
+        self._model = model or os.environ.get("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-small")
+
+    def embed(self, texts: list[str]) -> np.ndarray:
+        response = self._client.embeddings.create(model=self._model, input=texts)
+        return np.array([item.embedding for item in response.data])
+
+
+def _select_real_embedder() -> Embedder:
+    """Picks the real (non-mock) embedder backend. AZURE_OPENAI_ENDPOINT
+    present means an Azure resource is actually configured for this
+    process — route there; otherwise fall back to plain OpenAI, unchanged
+    from before this function existed. Deliberately NOT gated by a
+    separate "which backend" flag: the presence of Azure-specific
+    configuration is itself the signal, so a deployment that sets
+    AZURE_OPENAI_ENDPOINT gets Azure without needing a second env var to
+    also flip, and a deployment that never sets it keeps working exactly
+    as before with zero config changes. See DECISIONS.md D39.
+    """
+    if os.environ.get(_AZURE_ENDPOINT_ENV_VAR):
+        return AzureOpenAIEmbedder()
+    return OpenAIEmbedder()
+
+
 # -----------------------------------------------------------------------------
 # Generic context-window management — see DECISIONS.md D20 for the original
 # rationale (near-duplicate cases waste context budget; unbounded text could
@@ -183,7 +239,7 @@ def get_corpus_store(
     if key not in _CORPUS_STORE_CACHE:
         records = loader()
         texts = [r[text_field] for r in records]
-        embedder: Embedder = MockEmbedder(texts) if mock else OpenAIEmbedder()
+        embedder: Embedder = MockEmbedder(texts) if mock else _select_real_embedder()
         store = SimpleVectorStore()
         if texts:
             store.add(records, embedder.embed(texts))

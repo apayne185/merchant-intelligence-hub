@@ -13,9 +13,14 @@ import json
 from pathlib import Path
 from typing import Any
 
-from src.copilot.retrieval_core import Embedder, SimpleVectorStore, dedupe_by_field, fit_to_budget
+from src.copilot.retrieval_core import (
+    Embedder,
+    SimpleVectorStore,
+    _select_real_embedder,
+    dedupe_by_field,
+    fit_to_budget,
+)
 from src.copilot.retrieval_core import MockEmbedder as _MockEmbedder
-from src.copilot.retrieval_core import OpenAIEmbedder as _OpenAIEmbedder
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "data"
@@ -24,9 +29,12 @@ HISTORICAL_COMPLAINTS_PATH = DATA_DIR / "historical_complaints.json"
 # SimpleVectorStore, Embedder, and the mock/real embedders now live in
 # src/copilot/retrieval_core.py — extracted so the Grounding tool's second
 # corpus (data/policy_docs.json) can share this mechanism instead of a
-# duplicate copy. See DECISIONS.md D22. Everything below (caching,
-# dedup/budget wrappers, retrieve_similar_cases) is this module's own
-# corpus-specific logic and is unchanged.
+# duplicate copy. See DECISIONS.md D22. _select_real_embedder() (D39)
+# routes real-mode requests to Azure OpenAI when AZURE_OPENAI_ENDPOINT is
+# configured, plain OpenAI otherwise — shared so this corpus and the
+# Grounding tool's get the same Azure support, not just one of them.
+# Everything below (caching, dedup/budget wrappers, retrieve_similar_cases)
+# is this module's own corpus-specific logic and is unchanged.
 
 
 # -----------------------------------------------------------------------------
@@ -50,7 +58,7 @@ def build_case_store(mock: bool) -> tuple[SimpleVectorStore, Embedder]:
     records = _load_historical_complaints()
     texts = [r["email_text"] for r in records]
 
-    embedder: Embedder = _MockEmbedder(texts) if mock else _OpenAIEmbedder()
+    embedder: Embedder = _MockEmbedder(texts) if mock else _select_real_embedder()
 
     store = SimpleVectorStore()
     if texts:
