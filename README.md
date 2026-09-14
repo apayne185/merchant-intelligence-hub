@@ -91,7 +91,7 @@ competing patterns. Everything runs deterministically and at zero cost with
 |---|---|---|
 | Data Analyst | KPIs/SQL reales sobre transacciones / Real KPI/SQL over transactions | DuckDB, consultas parametrizadas — `src/copilot/tools/data_analyst.py` |
 | Risk | Puntúa el riesgo de churn de un merchant / Scores a merchant's churn risk | `outputs/model.pkl` (LightGBM) + SHAP por instancia / per-instance SHAP — `tools/risk.py` |
-| Grounding | RAG sobre políticas internas / RAG over internal policy | `data/policy_docs.json`, vector store propio / in-repo vector store — `tools/grounding.py` |
+| Grounding | RAG sobre políticas internas / RAG over internal policy | `data/policy_docs.json` + PDFs ingeridos (`data/ingested_docs/`), vector store propio / in-repo vector store — `tools/grounding.py`, `tools/ingestion.py` |
 | Complaint classifier | Clasifica una reclamación pegada / Classifies a pasted complaint | Agente Agno existente (Parte 4) / existing Agno agent (Part 4) — `tools/complaint_classifier.py` |
 
 Decisiones técnicas completas en `DECISIONS.md`, sección "Parte 6 · Merchant
@@ -150,6 +150,36 @@ this harness isolates retriever quality itself — recall@k and MRR over
 Documented mock-mode floor: recall@3 100%, MRR ≥ 0.92, enforced as a pytest
 assertion (`tests/test_evaluate_retrieval.py`), not a separate
 `check_eval_floors.py` gate. See DECISIONS.md D36.*
+
+
+## Ingesta multi-modal (PDF/OCR)
+*Multi-modal ingestion (PDF/OCR)*
+
+```python
+from src.copilot.tools.ingestion import ingest_and_index
+
+ingest_and_index("refund_policy_scan.pdf", doc_id_prefix="RF", title="Refund Policy Addendum")
+# -> data/ingested_docs/RF.json, en el mismo formato que policy_docs.json
+```
+
+Extrae texto página por página vía `pypdf` (puro Python, sin binario de
+sistema); si una página no tiene capa de texto (un escaneo), intenta OCR
+(`pytesseract`) solo si el binario `tesseract` está realmente instalado —
+si no, la página se marca explícitamente como no disponible, sin fingir un
+OCR que no corrió. El documento ingerido y chunkeado se fusiona
+automáticamente con `data/policy_docs.json` en el mismo corpus que sirve
+`retrieve_policy()` — no hay un tool/nodo separado, una pregunta se
+responde igual sin importar si la política citada era JSON escrito a mano
+o un PDF ingerido. Ver DECISIONS.md D38.
+*[EN]: Extracts text page-by-page via `pypdf` (pure Python, no system
+binary); if a page has no text layer (a scan), attempts OCR
+(`pytesseract`) only if the `tesseract` binary is actually installed —
+otherwise the page is explicitly marked unavailable, never faking OCR
+that didn't run. The ingested, chunked document is automatically merged
+with `data/policy_docs.json` into the same corpus `retrieve_policy()`
+serves — no separate tool/node, a question is answered the same way
+whether the cited policy was hand-written JSON or an ingested PDF. See
+DECISIONS.md D38.*
 
 
 ## Protecciones del repo
@@ -288,7 +318,7 @@ finding about its per-merchant inference behavior.*
 │   │   ├── router.py            #   route_mock() / route_real()
 │   │   ├── synthesis.py         #   synthesize_mock() / synthesize_real()
 │   │   ├── retrieval_core.py    #   vector store compartido (también usado por parte4_api/retrieval.py)
-│   │   └── tools/                #   data_analyst.py, risk.py, grounding.py, complaint_classifier.py
+│   │   └── tools/                #   data_analyst.py, risk.py, grounding.py, ingestion.py, complaint_classifier.py
 │   ├── parte1_pandas.py        #4 funciones implementadas
 │   ├── parte1_pyspark.py       # mismas 4 funciones, PySpark DataFrame API + Delta Lake
 │   ├── parte2_sql.sql          #Q1-Q4 en Spark SQL
