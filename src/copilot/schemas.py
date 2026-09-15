@@ -56,7 +56,16 @@ class RouteDecision(BaseModel):
 class AskRequest(BaseModel):
     """A natural-language question to the copilot."""
 
-    question: str = Field(..., min_length=1)
+    # max_length=10_000 — every other string field in this module and
+    # AskResponse below is capped (Citation.excerpt 400, ToolCallRecord.summary
+    # 300, RouteDecision.reasoning 300, AskResponse.answer 1500); this was
+    # the one field crossing the actual untrusted-input boundary (a real
+    # HTTP request body) left uncapped. 10,000 chars is generous for any
+    # realistic question/complaint while still rejecting a multi-MB
+    # payload that would otherwise flow uncapped into embeddings
+    # (grounding.retrieve_policy) and, in real mode, straight into the
+    # router/synthesis LLM prompts.
+    question: str = Field(..., min_length=1, max_length=10_000)
     merchant_id: int | None = None
     locale: Literal["es", "pt", "en"] = "en"
 

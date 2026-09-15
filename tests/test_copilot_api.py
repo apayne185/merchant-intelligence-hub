@@ -20,7 +20,8 @@ from fastapi.testclient import TestClient
 # time — mismo patrón defensivo que tests/test_api.py.
 os.environ.setdefault("MOCK_LLM", "1")
 
-from src.copilot.api import app  # noqa: E402
+from src.copilot.api import app, get_graph  # noqa: E402
+from src.copilot.tracing import _request_span_buffer  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -119,7 +120,49 @@ def test_ask_invalid_locale(client: TestClient) -> None:
     assert r.status_code == 422
 
 
+def test_ask_rejects_question_over_max_length(client: TestClient) -> None:
+    # AskRequest.question previously had no max_length at all — the one
+    # unguarded field on the actual untrusted-input boundary (a real HTTP
+    # request body), while every other string field in this module is
+    # capped. A multi-MB question used to be accepted and would flow
+    # uncapped into embeddings/LLM prompts.
+    r = client.post("/ask", json={"question": "a" * 10_001})
+    assert r.status_code == 422
+
+
+def test_ask_accepts_question_at_max_length(client: TestClient, force_fixture_csv: None) -> None:
+    question = "What does onboarding require? " * 300  # a long but legitimate question, under the 10,000 cap
+    assert len(question) <= 10_000
+    r = client.post("/ask", json={"question": question})
+    assert r.status_code == 200
+
+
 def test_ask_no_match_still_returns_200_with_fallback_answer(client: TestClient, force_fixture_csv: None) -> None:
     r = client.post("/ask", json={"question": "hello there"})
     assert r.status_code == 200
     assert r.json()["answer"]
+
+
+# -----------------------------------------------------------------------------
+# /ask — error path doesn't leak trace-buffer entries. A prior bug: the
+# `finally` that pops a request's spans out of tracing.py's shared
+# _RequestSpanBuffer didn't exist, so an HTTPException raised inside the
+# root "copilot.ask" span's `with` block skipped the pop entirely — every
+# failed /ask permanently pinned one entry in the buffer (bounded only by
+# its max_traces=256 backstop, never reclaimed). Verified by forcing
+# graph.invoke() to raise and checking the buffer's own size before/after.
+# -----------------------------------------------------------------------------
+def test_ask_failure_does_not_leak_a_trace_buffer_entry(client: TestClient) -> None:
+    class _FailingGraph:
+        def invoke(self, state):
+            raise RuntimeError("forced failure for the leak test")
+
+    app.dependency_overrides[get_graph] = lambda: _FailingGraph()
+    try:
+        before = len(_request_span_buffer()._by_trace)
+        r = client.post("/ask", json={"question": "this will fail"})
+        assert r.status_code == 502
+        after = len(_request_span_buffer()._by_trace)
+        assert after == before, "a failed /ask request left an orphaned entry in the trace buffer"
+    finally:
+        app.dependency_overrides.pop(get_graph, None)

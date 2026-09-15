@@ -43,7 +43,19 @@ htmlcov/
 data/transactions_sample.csv
 
 # Outputs generados
-# outputs/  ← deliberadamente NO ignorado
+# outputs/  ← deliberadamente NO ignorado (los eval_report*.json/model.pkl/etc.
+# son artefactos curados que sí se versionan)
+#
+# Excepción: sinks append-only de solo-escritura poblados por side effects
+# reales en tiempo de ejecución (no eval reports curados) — crecen sin
+# límite y pueden contener texto de requests reales de un usuario (la
+# pregunta completa de /ask vía src/copilot/tracing.py's file exporter, o
+# el motivo de flag_for_human_review en src/parte4_api/agent.py). Un `git
+# add outputs/` amplio los arrastraría adentro por accidente. Ninguno de
+# los dos existe en un checkout limpio — solo aparecen si alguien
+# configura COPILOT_TRACE_EXPORTER=file o llama a flag_for_human_review.
+outputs/traces.jsonl
+outputs/human_review_queue.jsonl
 
 # Roadmap/planning notes — not part of the public portfolio repo
 context/

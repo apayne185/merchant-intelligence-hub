@@ -32,7 +32,13 @@ class ClassifyRequest(BaseModel):
     """
 
     merchant_id: int = Field(..., description="ID del merchant que envía la reclamación / ID of the merchant sending the complaint")
-    email_text: str = Field(..., min_length=1, description="Texto íntegro del email / Full text of the email")
+    # max_length=10_000 — same reasoning as src/copilot/schemas.py's
+    # AskRequest.question: the real HTTP-input boundary, previously the
+    # one uncapped string field while every response field in this same
+    # module is capped (ClassifyResponse.reasoning 300).
+    email_text: str = Field(
+        ..., min_length=1, max_length=10_000, description="Texto íntegro del email / Full text of the email"
+    )
     locale: Literal["es", "pt", "en"] = Field(default="es", description="Idioma del email / Language of the email")
 
 

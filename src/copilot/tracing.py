@@ -38,6 +38,7 @@ from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
     ConsoleSpanExporter,
     SimpleSpanProcessor,
     SpanExporter,
@@ -46,6 +47,18 @@ from opentelemetry.sdk.trace.export import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TRACE_FILE = REPO_ROOT / "outputs" / "traces.jsonl"
+# Hard cap on the trace file's size — once export() sees the file at or
+# past this, it rotates trace.jsonl -> trace.jsonl.1 (overwriting any
+# previous .1) rather than growing forever. This is a portfolio/demo repo
+# writing to local disk, not a production log pipeline with its own
+# rotation/shipping — a size cap here is the minimum needed so
+# COPILOT_TRACE_EXPORTER=file can't quietly fill a disk over a long-running
+# process. 10MB is generous for a demo (~10k+ requests at a few hundred
+# bytes/span, several spans/request) without being a real bound in
+# production use — deliberately not configurable via env var, since anyone
+# who needs real log rotation should point COPILOT_TRACE_FILE at a path
+# already managed by one instead.
+_MAX_TRACE_FILE_BYTES = 10 * 1024 * 1024
 
 
 class _NoOpExporter(SpanExporter):
@@ -64,18 +77,41 @@ class JsonLinesFileExporter(SpanExporter):
     """Appends each span as one JSON line to a local file — a durable trace
     log without running a collector. Mirrors this repo's outputs/*.json
     convention (D21/D28/D36 eval reports) but newline-delimited since spans
-    arrive incrementally, not as one final report."""
+    arrive incrementally, not as one final report.
+
+    Paired with BatchSpanProcessor (see get_tracer() below), not
+    SimpleSpanProcessor: export() batches multiple spans per call instead
+    of firing once per span, so this keeps one open file handle across the
+    whole batch rather than reopening per span. Also caps the file at
+    _MAX_TRACE_FILE_BYTES, rotating to a single ``.1`` backup instead of
+    growing without bound — see that constant's comment for why a
+    one-generation rotation, not a real log-rotation scheme, is the right
+    amount of complexity here.
+    """
 
     def __init__(self, path: Path) -> None:
         self._path = path
         self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+
+    def _rotate_if_needed(self) -> None:
+        try:
+            size = self._path.stat().st_size
+        except FileNotFoundError:
+            return
+        if size < _MAX_TRACE_FILE_BYTES:
+            return
+        backup = self._path.with_suffix(self._path.suffix + ".1")
+        self._path.replace(backup)
 
     def export(self, spans: list[ReadableSpan]) -> SpanExportResult:
         import json
 
-        with self._path.open("a") as f:
-            for span in spans:
-                f.write(json.dumps(_span_to_dict(span)) + "\n")
+        lines = [json.dumps(_span_to_dict(span)) for span in spans]
+        with self._lock:
+            self._rotate_if_needed()
+            with self._path.open("a") as f:
+                f.write("\n".join(lines) + "\n")
         return SpanExportResult.SUCCESS
 
     def shutdown(self) -> None:
@@ -162,7 +198,16 @@ def get_tracer() -> trace.Tracer:
     per call would be pure repeated setup for a byte-identical tracer.
     """
     provider = TracerProvider(resource=Resource.create({"service.name": "merchant-intelligence-copilot"}))
-    provider.add_span_processor(SimpleSpanProcessor(_build_exporter()))
+    # BatchSpanProcessor, not Simple: the console/file exporter's export()
+    # used to run synchronously in the request path on every single span
+    # end (SimpleSpanProcessor calls export() per span) — a blocking
+    # stdout write or file open+write+close, ~6 times per /ask, the moment
+    # anyone turns tracing on. Batching moves that I/O to a background
+    # thread and coalesces multiple spans per export() call. Deliberately
+    # NOT applied to the request-span buffer below — api.py's /ask reads
+    # that buffer synchronously right after graph.invoke() returns, so it
+    # must still see every span immediately, not after a batching delay.
+    provider.add_span_processor(BatchSpanProcessor(_build_exporter()))
     provider.add_span_processor(SimpleSpanProcessor(_request_span_buffer()))
     return provider.get_tracer("src.copilot")
 

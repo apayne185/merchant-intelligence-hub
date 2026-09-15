@@ -73,7 +73,15 @@ def evaluate(mock: bool = True) -> dict[str, Any]:
 
     graph = build_graph()
     golden_set = _load_golden_set()
-    known_ids = known_policy_ids()
+    # Explicit mock=mock, not known_policy_ids()'s own default (mock=True)
+    # — this function's whole point is to validate citations against
+    # whatever mode `mock` (this function's own parameter) actually is.
+    # Benign today only because get_corpus_store's mock/real stores are
+    # built from the same _load_policy_docs() records either way — but a
+    # defaulted bool silently deciding which cache a *validation* check
+    # reads is a latent trap the moment the two modes' corpora could ever
+    # diverge (e.g. a future per-mode corpus filter).
+    known_ids = known_policy_ids(mock=mock)
 
     results: list[dict[str, Any]] = []
     citation_total_cited = 0

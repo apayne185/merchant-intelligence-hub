@@ -1,5 +1,5 @@
 {
-  "mode": "mock (TF-IDF)",
+  "mode": "MockEmbedder",
   "corpus_size": 15,
   "n_queries": 15,
   "mrr": 0.9222,

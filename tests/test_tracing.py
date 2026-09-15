@@ -6,8 +6,10 @@ value would be flaky by construction — see the module docstring).
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
-from src.copilot.tracing import _RequestSpanBuffer, get_trace, traced
+from src.copilot.tracing import JsonLinesFileExporter, _RequestSpanBuffer, get_trace, traced
 
 
 def test_traced_yields_a_span_with_the_given_name() -> None:
@@ -77,3 +79,65 @@ def test_request_span_buffer_evicts_oldest_trace_past_max_traces() -> None:
     # one arrived.
     assert buffer.pop(format(trace_ids[0], "032x")) == []
     assert len(buffer.pop(format(trace_ids[2], "032x"))) == 1
+
+
+# -----------------------------------------------------------------------------
+# JsonLinesFileExporter — size cap/rotation. A prior bug: no cap existed at
+# all, so COPILOT_TRACE_EXPORTER=file grew outputs/traces.jsonl forever
+# over a long-running process, and the file wasn't even gitignored (a
+# broad `git add outputs/` — this repo's own convention for eval reports —
+# would have swept it in). See DECISIONS.md.
+# -----------------------------------------------------------------------------
+def test_json_lines_file_exporter_appends_below_cap(tmp_path: Path) -> None:
+    path = tmp_path / "traces.jsonl"
+    exporter = JsonLinesFileExporter(path)
+    with traced("span_a") as span:
+        pass
+    exporter.export([span])
+    with traced("span_b") as span:
+        pass
+    exporter.export([span])
+
+    lines = path.read_text().strip().split("\n")
+    assert len(lines) == 2
+    assert not path.with_suffix(".jsonl.1").exists()
+
+
+def test_json_lines_file_exporter_rotates_past_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("src.copilot.tracing._MAX_TRACE_FILE_BYTES", 10)
+    path = tmp_path / "traces.jsonl"
+    exporter = JsonLinesFileExporter(path)
+
+    with traced("first_span") as span:
+        pass
+    exporter.export([span])  # writes past the tiny 10-byte cap immediately
+    first_content = path.read_text()
+
+    with traced("second_span") as span:
+        pass
+    exporter.export([span])  # this export should rotate before writing
+
+    backup = path.with_suffix(".jsonl.1")
+    assert backup.exists()
+    assert backup.read_text() == first_content
+    # The live file now holds only what was written after rotation.
+    assert "second_span" in path.read_text()
+    assert "first_span" not in path.read_text()
+
+
+def test_json_lines_file_exporter_rotation_overwrites_prior_backup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("src.copilot.tracing._MAX_TRACE_FILE_BYTES", 10)
+    path = tmp_path / "traces.jsonl"
+    exporter = JsonLinesFileExporter(path)
+
+    for name in ("span_1", "span_2", "span_3"):
+        with traced(name) as span:
+            pass
+        exporter.export([span])
+
+    backup = path.with_suffix(".jsonl.1")
+    assert backup.exists()
+    # Only one generation of backup is kept — a single .1, not .1/.2/.3.
+    assert not path.with_suffix(".jsonl.2").exists()

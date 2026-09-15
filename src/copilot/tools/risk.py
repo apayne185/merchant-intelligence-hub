@@ -89,28 +89,42 @@ def build_merchant_features(
     `reference_date`.
     """
     ref_date = reference_date if reference_date is not None else df["reference_date"].max()
-    pre = df[df["transaction_date"] <= ref_date]
+    pre = df[df["transaction_date"] <= ref_date].copy()
     if merchant_id not in set(pre["merchant_id"]):
         raise KeyError(f"merchant_id {merchant_id} has no transactions on or before {ref_date.date()}")
 
     win_3m = ref_date - pd.Timedelta(days=90)
     win_6m = ref_date - pd.Timedelta(days=180)
 
+    # Precomputed once on the whole frame, not recomputed per group inside
+    # a lambda — pandas' groupby.agg runs a plain string aggregator
+    # ("mean"/"nunique") in its optimized Cython path, but a lambda forces
+    # one Python-level callback per group. Measured on the real ~200k-row/
+    # ~10k-merchant dataset: the two lambdas this replaces
+    # (approval_rate/n_months_active) were 88-113x slower than this form —
+    # see DECISIONS.md D37's correction. `_approved`/`_is_ecom` are plain
+    # booleans (mean of a bool column = fraction True, same as the lambda's
+    # (x == ...).mean()); `_month` is the same to_period("M") value the
+    # lambda computed per group, just computed once up front instead.
+    pre["_approved"] = pre["status"] == "approved"
+    pre["_is_ecom"] = pre["channel"] == "ecom"
+    pre["_month"] = pre["transaction_date"].dt.to_period("M")
+
     def agg_window(data: pd.DataFrame, window_start: pd.Timestamp, suffix: str) -> pd.DataFrame:
         w = data[data["transaction_date"] >= window_start]
         return w.groupby("merchant_id", observed=True).agg(**{
             f"tpv_{suffix}": ("amount", "sum"),
             f"n_tx_{suffix}": ("transaction_id", "count"),
-            f"approval_rate_{suffix}": ("status", lambda x: (x == "approved").mean()),
-            f"pct_ecom_{suffix}": ("channel", lambda x: (x == "ecom").mean()),
+            f"approval_rate_{suffix}": ("_approved", "mean"),
+            f"pct_ecom_{suffix}": ("_is_ecom", "mean"),
             f"avg_tx_{suffix}": ("amount", "mean"),
         })
 
     all_time = pre.groupby("merchant_id", observed=True).agg(
         tpv_total=("amount", "sum"),
         n_tx_total=("transaction_id", "count"),
-        approval_rate_total=("status", lambda x: (x == "approved").mean()),
-        n_months_active=("transaction_date", lambda x: x.dt.to_period("M").nunique()),
+        approval_rate_total=("_approved", "mean"),
+        n_months_active=("_month", "nunique"),
     )
     feats_3m = agg_window(pre, win_3m, "3m")
     feats_6m = agg_window(pre, win_6m, "6m")

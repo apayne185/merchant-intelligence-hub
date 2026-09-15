@@ -49,6 +49,18 @@ INGESTED_DOCS_DIR = DATA_DIR / "ingested_docs"
 DEFAULT_CHUNK_CHARS = 600
 
 OCR_UNAVAILABLE_MARKER = "[page has no extractable text layer; OCR not available in this environment]"
+OCR_FAILED_MARKER = "[page has no extractable text layer; OCR was attempted but failed]"
+
+# ingest_and_index() builds a filesystem path directly from doc_id_prefix
+# (INGESTED_DOCS_DIR / f"{doc_id_prefix}.json") with no validation — a
+# prefix like "../../evil" resolves outside INGESTED_DOCS_DIR entirely.
+# Not reachable from any HTTP endpoint today (ingestion has no /ingest
+# route), but the module's own docstring frames this as an upload
+# pipeline ("a real PDF, uploaded once") — the moment anyone wires a
+# user-supplied prefix into this function, an unvalidated one becomes an
+# arbitrary file write. A safe-slug allowlist costs nothing to check now
+# and closes the gap before it's load-bearing. See DECISIONS.md.
+_SAFE_DOC_ID_PREFIX = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def is_ocr_available() -> bool:
@@ -62,7 +74,7 @@ def is_ocr_available() -> bool:
     return shutil.which("tesseract") is not None
 
 
-def _ocr_page_image(page) -> str:
+def _ocr_page_image(page) -> str | None:
     """Renders `page` to an image and OCRs it. Only called when
     is_ocr_available() is True. pdf2image (poppler) would be the standard
     way to rasterize a PDF page to an image for OCR input, but that's a
@@ -72,31 +84,66 @@ def _ocr_page_image(page) -> str:
     one full-page image embedded in the PDF, not vector content that needs
     rasterizing) without adding poppler as a dependency alongside
     tesseract.
+
+    Returns None (not raises) if OCR fails on this page — is_ocr_available()
+    only proves the tesseract binary is on PATH, not that it will
+    successfully run (missing language data) or that this specific
+    embedded image is decodable (a corrupt image, an encoding Pillow can't
+    read, e.g. some JBIG2/CMYK scans). Without catching this, one bad page
+    in an otherwise-fine multi-page PDF used to kill the entire ingest —
+    contradicting this module's own stated invariant that a page is always
+    marked explicitly rather than silently failing (see extract_pdf_pages).
     """
     import pytesseract
 
     texts = []
-    for img_file in page.images:
-        texts.append(pytesseract.image_to_string(img_file.image))
+    try:
+        for img_file in page.images:
+            texts.append(pytesseract.image_to_string(img_file.image))
+    except Exception:
+        # Broad on purpose: OCR failure modes are genuinely varied
+        # (TesseractError, Pillow decode errors, I/O errors reading the
+        # embedded image stream) and none of them should be allowed to
+        # abort ingestion of the rest of the document — the caller falls
+        # back to OCR_FAILED_MARKER, same "mark it, don't crash or fake
+        # success" contract as the OCR-unavailable case.
+        return None
     return "\n".join(t.strip() for t in texts if t.strip())
 
 
 def extract_pdf_pages(pdf_path: str | Path) -> list[dict[str, Any]]:
     """Extracts each page of `pdf_path` as {page, text, method}, where
-    method is "text_layer", "ocr", or "unavailable" (a scanned page with no
-    text layer, encountered in an environment without tesseract — text is
-    OCR_UNAVAILABLE_MARKER, not silently empty, so a caller/test can tell
-    apart "this page is genuinely blank" from "OCR was skipped here").
+    method is "text_layer", "ocr", "unavailable" (a scanned page with no
+    text layer, encountered in an environment without tesseract), or
+    "ocr_failed" (tesseract is present but failed on this specific page —
+    a missing language pack, a corrupt or undecodable embedded image).
+    Every non-text_layer case gets an explicit marker (OCR_UNAVAILABLE_MARKER
+    / OCR_FAILED_MARKER), not silently empty text, so a caller/test can
+    always tell apart "this page is genuinely blank" from "OCR was skipped
+    or failed here" — the module's core invariant (see its docstring).
     """
     reader = PdfReader(pdf_path)
     pages = []
+    # Checked once per document, not once per page: is_ocr_available() is a
+    # PATH lookup whose answer can't meaningfully change mid-loop (see its
+    # own docstring — non-caching is about not freezing a stale answer
+    # across a whole *process*, which is orthogonal to re-checking it N
+    # times for one document that opens and closes in milliseconds).
+    ocr_available = is_ocr_available()
     for i, page in enumerate(reader.pages):
-        text = page.extract_text().strip()
+        # page.extract_text() isn't guaranteed non-None by pypdf across all
+        # versions/inputs (a known behavior class for malformed/encrypted
+        # pages) — `or ""` guards against `.strip()` on None crashing the
+        # whole ingest over one bad page.
+        text = (page.extract_text() or "").strip()
         method = "text_layer"
         if not text:
-            if is_ocr_available():
-                text = _ocr_page_image(page)
-                method = "ocr"
+            if ocr_available:
+                ocr_text = _ocr_page_image(page)
+                if ocr_text:
+                    text, method = ocr_text, "ocr"
+                else:
+                    text, method = OCR_FAILED_MARKER, "ocr_failed"
             else:
                 text = OCR_UNAVAILABLE_MARKER
                 method = "unavailable"
@@ -104,14 +151,66 @@ def extract_pdf_pages(pdf_path: str | Path) -> list[dict[str, Any]]:
     return pages
 
 
+def _wrap_on_whitespace(text: str, max_chars: int) -> list[str]:
+    """Last-resort hard wrap for a chunk still over max_chars after both
+    the paragraph and sentence splits — the case where a "paragraph" (or a
+    single "sentence" inside one, per re.split's own fallback of treating
+    unsplittable text as one sentence) has no blank lines AND no
+    [.!?]-terminated sentence boundaries at all. This is the normal shape
+    of real pypdf.extract_text() output: line-broken by the PDF's own
+    layout, not by paragraph/sentence punctuation. Without this, a whole
+    ingested PDF page could become a single oversized chunk, silently
+    breaking the max_chars contract every other caller (chunk_text's own
+    docstring, grounding.py's context budget) relies on. Wraps on any run
+    of whitespace (not just literal spaces — real pypdf-extracted text
+    commonly uses newlines between words/lines; `text.split(" ")` on
+    newline-joined text doesn't split at all, silently falling through to
+    the single-oversized-word branch below and cutting mid-word at every
+    max_chars boundary — caught by
+    test_chunk_text_wraps_line_broken_text_with_no_punctuation) so words
+    aren't split; falls back to a raw character cut only if a single
+    "word" is itself longer than max_chars (pathological, but still must
+    not loop forever or exceed the budget).
+    """
+    words = text.split()
+    chunks: list[str] = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip() if current else word
+        if len(candidate) <= max_chars:
+            current = candidate
+            continue
+        if current:
+            chunks.append(current)
+        if len(word) > max_chars:
+            # A single "word" longer than the whole budget (e.g. no spaces
+            # at all in the source text) — cut it into max_chars-sized
+            # pieces directly, since there's no whitespace left to wrap on.
+            for i in range(0, len(word), max_chars):
+                chunks.append(word[i : i + max_chars])
+            current = ""
+        else:
+            current = word
+    if current:
+        chunks.append(current)
+    return chunks
+
+
 def chunk_text(text: str, max_chars: int = DEFAULT_CHUNK_CHARS) -> list[str]:
     """Splits `text` into <=max_chars chunks on paragraph boundaries first
     (blank-line-separated), falling back to sentence boundaries for any
-    single paragraph that's still too long on its own — never mid-word.
-    Deliberately simple (no overlap, no token-aware splitting): this
-    repo's corpora are small business documents (policy PDFs, KYC forms),
-    not the long-context-window use case a production chunker would need
-    to optimize for.
+    single paragraph that's still too long on its own, then to a hard
+    whitespace wrap (_wrap_on_whitespace) for any chunk still over budget
+    after that — never mid-word except in the pathological single-token
+    case. The whitespace-wrap fallback matters in practice: real
+    pypdf-extracted PDF text is typically line-broken by the page's own
+    layout, with no blank lines and no [.!?] sentence punctuation at all,
+    so the first two splits alone can silently return one oversized chunk
+    per page — confirmed on realistic PDF-shaped text before this fallback
+    existed. Otherwise deliberately simple (no overlap, no token-aware
+    splitting): this repo's corpora are small business documents (policy
+    PDFs, KYC forms), not the long-context-window use case a production
+    chunker would need to optimize for.
     """
     paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
     chunks: list[str] = []
@@ -130,7 +229,17 @@ def chunk_text(text: str, max_chars: int = DEFAULT_CHUNK_CHARS) -> list[str]:
                 current = candidate
         if current:
             chunks.append(current)
-    return chunks
+
+    # Final pass: any chunk still over budget (a "sentence" with no
+    # [.!?] boundaries at all, e.g. line-broken PDF text) gets hard-wrapped
+    # on whitespace instead of being returned oversized.
+    final_chunks: list[str] = []
+    for chunk in chunks:
+        if len(chunk) <= max_chars:
+            final_chunks.append(chunk)
+        else:
+            final_chunks.extend(_wrap_on_whitespace(chunk, max_chars))
+    return final_chunks
 
 
 def ingest_pdf(
@@ -152,7 +261,10 @@ def ingest_pdf(
     records = []
     chunk_num = 0
     for page in pages:
-        if page["method"] == "unavailable":
+        if page["method"] in ("unavailable", "ocr_failed"):
+            # Neither has usable text — OCR_UNAVAILABLE_MARKER/
+            # OCR_FAILED_MARKER strings would otherwise get indexed as if
+            # they were real page content.
             continue
         for chunk in chunk_text(page["text"], max_chunk_chars):
             chunk_num += 1
@@ -185,7 +297,16 @@ def ingest_and_index(
     cleanly overwrites just that document's file, and a caller can inspect
     what a specific ingestion produced without loading everything else
     ingested.
+
+    Raises ValueError if `doc_id_prefix` isn't a safe filename slug
+    (letters/digits/underscore/hyphen only) — a prefix like "../../evil"
+    would otherwise resolve the output path outside INGESTED_DOCS_DIR.
     """
+    if not _SAFE_DOC_ID_PREFIX.match(doc_id_prefix):
+        raise ValueError(
+            f"doc_id_prefix must match {_SAFE_DOC_ID_PREFIX.pattern!r} (letters, digits, _, - only); "
+            f"got {doc_id_prefix!r}"
+        )
     records = ingest_pdf(pdf_path, doc_id_prefix, title, category, max_chunk_chars)
     INGESTED_DOCS_DIR.mkdir(parents=True, exist_ok=True)
     out_path = INGESTED_DOCS_DIR / f"{doc_id_prefix}.json"

@@ -86,17 +86,33 @@ def ask(req: AskRequest, graph: GraphDep) -> AskResponse:
     mock = is_mock_mode()
 
     state = initial_state(req.question, merchant_id=req.merchant_id, locale=req.locale, mock=mock)
-    with traced("copilot.ask", mock=mock) as root_span:
-        trace_id = root_span.get_span_context().trace_id
-        try:
-            result = graph.invoke(state)
-        except Exception:
-            # No exponer str(exc) al cliente — same reasoning as /classify:
-            # could leak request URLs, model config, or SDK stack traces.
-            logger.exception("copilot /ask failed for question=%r", req.question)
-            raise HTTPException(status_code=502, detail="copilot_error") from None
+    trace_id: int | None = None
+    node_spans: list[dict] = []
+    try:
+        with traced("copilot.ask", mock=mock) as root_span:
+            trace_id = root_span.get_span_context().trace_id
+            try:
+                result = graph.invoke(state)
+            except Exception:
+                # No exponer str(exc) al cliente — same reasoning as /classify:
+                # could leak request URLs, model config, or SDK stack traces.
+                logger.exception("copilot /ask failed for question=%r", req.question)
+                raise HTTPException(status_code=502, detail="copilot_error") from None
+    finally:
+        # get_trace() pops this request's spans out of the shared
+        # process-wide buffer (src/copilot/tracing.py's _RequestSpanBuffer)
+        # regardless of whether graph.invoke() raised — without this
+        # `finally`, an HTTPException propagating out of the `with` block
+        # above would skip the pop entirely, leaking that request's spans
+        # into the buffer forever (bounded only by its max_traces backstop,
+        # never actually reclaimed). Every failed /ask used to leak exactly
+        # one trace; confirmed by re-running failing requests and
+        # inspecting the buffer's size before this fix. Called exactly
+        # once per request (not again below) — get_trace() pops, so a
+        # second call on the same trace_id would always return [].
+        if trace_id is not None:
+            node_spans = get_trace(trace_id)
 
-    node_spans = get_trace(trace_id)
     trace_summary = [
         NodeTiming(node=s["name"].removeprefix("copilot.node."), duration_ms=s["duration_ms"])
         for s in node_spans

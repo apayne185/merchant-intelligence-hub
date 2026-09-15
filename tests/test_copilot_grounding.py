@@ -109,3 +109,66 @@ def test_grounding_falls_back_to_policy_docs_only_when_ingested_dir_missing(
     assert not _isolated_ingested_dir.exists()
     ids = known_policy_ids()
     assert len(ids) == 15
+
+
+# -----------------------------------------------------------------------------
+# Corpus validation — a prior gap: a malformed record (missing a required
+# field, or an ingested doc whose id collides with a curated policy_docs.json
+# entry) reached retrieval_core.dedupe_by_field/fit_to_budget and raised an
+# opaque bare KeyError/AttributeError with no indication of which file was
+# at fault, or (for id collisions) silently shadowed a curated doc with no
+# error at all — undetectable by known_policy_ids() since it collapses
+# duplicate ids into a set.
+# -----------------------------------------------------------------------------
+def test_load_policy_docs_rejects_ingested_doc_missing_required_field(_isolated_ingested_dir: Path) -> None:
+    import json
+
+    _isolated_ingested_dir.mkdir(parents=True)
+    (_isolated_ingested_dir / "BAD.json").write_text(
+        json.dumps([{"id": "BAD-001", "title": "Bad Doc", "text": "missing category field"}])
+    )
+    with pytest.raises(ValueError, match="missing field"):
+        known_policy_ids()
+
+
+def test_load_policy_docs_rejects_non_string_text_field(_isolated_ingested_dir: Path) -> None:
+    import json
+
+    _isolated_ingested_dir.mkdir(parents=True)
+    (_isolated_ingested_dir / "BAD.json").write_text(
+        json.dumps([{"id": "BAD-001", "title": "Bad Doc", "category": "ingested", "text": 12345}])
+    )
+    with pytest.raises(ValueError, match="non-string"):
+        known_policy_ids()
+
+
+def test_load_policy_docs_rejects_ingested_doc_id_colliding_with_curated_doc(
+    _isolated_ingested_dir: Path,
+) -> None:
+    import json
+
+    # RP-01 already exists in the real data/policy_docs.json — an ingested
+    # file reusing that exact id used to silently shadow the curated entry
+    # with no error at all.
+    _isolated_ingested_dir.mkdir(parents=True)
+    (_isolated_ingested_dir / "COLLIDE.json").write_text(
+        json.dumps([{"id": "RP-01", "title": "Impostor", "category": "ingested", "text": "not the real RP-01"}])
+    )
+    with pytest.raises(ValueError, match="duplicate id 'RP-01'"):
+        known_policy_ids()
+
+
+def test_load_policy_docs_rejects_collision_between_two_ingested_files(
+    _isolated_ingested_dir: Path,
+) -> None:
+    import json
+
+    _isolated_ingested_dir.mkdir(parents=True)
+    (_isolated_ingested_dir / "A.json").write_text(
+        json.dumps([{"id": "DUP-001", "title": "First", "category": "ingested", "text": "first version"}])
+    )
+    (_isolated_ingested_dir / "B.json").write_text(
+        json.dumps([{"id": "DUP-001", "title": "Second", "category": "ingested", "text": "second version"}])
+    )
+    with pytest.raises(ValueError, match="duplicate id 'DUP-001'"):
+        known_policy_ids()
