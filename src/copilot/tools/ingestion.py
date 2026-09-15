@@ -50,6 +50,17 @@ DEFAULT_CHUNK_CHARS = 600
 
 OCR_UNAVAILABLE_MARKER = "[page has no extractable text layer; OCR not available in this environment]"
 
+# ingest_and_index() builds a filesystem path directly from doc_id_prefix
+# (INGESTED_DOCS_DIR / f"{doc_id_prefix}.json") with no validation — a
+# prefix like "../../evil" resolves outside INGESTED_DOCS_DIR entirely.
+# Not reachable from any HTTP endpoint today (ingestion has no /ingest
+# route), but the module's own docstring frames this as an upload
+# pipeline ("a real PDF, uploaded once") — the moment anyone wires a
+# user-supplied prefix into this function, an unvalidated one becomes an
+# arbitrary file write. A safe-slug allowlist costs nothing to check now
+# and closes the gap before it's load-bearing. See DECISIONS.md.
+_SAFE_DOC_ID_PREFIX = re.compile(r"^[A-Za-z0-9_-]+$")
+
 
 def is_ocr_available() -> bool:
     """True only if the `tesseract` binary is actually on PATH — pytesseract
@@ -247,7 +258,16 @@ def ingest_and_index(
     cleanly overwrites just that document's file, and a caller can inspect
     what a specific ingestion produced without loading everything else
     ingested.
+
+    Raises ValueError if `doc_id_prefix` isn't a safe filename slug
+    (letters/digits/underscore/hyphen only) — a prefix like "../../evil"
+    would otherwise resolve the output path outside INGESTED_DOCS_DIR.
     """
+    if not _SAFE_DOC_ID_PREFIX.match(doc_id_prefix):
+        raise ValueError(
+            f"doc_id_prefix must match {_SAFE_DOC_ID_PREFIX.pattern!r} (letters, digits, _, - only); "
+            f"got {doc_id_prefix!r}"
+        )
     records = ingest_pdf(pdf_path, doc_id_prefix, title, category, max_chunk_chars)
     INGESTED_DOCS_DIR.mkdir(parents=True, exist_ok=True)
     out_path = INGESTED_DOCS_DIR / f"{doc_id_prefix}.json"

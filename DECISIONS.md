@@ -1116,6 +1116,22 @@
 
 ---
 
+### D45 · Path traversal en `ingest_and_index` vía `doc_id_prefix` sin validar
+
+- **Qué fallaba**: `ingest_and_index` construía la ruta de salida directamente de `doc_id_prefix` (`INGESTED_DOCS_DIR / f"{doc_id_prefix}.json"`) sin ninguna validación. Verificado: `doc_id_prefix="../../evil"` resuelve fuera de `INGESTED_DOCS_DIR` por completo. No es explotable remotamente hoy — no existe ningún endpoint HTTP que llame a `ingest_and_index` — pero el propio docstring del módulo (D38) enmarca esto explícitamente como un pipeline de subida ("a real PDF, uploaded once"); el día que alguien conecte un prefijo suministrado por un usuario a esta función, una entrada sin validar se convierte en escritura de archivo arbitraria.
+- *What failed: `ingest_and_index` built its output path directly from `doc_id_prefix` (`INGESTED_DOCS_DIR / f"{doc_id_prefix}.json"`) with no validation at all. Verified: `doc_id_prefix="../../evil"` resolves outside `INGESTED_DOCS_DIR` entirely. Not remotely exploitable today — no HTTP endpoint calls `ingest_and_index` — but the module's own docstring (D38) explicitly frames this as an upload pipeline ("a real PDF, uploaded once"); the day anyone wires a user-supplied prefix into this function, an unvalidated one becomes arbitrary file write.*
+
+- **Qué hice**: Añadí `_SAFE_DOC_ID_PREFIX` (regex `^[A-Za-z0-9_-]+$`) validado al inicio de `ingest_and_index`, lanzando `ValueError` explícito en vez de sanear silenciosamente (sanear cambiaría el prefijo sin que el caller se entere, lo cual podría sorprender más que rechazar directamente). Verificado que bloquea `../../evil`, `../escape`, rutas absolutas, con espacios, con `;`, y `..` solo — y que sigue aceptando los prefijos reales ya en uso (`RB`, `policy_01`, `doc-2024`, etc.). 11 tests nuevos parametrizados (7 casos inseguros rechazados, 4 seguros aceptados), incluyendo una verificación de que el archivo realmente no se escribió fuera del directorio esperado, no solo que se lanzó una excepción.
+- *What I did: Added `_SAFE_DOC_ID_PREFIX` (regex `^[A-Za-z0-9_-]+$`), validated at the top of `ingest_and_index`, raising an explicit `ValueError` rather than silently sanitizing (sanitizing would change the prefix without the caller knowing, which could surprise more than an outright rejection). Verified it blocks `../../evil`, `../escape`, absolute paths, spaces, `;`, and bare `..` — and still accepts the real prefixes already in use (`RB`, `policy_01`, `doc-2024`, etc.). 11 new parametrized tests (7 unsafe cases rejected, 4 safe ones accepted), including a check that the file genuinely wasn't written outside the expected directory, not just that an exception was raised.*
+
+- **Qué descarté**: Resolver la ruta y verificar que quede dentro de `INGESTED_DOCS_DIR` (`Path.resolve()` + comprobación de prefijo) en vez de un allowlist de caracteres — descartado por ser más código para el mismo resultado; un allowlist de slug seguro es más simple de leer y de razonar sobre él, y no hay ningún caso de uso legítimo hoy que necesite un `doc_id_prefix` con subdirectorios o caracteres especiales.
+- *What I discarded: Resolving the path and checking it stays inside `INGESTED_DOCS_DIR` (`Path.resolve()` + prefix check) instead of a character allowlist — discarded as more code for the same result; a safe-slug allowlist is simpler to read and reason about, and there's no legitimate use case today that needs a `doc_id_prefix` with subdirectories or special characters.*
+
+- **Qué asumí**: Que ningún caller existente pasa un `doc_id_prefix` que no sea ya un slug simple — verificado con `grep` sobre el repo (todos los usos actuales son literales cortos tipo `"RB"`, `"CB"`, `"V"`) antes de escribir el cambio, no asumido a ciegas.
+- *What I assumed: That no existing caller passes a `doc_id_prefix` that isn't already a simple slug — verified via `grep` across the repo (every current usage is a short literal like `"RB"`, `"CB"`, `"V"`) before writing the change, not blindly assumed.*
+
+---
+
 
 
 

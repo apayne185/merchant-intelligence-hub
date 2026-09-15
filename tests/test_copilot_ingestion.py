@@ -224,3 +224,35 @@ def test_ingest_and_index_overwrites_same_prefix(tmp_path: Path, monkeypatch: py
 
     assert len(records) == 1
     assert "Version two" in records[0]["text"]
+
+
+# -----------------------------------------------------------------------------
+# ingest_and_index — doc_id_prefix path-traversal guard. Previously built
+# the output path directly from doc_id_prefix with no validation, so
+# "../../evil" resolved outside INGESTED_DOCS_DIR entirely.
+# -----------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "bad_prefix",
+    ["../../evil", "../escape", "sub/dir", "/absolute/path", "..", "with space", "semi;colon"],
+)
+def test_ingest_and_index_rejects_unsafe_doc_id_prefix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad_prefix: str
+) -> None:
+    monkeypatch.setattr(ing_module, "INGESTED_DOCS_DIR", tmp_path / "ingested_docs")
+    pdf = _build_pdf(tmp_path, ["Some text."])
+    with pytest.raises(ValueError, match="doc_id_prefix"):
+        ingest_and_index(pdf, doc_id_prefix=bad_prefix, title="Doc")
+    # Confirms the guard actually prevents escape, not just that it raises:
+    # nothing should have been written outside the intended directory.
+    assert not (tmp_path / "evil.json").exists()
+    assert not (tmp_path.parent / "evil.json").exists()
+
+
+@pytest.mark.parametrize("good_prefix", ["RB", "policy_01", "doc-2024", "ABC123"])
+def test_ingest_and_index_accepts_safe_doc_id_prefix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, good_prefix: str
+) -> None:
+    monkeypatch.setattr(ing_module, "INGESTED_DOCS_DIR", tmp_path / "ingested_docs")
+    pdf = _build_pdf(tmp_path, ["Some text."])
+    ingest_and_index(pdf, doc_id_prefix=good_prefix, title="Doc")
+    assert (tmp_path / "ingested_docs" / f"{good_prefix}.json").exists()
