@@ -104,14 +104,66 @@ def extract_pdf_pages(pdf_path: str | Path) -> list[dict[str, Any]]:
     return pages
 
 
+def _wrap_on_whitespace(text: str, max_chars: int) -> list[str]:
+    """Last-resort hard wrap for a chunk still over max_chars after both
+    the paragraph and sentence splits — the case where a "paragraph" (or a
+    single "sentence" inside one, per re.split's own fallback of treating
+    unsplittable text as one sentence) has no blank lines AND no
+    [.!?]-terminated sentence boundaries at all. This is the normal shape
+    of real pypdf.extract_text() output: line-broken by the PDF's own
+    layout, not by paragraph/sentence punctuation. Without this, a whole
+    ingested PDF page could become a single oversized chunk, silently
+    breaking the max_chars contract every other caller (chunk_text's own
+    docstring, grounding.py's context budget) relies on. Wraps on any run
+    of whitespace (not just literal spaces — real pypdf-extracted text
+    commonly uses newlines between words/lines; `text.split(" ")` on
+    newline-joined text doesn't split at all, silently falling through to
+    the single-oversized-word branch below and cutting mid-word at every
+    max_chars boundary — caught by
+    test_chunk_text_wraps_line_broken_text_with_no_punctuation) so words
+    aren't split; falls back to a raw character cut only if a single
+    "word" is itself longer than max_chars (pathological, but still must
+    not loop forever or exceed the budget).
+    """
+    words = text.split()
+    chunks: list[str] = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip() if current else word
+        if len(candidate) <= max_chars:
+            current = candidate
+            continue
+        if current:
+            chunks.append(current)
+        if len(word) > max_chars:
+            # A single "word" longer than the whole budget (e.g. no spaces
+            # at all in the source text) — cut it into max_chars-sized
+            # pieces directly, since there's no whitespace left to wrap on.
+            for i in range(0, len(word), max_chars):
+                chunks.append(word[i : i + max_chars])
+            current = ""
+        else:
+            current = word
+    if current:
+        chunks.append(current)
+    return chunks
+
+
 def chunk_text(text: str, max_chars: int = DEFAULT_CHUNK_CHARS) -> list[str]:
     """Splits `text` into <=max_chars chunks on paragraph boundaries first
     (blank-line-separated), falling back to sentence boundaries for any
-    single paragraph that's still too long on its own — never mid-word.
-    Deliberately simple (no overlap, no token-aware splitting): this
-    repo's corpora are small business documents (policy PDFs, KYC forms),
-    not the long-context-window use case a production chunker would need
-    to optimize for.
+    single paragraph that's still too long on its own, then to a hard
+    whitespace wrap (_wrap_on_whitespace) for any chunk still over budget
+    after that — never mid-word except in the pathological single-token
+    case. The whitespace-wrap fallback matters in practice: real
+    pypdf-extracted PDF text is typically line-broken by the page's own
+    layout, with no blank lines and no [.!?] sentence punctuation at all,
+    so the first two splits alone can silently return one oversized chunk
+    per page — confirmed on realistic PDF-shaped text before this fallback
+    existed. Otherwise deliberately simple (no overlap, no token-aware
+    splitting): this repo's corpora are small business documents (policy
+    PDFs, KYC forms), not the long-context-window use case a production
+    chunker would need to optimize for.
     """
     paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
     chunks: list[str] = []
@@ -130,7 +182,17 @@ def chunk_text(text: str, max_chars: int = DEFAULT_CHUNK_CHARS) -> list[str]:
                 current = candidate
         if current:
             chunks.append(current)
-    return chunks
+
+    # Final pass: any chunk still over budget (a "sentence" with no
+    # [.!?] boundaries at all, e.g. line-broken PDF text) gets hard-wrapped
+    # on whitespace instead of being returned oversized.
+    final_chunks: list[str] = []
+    for chunk in chunks:
+        if len(chunk) <= max_chars:
+            final_chunks.append(chunk)
+        else:
+            final_chunks.extend(_wrap_on_whitespace(chunk, max_chars))
+    return final_chunks
 
 
 def ingest_pdf(

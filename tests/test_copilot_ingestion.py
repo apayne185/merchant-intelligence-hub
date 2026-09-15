@@ -125,6 +125,38 @@ def test_chunk_text_empty_string_returns_no_chunks() -> None:
     assert chunk_text("") == []
 
 
+def test_chunk_text_wraps_line_broken_text_with_no_punctuation() -> None:
+    # Realistic pypdf.extract_text() shape: line-broken by the PDF's own
+    # layout, no blank lines, no [.!?] sentence punctuation at all — the
+    # paragraph and sentence splits alone both fail to fire here, which
+    # used to return the entire input as one oversized chunk (silently
+    # breaking chunk_text's own max_chars contract on real PDF text).
+    lines = [f"word{i}" for i in range(500)]
+    text = "\n".join(lines)
+    chunks = chunk_text(text, max_chars=600)
+    assert all(len(c) <= 600 for c in chunks)
+    # No content lost or duplicated in the process.
+    assert " ".join(chunks).split() == text.split()
+
+
+def test_chunk_text_wraps_single_token_longer_than_max_chars() -> None:
+    # Pathological: no whitespace anywhere in the source text to wrap on.
+    text = "a" * 2000
+    chunks = chunk_text(text, max_chars=600)
+    assert all(len(c) <= 600 for c in chunks)
+    assert "".join(chunks) == text  # exact content preserved, nothing dropped
+
+
+def test_chunk_text_never_exceeds_max_chars_on_mixed_realistic_text() -> None:
+    # A paragraph with some sentence punctuation but also one very long
+    # unbroken run (e.g. a table row or code-like text pypdf sometimes
+    # extracts) — the sentence split alone can still leave one oversized
+    # piece; the whitespace-wrap fallback must catch it.
+    para = "Short sentence. " + ("data " * 200) + "Another short sentence."
+    chunks = chunk_text(para, max_chars=100)
+    assert all(len(c) <= 100 for c in chunks)
+
+
 # -----------------------------------------------------------------------------
 # ingest_pdf
 # -----------------------------------------------------------------------------
