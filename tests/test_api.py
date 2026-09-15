@@ -125,6 +125,13 @@ def test_classify_invalid_input(client: TestClient) -> None:
     assert r.status_code == 422
 
 
+def test_classify_rejects_email_text_over_max_length(client: TestClient) -> None:
+    # email_text previously had no max_length — same gap as
+    # src/copilot/schemas.py's AskRequest.question (see DECISIONS.md).
+    r = client.post("/classify", json={"merchant_id": 10063716, "email_text": "a" * 10_001})
+    assert r.status_code == 422
+
+
 # -----------------------------------------------------------------------------
 # /classify/batch — concurrencia
 # -----------------------------------------------------------------------------

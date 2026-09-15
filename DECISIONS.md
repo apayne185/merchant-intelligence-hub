@@ -1100,6 +1100,22 @@
 
 ---
 
+### D44 · `AskRequest.question`/`ClassifyRequest.email_text` sin `max_length` — el único campo sin cap en el límite real de entrada no confiable
+
+- **Qué fallaba**: `AskRequest.question` (`src/copilot/schemas.py`) y `ClassifyRequest.email_text` (`src/parte4_api/schemas.py`) no tenían `max_length` — el único campo de string sin cap en cada módulo, mientras todo lo demás sí lo tiene (`Citation.excerpt` 400, `ToolCallRecord.summary`/`RouteDecision.reasoning` 300, `AskResponse.answer` 1500, `ClassifyResponse.reasoning` 300). Verificado: una pregunta de 5,000,000 de caracteres era aceptada por el modelo Pydantic. Estos dos campos son el único límite real de este repo donde entra input no confiable (el body de una request HTTP real) — todo lo demás son llamadas internas entre funciones ya tipadas.
+- *What failed: `AskRequest.question` (`src/copilot/schemas.py`) and `ClassifyRequest.email_text` (`src/parte4_api/schemas.py`) had no `max_length` — the one uncapped string field in each module, while everything else is capped (`Citation.excerpt` 400, `ToolCallRecord.summary`/`RouteDecision.reasoning` 300, `AskResponse.answer` 1500, `ClassifyResponse.reasoning` 300). Verified: a 5,000,000-character question was accepted by the Pydantic model. These two fields are the one real boundary in this repo where untrusted input enters (an actual HTTP request body) — everything else is an internal call between already-typed functions.*
+
+- **Qué hice**: Añadí `max_length=10_000` a ambos campos. Una pregunta/reclamación de ese tamaño ya es generosa para cualquier caso de uso real; sin el límite, un payload de varios MB se embebe sin control (`grounding.retrieve_policy`) y, en modo real, entra directo a los prompts del router/synthesizer/agente Agno — un vector de costo/latencia sin límite dirigido directamente por el tamaño de la request. Tests nuevos en ambos módulos: rechaza sobre el límite (422), acepta bajo el límite (200).
+- *What I did: Added `max_length=10_000` to both fields. A question/complaint that size is already generous for any real use case; without the cap, a multi-MB payload gets embedded uncontrolled (`grounding.retrieve_policy`) and, in real mode, flows straight into the router/synthesizer/Agno agent prompts — an uncapped cost/latency vector directly driven by request size. New tests in both modules: rejects over the limit (422), accepts under it (200).*
+
+- **Qué descarté**: Un límite distinto para cada campo basado en su "caso de uso típico" (una pregunta corta vs. una reclamación que podría ser un email largo) — descartado por complejidad no justificada; 10,000 caracteres cubre cómodamente ambos casos sin necesitar dos números diferentes que mantener sincronizados con ninguna razón real detrás de la diferencia.
+- *What I discarded: A different limit per field based on its "typical use case" (a short question vs. a complaint that could be a long email) — discarded as unjustified complexity; 10,000 characters comfortably covers both without needing two different numbers to keep in sync for no real reason behind the difference.*
+
+- **Qué asumí**: Que 10,000 caracteres es un límite razonable sin haber consultado ningún caso de uso real documentado — es una estimación de "generoso pero no ilimitado", no un número derivado de datos. Si alguna vez se observa una pregunta o reclamación legítima más larga que esto, el límite necesitaría subir, no la validación eliminarse.
+- *What I assumed: That 10,000 characters is a reasonable limit without consulting any documented real use case — it's a "generous but not unlimited" estimate, not a data-derived number. If a legitimate question or complaint longer than this is ever observed, the limit would need to go up, not the validation removed.*
+
+---
+
 
 
 

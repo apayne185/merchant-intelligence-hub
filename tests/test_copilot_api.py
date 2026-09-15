@@ -120,6 +120,23 @@ def test_ask_invalid_locale(client: TestClient) -> None:
     assert r.status_code == 422
 
 
+def test_ask_rejects_question_over_max_length(client: TestClient) -> None:
+    # AskRequest.question previously had no max_length at all — the one
+    # unguarded field on the actual untrusted-input boundary (a real HTTP
+    # request body), while every other string field in this module is
+    # capped. A multi-MB question used to be accepted and would flow
+    # uncapped into embeddings/LLM prompts.
+    r = client.post("/ask", json={"question": "a" * 10_001})
+    assert r.status_code == 422
+
+
+def test_ask_accepts_question_at_max_length(client: TestClient, force_fixture_csv: None) -> None:
+    question = "What does onboarding require? " * 300  # a long but legitimate question, under the 10,000 cap
+    assert len(question) <= 10_000
+    r = client.post("/ask", json={"question": question})
+    assert r.status_code == 200
+
+
 def test_ask_no_match_still_returns_200_with_fallback_answer(client: TestClient, force_fixture_csv: None) -> None:
     r = client.post("/ask", json={"question": "hello there"})
     assert r.status_code == 200
