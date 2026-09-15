@@ -101,13 +101,35 @@ def get_merchant_context(merchant_id: int) -> dict[str, Any]:
     return merchants.get(merchant_id, {"merchant_id": merchant_id, "found": False})
 
 
+# Same cap/rotation reasoning as src/copilot/tracing.py's
+# _MAX_TRACE_FILE_BYTES: this is another append-only, uncapped-by-default
+# .jsonl sink populated by a real side effect (not a curated eval report),
+# so it needs the same minimum protection against growing forever over a
+# long-running process. Kept as its own constant (not imported from
+# tracing.py) since src/parte4_api/ and src/copilot/ are independent
+# entry points — see D27 for why they don't share runtime state.
+_MAX_QUEUE_FILE_BYTES = 10 * 1024 * 1024
+
+
+def _rotate_queue_file_if_needed(path: Path) -> None:
+    try:
+        size = path.stat().st_size
+    except FileNotFoundError:
+        return
+    if size >= _MAX_QUEUE_FILE_BYTES:
+        path.replace(path.with_suffix(path.suffix + ".1"))
+
+
 def flag_for_human_review(merchant_id: int, reason: str) -> dict[str, Any]:
     """
     Tool del agente: registra el caso en outputs/human_review_queue.jsonl.
 
-    Side-effect real, no mock. Appendea una línea JSON por llamada.
+    Side-effect real, no mock. Appendea una línea JSON por llamada. Rota a
+    un único backup .1 (sobrescribiendo el anterior) si el archivo supera
+    _MAX_QUEUE_FILE_BYTES, en vez de crecer sin límite.
     """
     queue_path = OUTPUTS_DIR / "human_review_queue.jsonl"
+    _rotate_queue_file_if_needed(queue_path)
     record = {"merchant_id": merchant_id, "reason": reason}
     with queue_path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record) + "\n")
