@@ -1189,6 +1189,19 @@
 
 ---
 
+### D49 · `evaluate_copilot.py` llamaba a `known_policy_ids()` sin pasar su propio parámetro `mock`
+
+- **Qué fallaba**: `evaluate(mock: bool)` llamaba a `known_policy_ids()` sin argumento, usando silenciosamente el default de esa función (`mock=True`) sin importar lo que `mock` realmente fuera en ese scope. Benigno hoy porque ambos stores (mock/real) se construyen desde los mismos registros de `_load_policy_docs()` — pero un booleano por default decidiendo en silencio qué cache lee un chequeo de *validación* (el chequeo de alucinación de citas) es una trampa latente en cuanto los corpus de los dos modos puedan divergir alguna vez.
+- *What failed: `evaluate(mock: bool)` called `known_policy_ids()` with no argument, silently using that function's own default (`mock=True`) regardless of what `mock` actually was in that scope. Benign today because both stores (mock/real) are built from the same `_load_policy_docs()` records — but a defaulted boolean silently deciding which cache a *validation* check (the citation-hallucination check) reads is a latent trap the moment the two modes' corpora could ever diverge.*
+
+- **Qué hice**: Cambié la llamada a `known_policy_ids(mock=mock)`, pasando explícitamente el parámetro de la propia función en vez de dejar que el default oculto decida.
+- *What I did: Changed the call to `known_policy_ids(mock=mock)`, explicitly passing the function's own parameter instead of letting the hidden default decide.*
+
+- **Verificado**: `grep` confirmó que es el único caller de producción con este patrón — `tests/test_copilot_graph.py`'s propio uso ya fija `mock=True` explícitamente en el mismo test, así que su llamada sin argumento coincide con la intención real, no es el mismo bug. Suite completa y reporte de eval sin cambios (los dos modos comparten los mismos registros hoy, así que el output es idéntico).
+- *Verified: `grep` confirmed this is the only production caller with this pattern — `tests/test_copilot_graph.py`'s own usage already fixes `mock=True` explicitly in the same test, so its argument-less call matches the actual intent, not the same bug. Full suite and eval report unchanged (both modes share the same records today, so output is identical).*
+
+---
+
 
 
 ## Decisiones extra  
