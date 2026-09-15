@@ -1202,6 +1202,19 @@
 
 ---
 
+### D50 · `is_ocr_available()` se llamaba una vez por página en vez de una vez por documento
+
+- **Qué fallaba**: `extract_pdf_pages` llamaba `is_ocr_available()` dentro del loop de páginas — un `shutil.which` (escaneo del filesystem) por cada página sin capa de texto, cuando la respuesta no puede cambiar significativamente a mitad del loop de un mismo documento. El propio docstring de la función ya argumentaba correctamente por qué no cachear entre llamadas al *proceso* (una sesión larga que instala/desinstala tesseract sin reiniciar) — pero ese razonamiento es ortogonal a re-chequear N veces para un documento que abre y cierra en milisegundos.
+- *What failed: `extract_pdf_pages` called `is_ocr_available()` inside the page loop — one `shutil.which` (filesystem scan) per page with no text layer, when the answer can't meaningfully change mid-loop for the same document. The function's own docstring already correctly argued for not caching across *process* calls (a long-running session installing/uninstalling tesseract without restarting) — but that reasoning is orthogonal to re-checking N times for a document that opens and closes in milliseconds.*
+
+- **Qué hice**: Elevé la llamada a `is_ocr_available()` fuera del loop, una vez por llamada a `extract_pdf_pages()` — preserva exactamente el razonamiento de "no cachear entre llamadas al proceso" del docstring original, solo elimina la redundancia dentro de un mismo documento.
+- *What I did: Hoisted the `is_ocr_available()` call outside the loop, once per `extract_pdf_pages()` call — preserves exactly the original docstring's "don't cache across process calls" reasoning, just removes the redundancy within one document.*
+
+- **Verificado**: Test nuevo que cuenta las llamadas reales a `shutil.which` sobre un PDF de 3 páginas en blanco — confirmado que falla contra el código anterior (3 llamadas) y pasa con el fix (1 llamada). Los 31 tests preexistentes de `test_copilot_ingestion.py` pasan sin ningún cambio, confirmando que el refactor preserva el comportamiento exactamente.
+- *Verified: New test counting actual `shutil.which` calls over a 3-blank-page PDF — confirmed it fails against the prior code (3 calls) and passes with the fix (1 call). All 31 pre-existing `test_copilot_ingestion.py` tests pass with zero changes, confirming the refactor preserves behavior exactly.*
+
+---
+
 
 
 ## Decisiones extra  

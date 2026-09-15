@@ -75,6 +75,29 @@ def test_is_ocr_available_returns_bool() -> None:
 # -----------------------------------------------------------------------------
 # extract_pdf_pages
 # -----------------------------------------------------------------------------
+def test_extract_pdf_pages_checks_ocr_availability_once_per_document(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # is_ocr_available() is a PATH lookup whose answer can't change
+    # mid-loop — previously called once per page (N filesystem scans for a
+    # document with N blank pages), hoisted to once per extract_pdf_pages()
+    # call. Verified by counting calls, not just checking behavior is
+    # unchanged (already covered by every other test in this file still
+    # passing after the hoist).
+    call_count = 0
+    real_which = ing_module.shutil.which
+
+    def _counting_which(name):
+        nonlocal call_count
+        call_count += 1
+        return real_which(name)
+
+    monkeypatch.setattr(ing_module.shutil, "which", _counting_which)
+    pdf = _build_pdf(tmp_path, [None, None, None])  # 3 blank pages
+    extract_pdf_pages(pdf)
+    assert call_count == 1
+
+
 def test_extract_pdf_pages_reads_real_text_layer(tmp_path: Path) -> None:
     pdf = _build_pdf(tmp_path, ["Refund policy: 30 days from purchase."])
     pages = extract_pdf_pages(pdf)

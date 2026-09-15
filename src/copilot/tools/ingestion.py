@@ -124,6 +124,12 @@ def extract_pdf_pages(pdf_path: str | Path) -> list[dict[str, Any]]:
     """
     reader = PdfReader(pdf_path)
     pages = []
+    # Checked once per document, not once per page: is_ocr_available() is a
+    # PATH lookup whose answer can't meaningfully change mid-loop (see its
+    # own docstring — non-caching is about not freezing a stale answer
+    # across a whole *process*, which is orthogonal to re-checking it N
+    # times for one document that opens and closes in milliseconds).
+    ocr_available = is_ocr_available()
     for i, page in enumerate(reader.pages):
         # page.extract_text() isn't guaranteed non-None by pypdf across all
         # versions/inputs (a known behavior class for malformed/encrypted
@@ -132,7 +138,7 @@ def extract_pdf_pages(pdf_path: str | Path) -> list[dict[str, Any]]:
         text = (page.extract_text() or "").strip()
         method = "text_layer"
         if not text:
-            if is_ocr_available():
+            if ocr_available:
                 ocr_text = _ocr_page_image(page)
                 if ocr_text:
                     text, method = ocr_text, "ocr"
