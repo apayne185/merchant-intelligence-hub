@@ -20,7 +20,9 @@ from pypdf.generic import DictionaryObject, NameObject
 from pypdf.generic._data_structures import ContentStream
 from src.copilot.tools import ingestion as ing_module
 from src.copilot.tools.ingestion import (
+    OCR_FAILED_MARKER,
     OCR_UNAVAILABLE_MARKER,
+    _ocr_page_image,
     chunk_text,
     extract_pdf_pages,
     ingest_and_index,
@@ -98,6 +100,50 @@ def test_extract_pdf_pages_mixed_text_and_blank(tmp_path: Path, monkeypatch: pyt
     pages = extract_pdf_pages(pdf)
     assert pages[0]["method"] == "text_layer"
     assert pages[1]["method"] == "unavailable"
+
+
+def test_ocr_page_image_returns_none_on_pytesseract_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Direct unit test of _ocr_page_image's own exception handling — a
+    # fake page whose .images raises when iterated, standing in for a
+    # corrupt/undecodable embedded image or a tesseract runtime failure.
+    class _ExplodingImages:
+        def __iter__(self):
+            raise RuntimeError("simulated tesseract/Pillow failure")
+
+    class _FakePage:
+        images = _ExplodingImages()
+
+    assert _ocr_page_image(_FakePage()) is None
+
+
+def test_extract_pdf_pages_ocr_failure_is_marked_not_raised(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # tesseract IS "available" (binary on PATH) but fails on this specific
+    # page (corrupt image, missing language data, etc.) — is_ocr_available()
+    # only proves the binary exists, not that OCR will succeed. A prior bug:
+    # this used to propagate the exception and kill the entire multi-page
+    # ingest instead of marking just this page and continuing.
+    monkeypatch.setattr("src.copilot.tools.ingestion.shutil.which", lambda _: "/usr/bin/tesseract")
+    # _ocr_page_image itself already catches the real failure and returns
+    # None (see its own docstring/implementation) — mocked here directly
+    # to exercise extract_pdf_pages' handling of that None without needing
+    # to actually trigger a real tesseract/Pillow failure.
+    monkeypatch.setattr(ing_module, "_ocr_page_image", lambda page: None)
+    pdf = _build_pdf(tmp_path, ["Real text page.", None])
+    pages = extract_pdf_pages(pdf)
+    assert pages[0]["method"] == "text_layer"
+    assert pages[1]["method"] == "ocr_failed"
+    assert pages[1]["text"] == OCR_FAILED_MARKER
+
+
+def test_ingest_pdf_skips_ocr_failed_pages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("src.copilot.tools.ingestion.shutil.which", lambda _: "/usr/bin/tesseract")
+    monkeypatch.setattr(ing_module, "_ocr_page_image", lambda page: None)
+    pdf = _build_pdf(tmp_path, ["Real text here.", None])
+    records = ingest_pdf(pdf, doc_id_prefix="DOC", title="Mixed doc")
+    # Only the text-layer page produces a record — the ocr_failed page is
+    # skipped entirely, same as the unavailable case.
+    assert len(records) == 1
+    assert records[0]["source_page"] == 1
 
 
 # -----------------------------------------------------------------------------

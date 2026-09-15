@@ -49,6 +49,7 @@ INGESTED_DOCS_DIR = DATA_DIR / "ingested_docs"
 DEFAULT_CHUNK_CHARS = 600
 
 OCR_UNAVAILABLE_MARKER = "[page has no extractable text layer; OCR not available in this environment]"
+OCR_FAILED_MARKER = "[page has no extractable text layer; OCR was attempted but failed]"
 
 # ingest_and_index() builds a filesystem path directly from doc_id_prefix
 # (INGESTED_DOCS_DIR / f"{doc_id_prefix}.json") with no validation — a
@@ -73,7 +74,7 @@ def is_ocr_available() -> bool:
     return shutil.which("tesseract") is not None
 
 
-def _ocr_page_image(page) -> str:
+def _ocr_page_image(page) -> str | None:
     """Renders `page` to an image and OCRs it. Only called when
     is_ocr_available() is True. pdf2image (poppler) would be the standard
     way to rasterize a PDF page to an image for OCR input, but that's a
@@ -83,31 +84,60 @@ def _ocr_page_image(page) -> str:
     one full-page image embedded in the PDF, not vector content that needs
     rasterizing) without adding poppler as a dependency alongside
     tesseract.
+
+    Returns None (not raises) if OCR fails on this page — is_ocr_available()
+    only proves the tesseract binary is on PATH, not that it will
+    successfully run (missing language data) or that this specific
+    embedded image is decodable (a corrupt image, an encoding Pillow can't
+    read, e.g. some JBIG2/CMYK scans). Without catching this, one bad page
+    in an otherwise-fine multi-page PDF used to kill the entire ingest —
+    contradicting this module's own stated invariant that a page is always
+    marked explicitly rather than silently failing (see extract_pdf_pages).
     """
     import pytesseract
 
     texts = []
-    for img_file in page.images:
-        texts.append(pytesseract.image_to_string(img_file.image))
+    try:
+        for img_file in page.images:
+            texts.append(pytesseract.image_to_string(img_file.image))
+    except Exception:
+        # Broad on purpose: OCR failure modes are genuinely varied
+        # (TesseractError, Pillow decode errors, I/O errors reading the
+        # embedded image stream) and none of them should be allowed to
+        # abort ingestion of the rest of the document — the caller falls
+        # back to OCR_FAILED_MARKER, same "mark it, don't crash or fake
+        # success" contract as the OCR-unavailable case.
+        return None
     return "\n".join(t.strip() for t in texts if t.strip())
 
 
 def extract_pdf_pages(pdf_path: str | Path) -> list[dict[str, Any]]:
     """Extracts each page of `pdf_path` as {page, text, method}, where
-    method is "text_layer", "ocr", or "unavailable" (a scanned page with no
-    text layer, encountered in an environment without tesseract — text is
-    OCR_UNAVAILABLE_MARKER, not silently empty, so a caller/test can tell
-    apart "this page is genuinely blank" from "OCR was skipped here").
+    method is "text_layer", "ocr", "unavailable" (a scanned page with no
+    text layer, encountered in an environment without tesseract), or
+    "ocr_failed" (tesseract is present but failed on this specific page —
+    a missing language pack, a corrupt or undecodable embedded image).
+    Every non-text_layer case gets an explicit marker (OCR_UNAVAILABLE_MARKER
+    / OCR_FAILED_MARKER), not silently empty text, so a caller/test can
+    always tell apart "this page is genuinely blank" from "OCR was skipped
+    or failed here" — the module's core invariant (see its docstring).
     """
     reader = PdfReader(pdf_path)
     pages = []
     for i, page in enumerate(reader.pages):
-        text = page.extract_text().strip()
+        # page.extract_text() isn't guaranteed non-None by pypdf across all
+        # versions/inputs (a known behavior class for malformed/encrypted
+        # pages) — `or ""` guards against `.strip()` on None crashing the
+        # whole ingest over one bad page.
+        text = (page.extract_text() or "").strip()
         method = "text_layer"
         if not text:
             if is_ocr_available():
-                text = _ocr_page_image(page)
-                method = "ocr"
+                ocr_text = _ocr_page_image(page)
+                if ocr_text:
+                    text, method = ocr_text, "ocr"
+                else:
+                    text, method = OCR_FAILED_MARKER, "ocr_failed"
             else:
                 text = OCR_UNAVAILABLE_MARKER
                 method = "unavailable"
@@ -225,7 +255,10 @@ def ingest_pdf(
     records = []
     chunk_num = 0
     for page in pages:
-        if page["method"] == "unavailable":
+        if page["method"] in ("unavailable", "ocr_failed"):
+            # Neither has usable text — OCR_UNAVAILABLE_MARKER/
+            # OCR_FAILED_MARKER strings would otherwise get indexed as if
+            # they were real page content.
             continue
         for chunk in chunk_text(page["text"], max_chunk_chars):
             chunk_num += 1
