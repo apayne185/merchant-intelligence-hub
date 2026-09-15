@@ -67,6 +67,26 @@ def test_build_merchant_features_recent_complaint_is_capped_correctly(df) -> Non
     assert X["days_since_complaint"].iloc[0] == 10.0
 
 
+def test_build_merchant_features_approval_rate_and_months_active_match_known_profile(df) -> None:
+    # Pins the two fields whose aggregation was rewritten from a per-group
+    # Python lambda to a precomputed-column + string-aggregator form (see
+    # DECISIONS.md D37's correction) — approval_rate_3m and
+    # n_months_active. Values below are the fixture's actual computed
+    # output (verified against the pre-rewrite lambda version, bit-for-bit
+    # identical) — data/README.md's "approval_rate 0%" for 90001 describes
+    # its Sep-2025-only collapse, not the full trailing-90-day window this
+    # feature averages over, so the two aren't the same number.
+    x_declining = build_merchant_features(df, 90001)  # TPV/approval-rate collapse Jul-Sep 2025
+    x_healthy = build_merchant_features(df, 90002)  # stable, no complaints
+    assert x_declining["approval_rate_3m"].iloc[0] == pytest.approx(0.5556, abs=1e-3)
+    assert x_healthy["approval_rate_3m"].iloc[0] == 1.0
+    # Both merchants have transactions across all 12 months in the
+    # fixture — n_months_active must count distinct calendar months, not
+    # raw transaction count.
+    assert x_declining["n_months_active"].iloc[0] == 12
+    assert x_healthy["n_months_active"].iloc[0] == 12
+
+
 # ---------------------------------------------------------------------------
 # score_merchant
 # ---------------------------------------------------------------------------
