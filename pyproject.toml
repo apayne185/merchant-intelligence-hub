@@ -87,7 +87,7 @@ dependencies = [
     # pytesseract.image_to_string() needs the tesseract system binary,
     # gated behind an availability check so MOCK_LLM=1 and tests never
     # require it — see DECISIONS.md D38.
-    "pypdf==6.18.1",
+    "pypdf==6.19.0",
     "pytesseract==0.3.13",
     "Pillow==12.3.0",
 
