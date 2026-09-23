@@ -1547,7 +1547,7 @@ pyspark = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agno", specifier = ">=2.5,<3" },
+    { name = "agno", specifier = ">=2.5,<4" },
     { name = "delta-spark", marker = "extra == 'pyspark'", specifier = "==3.2.1" },
     { name = "duckdb", specifier = ">=1.5,<2" },
     { name = "fastapi", specifier = "==0.141.1" },
