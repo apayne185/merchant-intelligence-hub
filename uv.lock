@@ -428,15 +428,15 @@ wheels = [
 
 [[package]]
 name = "delta-spark"
-version = "3.2.1"
+version = "3.3.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "importlib-metadata" },
     { name = "pyspark" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/17/6e/a940d14a764fea1dba5e131e041351a99bc26974f73a6ac19b143598bb34/delta_spark-3.2.1.tar.gz", hash = "sha256:05384ebfeee8e779435302a3e0f1e565636270a2404bedc3a2ee1fea7c980626", size = 22125, upload-time = "2024-09-26T20:52:41.999Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9d/57/70d23ed0971ad52d64d90b619de03b0a6387ca43ffbde472917078044a60/delta_spark-3.3.3.tar.gz", hash = "sha256:bd2cb2912066f5f59029f3cbd02841dd6bfbd3c350aa2033583f7de1627e83e2", size = 23045, upload-time = "2026-08-12T06:38:11.044Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0d/5e/209b8ec57e61e9a9598e68b8d2de6af2853fafbe54c6a41ebc869e15fe12/delta_spark-3.2.1-py3-none-any.whl", hash = "sha256:662ff591acbe190d0d0a07e65cde77f9b81f58da940ae8ca85f620b562165fc3", size = 21170, upload-time = "2024-09-26T20:52:40.601Z" },
+    { url = "https://files.pythonhosted.org/packages/cf/3e/943b539ab84299eb182d022ce4ab78b11052ec80c4d4507063e726c5752e/delta_spark-3.3.3-py3-none-any.whl", hash = "sha256:f44ee1f46e16003276e54743aa9e3f19b7375dd3be9d126be0793485c29b1cee", size = 22022, upload-time = "2026-08-12T06:38:09.928Z" },
 ]
 
 [[package]]
@@ -1548,7 +1548,7 @@ pyspark = [
 [package.metadata]
 requires-dist = [
     { name = "agno", specifier = ">=2.5,<4" },
-    { name = "delta-spark", marker = "extra == 'pyspark'", specifier = "==3.2.1" },
+    { name = "delta-spark", marker = "extra == 'pyspark'", specifier = "==3.3.3" },
     { name = "duckdb", specifier = ">=1.5,<2" },
     { name = "fastapi", specifier = "==0.141.1" },
     { name = "httpx", marker = "extra == 'dev'", specifier = "==0.28.1" },
