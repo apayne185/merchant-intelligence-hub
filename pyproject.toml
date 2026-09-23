@@ -65,10 +65,10 @@ dependencies = [
     # API stack (Parte 4) — uvicorn obligatorio
     "fastapi==0.141.1",
     "uvicorn[standard]==0.30.6",
-    "pydantic==2.13.4",
+    "pydantic==2.13.5",
 
     # Agentic framework (Parte 4) — OBLIGATORIO, no sustituir por LangChain/LlamaIndex
-    "agno>=2.5,<3",
+    "agno>=2.5,<4",
     "openai>=1.40,<4",
 
     # Copilot orchestrator (src/copilot/) — LangGraph owns graph/state/control-flow
