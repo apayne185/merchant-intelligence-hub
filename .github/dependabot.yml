@@ -1,8 +1,10 @@
 # Automated dependency updates — see DECISIONS.md D29.
 version: 2
 updates:
-  # Covers pyproject.toml / uv.lock.
-  - package-ecosystem: "pip"
+  # Covers pyproject.toml / uv.lock. Must be "uv", not "pip": the pip
+  # ecosystem bumps pyproject.toml but never regenerates uv.lock, so every
+  # PR it opened failed CI's `uv lock --check` step (D33).
+  - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "weekly"
