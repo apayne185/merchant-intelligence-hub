@@ -98,7 +98,7 @@ dependencies = [
     "opentelemetry-sdk==1.44.0",
 
     # Utilidades comunes
-    "python-dotenv==1.2.2",
+    "python-dotenv==1.2.3",
 ]
 
 [project.optional-dependencies]
