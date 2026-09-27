@@ -64,7 +64,7 @@ dependencies = [
 
     # API stack (Parte 4) — uvicorn obligatorio
     "fastapi==0.141.1",
-    "uvicorn[standard]==0.30.6",
+    "uvicorn[standard]==0.53.0",
     "pydantic==2.13.5",
 
     # Agentic framework (Parte 4) — OBLIGATORIO, no sustituir por LangChain/LlamaIndex
@@ -98,7 +98,7 @@ dependencies = [
     "opentelemetry-sdk==1.44.0",
 
     # Utilidades comunes
-    "python-dotenv==1.2.2",
+    "python-dotenv==1.2.3",
 ]
 
 [project.optional-dependencies]
