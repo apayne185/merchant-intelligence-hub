@@ -22,19 +22,27 @@ Exporter selection via COPILOT_TRACE_EXPORTER env var:
   - "console": human-readable spans printed to stdout as they end.
   - "file": newline-delimited JSON spans appended to
     COPILOT_TRACE_FILE (default: outputs/traces.jsonl).
+  - "otlp": OTLP/HTTP to an OpenTelemetry Collector (docker-compose.yml,
+    k8s/) — endpoint/headers via the standard OTEL_EXPORTER_OTLP_* env
+    vars, service.name/version/environment via OTEL_SERVICE_NAME and
+    OTEL_RESOURCE_ATTRIBUTES. The Collector fans out to Jaeger (traces) and,
+    via its spanmetrics connector, to Prometheus. See DECISIONS.md D51 for
+    why this doesn't contradict D37's "no collector" — it's opt-in; the
+    default stays offline.
 """
 from __future__ import annotations
 
 import os
 import threading
 from collections import deque
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, TypeVar
 
 from opentelemetry import trace
+from opentelemetry.context import Context
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import (
@@ -104,7 +112,7 @@ class JsonLinesFileExporter(SpanExporter):
         backup = self._path.with_suffix(self._path.suffix + ".1")
         self._path.replace(backup)
 
-    def export(self, spans: list[ReadableSpan]) -> SpanExportResult:
+    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
         import json
 
         lines = [json.dumps(_span_to_dict(span)) for span in spans]
@@ -119,16 +127,19 @@ class JsonLinesFileExporter(SpanExporter):
 
 
 def _span_to_dict(span: ReadableSpan) -> dict[str, Any]:
+    # The SDK types these Optional; a finished SDK span always has both,
+    # but the guards keep a malformed span from crashing an exporter.
     ctx = span.get_span_context()
     parent = span.parent
+    start, end = span.start_time, span.end_time
     return {
         "name": span.name,
-        "trace_id": format(ctx.trace_id, "032x"),
-        "span_id": format(ctx.span_id, "016x"),
+        "trace_id": format(ctx.trace_id, "032x") if ctx else None,
+        "span_id": format(ctx.span_id, "016x") if ctx else None,
         "parent_span_id": format(parent.span_id, "016x") if parent else None,
-        "start_time_ns": span.start_time,
-        "end_time_ns": span.end_time,
-        "duration_ms": round((span.end_time - span.start_time) / 1e6, 3) if span.end_time else None,
+        "start_time_ns": start,
+        "end_time_ns": end,
+        "duration_ms": round((end - start) / 1e6, 3) if end is not None and start is not None else None,
         "attributes": dict(span.attributes or {}),
         "status": span.status.status_code.name,
     }
@@ -141,6 +152,10 @@ def _build_exporter() -> SpanExporter:
     if kind == "file":
         path = Path(os.environ.get("COPILOT_TRACE_FILE", str(DEFAULT_TRACE_FILE)))
         return JsonLinesFileExporter(path)
+    if kind == "otlp":
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
+        return OTLPSpanExporter()
     return _NoOpExporter()
 
 
@@ -166,10 +181,20 @@ class _RequestSpanBuffer(SpanExporter):
         self._by_trace: dict[str, list[ReadableSpan]] = {}
         self._order: deque[str] = deque(maxlen=max_traces)
 
-    def export(self, spans: list[ReadableSpan]) -> SpanExportResult:
+    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
         with self._lock:
             for span in spans:
-                trace_id = format(span.get_span_context().trace_id, "032x")
+                # Skip the HTTP SERVER span the request middleware opens
+                # (src/copilot/infra/middleware.py): it ends *after* /ask
+                # has already popped its trace, so buffering it would
+                # re-create exactly the leak D40 fixed. /ask only ever reads
+                # back its own INTERNAL spans (copilot.ask + copilot.node.*).
+                if span.kind == trace.SpanKind.SERVER:
+                    continue
+                ctx = span.get_span_context()
+                if ctx is None:
+                    continue
+                trace_id = format(ctx.trace_id, "032x")
                 if trace_id not in self._by_trace:
                     if len(self._order) == self._order.maxlen and self._order:
                         self._by_trace.pop(self._order.popleft(), None)
@@ -190,6 +215,9 @@ def _request_span_buffer() -> _RequestSpanBuffer:
     return _RequestSpanBuffer()
 
 
+_PROVIDERS: list[TracerProvider] = []
+
+
 @lru_cache(maxsize=1)
 def get_tracer() -> trace.Tracer:
     """Process-wide tracer, built once. `lru_cache` here plays the same
@@ -197,7 +225,16 @@ def get_tracer() -> trace.Tracer:
     per-process (driven by env vars read once at startup), so rebuilding it
     per call would be pure repeated setup for a byte-identical tracer.
     """
-    provider = TracerProvider(resource=Resource.create({"service.name": "merchant-intelligence-copilot"}))
+    # OTEL_SERVICE_NAME / OTEL_RESOURCE_ATTRIBUTES (set in k8s/compose) are
+    # merged in by Resource.create(); these are just the defaults.
+    provider = TracerProvider(
+        resource=Resource.create(
+            {
+                "service.name": os.environ.get("OTEL_SERVICE_NAME", "merchant-intelligence-copilot"),
+                "deployment.environment": os.environ.get("APP_ENV", "development"),
+            }
+        )
+    )
     # BatchSpanProcessor, not Simple: the console/file exporter's export()
     # used to run synchronously in the request path on every single span
     # end (SimpleSpanProcessor calls export() per span) — a blocking
@@ -209,7 +246,15 @@ def get_tracer() -> trace.Tracer:
     # must still see every span immediately, not after a batching delay.
     provider.add_span_processor(BatchSpanProcessor(_build_exporter()))
     provider.add_span_processor(SimpleSpanProcessor(_request_span_buffer()))
+    _PROVIDERS.append(provider)
     return provider.get_tracer("src.copilot")
+
+
+def shutdown_tracing() -> None:
+    """Flushes batched spans on graceful shutdown (app lifespan), so the
+    last few seconds of spans before a pod's SIGTERM aren't dropped."""
+    while _PROVIDERS:
+        _PROVIDERS.pop().shutdown()
 
 
 def get_trace(trace_id: int) -> list[dict[str, Any]]:
@@ -221,12 +266,20 @@ def get_trace(trace_id: int) -> list[dict[str, Any]]:
 
 
 @contextmanager
-def traced(name: str, **attributes: Any) -> Iterator[trace.Span]:
+def traced(
+    name: str,
+    *,
+    context: Context | None = None,
+    kind: trace.SpanKind = trace.SpanKind.INTERNAL,
+    **attributes: Any,
+) -> Iterator[trace.Span]:
     """Span context manager — records exceptions on the span (status +
     the exception event) and always re-raises, so tracing never changes
-    control flow or swallows an error the caller would otherwise see."""
+    control flow or swallows an error the caller would otherwise see.
+    `context` parents the span on an extracted remote context (W3C
+    traceparent from the request middleware); default is the current one."""
     tracer = get_tracer()
-    with tracer.start_as_current_span(name, attributes=attributes) as span:
+    with tracer.start_as_current_span(name, context=context, kind=kind, attributes=attributes) as span:
         try:
             yield span
         except Exception as exc:
@@ -235,7 +288,18 @@ def traced(name: str, **attributes: Any) -> Iterator[trace.Span]:
             raise
 
 
-def traced_node(node_name: str, fn: Callable[[dict], dict]) -> Callable[[dict], dict]:
+_StateT = TypeVar("_StateT", contravariant=True)
+
+
+class NodeFn(Protocol[_StateT]):
+    """A LangGraph node: `(state) -> partial state update`. A Protocol, not
+    a Callable alias, because LangGraph's own node protocol matches on the
+    parameter *name* `state`, which Callable[[...], ...] erases."""
+
+    def __call__(self, state: _StateT) -> dict[str, Any]: ...
+
+
+def traced_node(node_name: str, fn: NodeFn[_StateT]) -> NodeFn[_StateT]:
     """Wraps a LangGraph node function in a span named after the node,
     tagging how many pending tools remain and (for the router) nothing
     state-specific — kept generic on purpose so this wrapper works
@@ -244,7 +308,7 @@ def traced_node(node_name: str, fn: Callable[[dict], dict]) -> Callable[[dict], 
     boundary graph.py's own docstring already draws for LangGraph itself).
     """
 
-    def wrapped(state: dict) -> dict:
+    def wrapped(state: _StateT) -> dict[str, Any]:
         with traced(f"copilot.node.{node_name}") as span:
             result = fn(state)
             tool_calls = result.get("tool_calls")

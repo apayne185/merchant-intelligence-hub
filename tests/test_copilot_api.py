@@ -101,6 +101,7 @@ def test_ask_response_matches_schema_fields(client: TestClient, force_fixture_cs
     body = r.json()
     assert set(body.keys()) == {
         "question", "route", "answer", "citations", "tool_calls", "mode", "latency_ms", "trace",
+        "pii_redactions", "cached",
     }
     for c in body["citations"]:
         assert set(c.keys()) == {"source_type", "id", "title", "excerpt"}

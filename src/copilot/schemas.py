@@ -81,3 +81,17 @@ class AskResponse(BaseModel):
     mode: Literal["mock", "real"]
     latency_ms: int
     trace: list[NodeTiming] = Field(default_factory=list)
+    # Guardrail/platform metadata (DECISIONS.md D52-D53). `question` above
+    # is the *redacted* question — the API never echoes PII back.
+    pii_redactions: dict[str, int] = Field(default_factory=dict)
+    cached: bool = False
+
+
+class ReadinessResponse(BaseModel):
+    """/ready — whether this replica should receive traffic. Redis and the
+    audit DB are reported but never fail readiness: both are fail-open by
+    design (D53/D54), so pulling every pod out of the Service on a Redis
+    blip would turn a degraded dependency into a full outage."""
+
+    status: Literal["ready", "not_ready"]
+    checks: dict[str, str]
