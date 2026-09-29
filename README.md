@@ -13,7 +13,7 @@ Built on top of a data pipeline and risk-scoring project for merchant transactio
 
 ```bash
 # Instalar dependencias (Python 3.10-3.13 , uv requerido)
-uv sync --extra dev
+uv sync --extra dev --extra mlops --extra notebooks   # o: make setup
 # Sanity check del entorno
 uv run python -c "import pandas, sklearn, fastapi, uvicorn, agno, langgraph, duckdb, pydantic; print('OK · environment ready')"
 ```
@@ -106,8 +106,13 @@ how the churn model scores in live inference, not just the mechanism.*
 *Run tests*
 
 ```bash
-MOCK_LLM=1 uv run pytest tests/ -v
-#138 passed, 1 skipped (155 con --extra pyspark)
+MOCK_LLM=1 uv run pytest tests/ -v --cov
+#280 passed, 4 skipped (3 de integración sin Redis/Postgres + pyspark) · cobertura 93%
+
+# Integración contra Redis/Postgres reales / against real Redis/Postgres:
+docker compose up -d redis postgres
+REDIS_URL=redis://localhost:6379/15 AUDIT_DATABASE_URL=postgresql://copilot:copilot@localhost:5432/copilot \
+  MOCK_LLM=1 uv run pytest -m integration
 ```
 
 
@@ -225,6 +230,45 @@ exercised by tests/CI, which always force the small fixture) — documented,
 not fixed, out of scope for this feature.*
 
 
+## Plataforma de producción
+*Production platform*
+
+La capa que convierte el Copilot en un servicio desplegable — todo opcional
+por env var, así que `MOCK_LLM=1 uvicorn ...` y los tests siguen sin
+necesitar infraestructura. Decisiones en `DECISIONS.md` D51-D57.
+*[EN]: The layer that turns the Copilot into a deployable service — all
+opt-in via env vars, so `MOCK_LLM=1 uvicorn ...` and the tests still need
+zero infrastructure. Decisions in `DECISIONS.md` D51-D57.*
+
+```
+request ─> RequestContextMiddleware (X-Request-ID, W3C traceparent, JSON access log)
+        ─> JWT auth (401/403) ─> rate limit per subject/IP (429, Redis)
+        ─> guardrails: prompt-injection block (400) + PII redaction (card/Luhn, SSN, CPF, IBAN, email, phone)
+        ─> response cache (Redis) ─> LangGraph orchestrator
+        ─> Prometheus metrics + Postgres audit row (background) + OTel spans ─> Collector ─> Jaeger / Prometheus ─> Grafana
+```
+
+| Área / Area | Qué hay / What's there |
+|---|---|
+| Seguridad / Security | `src/copilot/infra/{auth,guardrails,ratelimit}.py` — Bearer JWT (HS256 dev / RS256 vía JWKS de un IdP), rechaza `AUTH_MODE=none` en producción; PII redactada **antes** del LLM, del cache, de logs y del audit |
+| Observabilidad / Observability | `/metrics` (latencia HTTP + p95/p99 por nodo, tokens/coste LLM estimado, eventos de guardrail, cache hit ratio), logs JSON con `request_id`/`trace_id`/`span_id`, exportador OTLP → `deploy/otel-collector/` (spanmetrics → Prometheus), reglas + alertas en `deploy/prometheus/rules.yml`, dashboard Grafana provisionado |
+| Contenedor / Container | `Dockerfile` multi-stage, bases pineadas por digest, UID 10001 no-root, compatible con rootfs read-only, `HEALTHCHECK`, 0 CVEs HIGH/CRITICAL corregibles (Trivy); 2.8GB → 1.4GB al sacar deps de notebooks sin uso |
+| Orquestación / Orchestration | `docker-compose.yml` (app + Redis + Postgres + Collector + Jaeger + Prometheus + Grafana, MLflow con `--profile mlops`); `k8s/base` (Deployment endurecido para Pod Security `restricted`, HPA, PDB, Ingress TLS, NetworkPolicy default-deny) + `k8s/overlays/local` |
+| CI/CD | `.github/workflows/ci.yml` — ruff, mypy, bandit, Trivy fs, pytest con gate de cobertura (85%, medido 93%), tests de integración con Redis/Postgres reales, validación de manifests/configs, build + smoke test del contenedor + gate Trivy; CD a GHCR con SBOM, provenance SLSA y firma cosign keyless |
+| MLOps | `scripts/train_churn_mlflow.py` — sweep de hiperparámetros con runs anidados en MLflow, selección por PR-AUC de validación, PSI de drift por feature, modelo en formato skops (no pickle) |
+
+```bash
+docker compose up -d --build                 # stack completo / full stack
+make token                                   # JWT de desarrollo / dev JWT
+curl -s -X POST localhost:8001/ask -H "Authorization: Bearer $(make -s token)" \
+  -H 'Content-Type: application/json' -d '{"question": "Which merchants are trending toward churn?"}'
+# Grafana http://localhost:3000 · Jaeger http://localhost:16686 · Prometheus http://localhost:9090
+
+kubectl apply -k k8s/overlays/local          # minikube/kind (ver k8s/overlays/local/kustomization.yaml)
+docker compose --profile mlops up -d mlflow && MLFLOW_TRACKING_URI=http://localhost:5000 make train-mlflow
+```
+
+
 ## Backend Azure OpenAI (opcional)
 *Azure OpenAI backend (optional)*
 
@@ -253,21 +297,22 @@ in real mode, TF-IDF under `MOCK_LLM=1`). See DECISIONS.md D39.*
 ## Protecciones del repo
 *Repo protections*
 
-- **Gate de CI real**: `.github/workflows/ci.yml` corre ambos harnesses de
+- **Gates de CI reales**: `.github/workflows/ci.yml` corre ambos harnesses de
   eval y falla el build si una métrica cae debajo de un piso anclado a un
-  valor ya commiteado (`scripts/check_eval_floors.py`) — a diferencia del
-  paso de Lint, que sigue siendo advisory por la deuda preexistente en los
-  notebooks.
-*[EN]: **Real CI gate**: `.github/workflows/ci.yml` runs both eval harnesses
+  valor ya commiteado (`scripts/check_eval_floors.py`). Desde D56 también son
+  bloqueantes ruff (los notebooks quedan excluidos), mypy, bandit, cobertura
+  ≥85%, tests de integración, y el scan Trivy de la imagen.
+*[EN]: **Real CI gates**: `.github/workflows/ci.yml` runs both eval harnesses
   and fails the build if any metric drops below a floor anchored to an
-  already-committed value (`scripts/check_eval_floors.py`) — unlike the
-  Lint step, which stays advisory because of pre-existing notebook debt.*
+  already-committed value (`scripts/check_eval_floors.py`). Since D56 ruff
+  (notebooks excluded), mypy, bandit, ≥85% coverage, integration tests and
+  the image Trivy scan are blocking too.*
 - **Pre-commit**: `.pre-commit-config.yaml` (ruff + [gitleaks](https://github.com/gitleaks/gitleaks)
   para secretos, acotado a `src/copilot/`). Instalar con
   `uv run pre-commit install`.
 *[EN]: **Pre-commit**: `.pre-commit-config.yaml` (ruff + gitleaks for
   secrets, scoped to `src/copilot/`). Install with `uv run pre-commit install`.*
-- **Dependabot**: `.github/dependabot.yml`, ecosistemas `pip` y `github-actions`.
+- **Dependabot**: `.github/dependabot.yml`, ecosistemas `uv`, `github-actions`, `docker` y `docker-compose`.
 - **`SECURITY.md`**: datos sintéticos, advertencia de `joblib.load()`,
   guardrail de prompt injection como best-effort.
 *[EN]: **`SECURITY.md`**: synthetic data, `joblib.load()` warning,
@@ -358,7 +403,7 @@ DECISIONS.md ("Parte 1b · PySpark rewrite").
 *Run ML notebook (Part 3)*
 
 ```bash
-uv run jupyter lab src/parte3_modeling.ipynb
+uv run --extra notebooks jupyter lab src/parte3_modeling.ipynb
 #outputs/metrics.json,model.pkl,feature_importance.csv, model_card.md
 ```
 
