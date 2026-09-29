@@ -29,7 +29,7 @@ FROM ghcr.io/astral-sh/uv:0.11.17@sha256:03bdc89bb9798628846e60c3a9ad19006c8c3c7
 # cleanly, then fails only when Fargate tries to run it against
 # terraform/ecs.tf's runtime_platform{cpu_architecture="X86_64"}. See
 # DECISIONS.md D33.
-FROM --platform=linux/amd64 python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b AS builder
+FROM --platform=linux/amd64 python:3.14-slim-trixie@sha256:51dafde81dbdb6ebde285137a295cf18a47ca95234fe388a343719cb97305b3d AS builder
 
 COPY --from=uv /uv /uvx /bin/
 
@@ -62,7 +62,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Must stay the same image as the builder stage: the venv's interpreter
 # symlinks point at this base's /usr/local/bin/python3.13.
-FROM --platform=linux/amd64 python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b AS runtime
+FROM --platform=linux/amd64 python:3.14-slim-trixie@sha256:51dafde81dbdb6ebde285137a295cf18a47ca95234fe388a343719cb97305b3d AS runtime
 
 ARG VERSION=dev
 ARG REVISION=unknown
