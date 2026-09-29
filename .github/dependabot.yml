@@ -36,3 +36,18 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+
+  # Dockerfile base images (python slim, uv) are pinned tag@digest (D56);
+  # this is what moves those pins forward — including picking up base-image
+  # CVE fixes the CI Trivy gate would otherwise start failing on.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # docker-compose.yml service images (redis, postgres, collector,
+  # prometheus, grafana, jaeger, mlflow).
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"

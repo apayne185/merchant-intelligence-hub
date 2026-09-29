@@ -1,23 +1,59 @@
-name: CI
+# Two-stage pipeline (DECISIONS.md D56):
+#
+#   CI (every PR + push)                         CD (push to main / v* tag, CI green)
+#   ─────────────────────                        ─────────────────────────────────────
+#   lint ─────────┐                              publish: buildx → GHCR
+#   typecheck ────┤                                (SBOM + SLSA provenance attached)
+#   security ─────┤                              cosign keyless sign (GitHub OIDC)
+#   test ─────────┼──> container ──────────────> image digest → job summary
+#   integration ──┤    (build, smoke-run
+#   deploy-config ┘     read-only, Trivy gate)
+#
+# The job id `test` is kept from the original workflow on purpose — it's
+# the status check branch protection was set up to require (D29).
+name: CI/CD
 
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
+  workflow_dispatch:
+
+# Least privilege by default; the publish job opts into what it needs.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PYTHON_VERSION: "3.13"
+  IMAGE: ghcr.io/${{ github.repository }}
+  # Scanner/validator images pinned by digest and run as plain containers,
+  # instead of third-party wrapper actions: aquasecurity/trivy-action's
+  # tags were hijacked in 2026 to exfiltrate CI secrets — a digest-pinned
+  # official image removes that whole class of supply-chain risk. The
+  # remaining actions are pinned to full commit SHAs (tag in the trailing
+  # comment), so a moved/hijacked tag can't change what runs; dependabot's
+  # github-actions ecosystem bumps SHA and comment together.
+  TRIVY_IMAGE: aquasec/trivy:0.67.2@sha256:e2b22eac59c02003d8749f5b8d9bd073b62e30fefaef5b7c8371204e0a4b0c08
+  OTELCOL_IMAGE: otel/opentelemetry-collector-contrib:0.161.0@sha256:fd328de2552466ad78385e1b1289c3f2402b1c45f265b252aab1955b42845ac1
+  KUBECONFORM_IMAGE: ghcr.io/yannh/kubeconform:v0.7.0
+  PROMETHEUS_IMAGE: prom/prometheus:v3.15.0
 
 jobs:
-  test:
+  # ───────────────────────────── CI ─────────────────────────────
+  lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.13"
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Lockfile freshness check
         # `uv sync` (below) silently reconciles pyproject.toml/uv.lock
@@ -30,21 +66,74 @@ jobs:
         # DECISIONS.md D33.
         run: uv lock --check
 
+      - name: Ruff (hard gate)
+        # Was advisory (continue-on-error) until D56 cleared the .py lint
+        # debt; notebooks are excluded in pyproject.toml, not here.
+        run: uv run --extra dev ruff check src/ tests/ scripts/
+
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: mypy (strict on src/copilot/infra + src/mlops, see pyproject.toml)
+        run: uv run --extra dev --extra mlops mypy
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Bandit SAST
+        # Zero findings at every severity today; each suppression in the
+        # code carries an inline `nosec <id>` + justification (D56).
+        run: uv run --extra dev bandit -r src scripts -q
+      - name: Trivy — dependency + secret scan of the repo
+        run: >
+          docker run --rm -v "$PWD:/src:ro" ${{ env.TRIVY_IMAGE }}
+          fs --scanners vuln,secret --severity HIGH,CRITICAL --ignore-unfixed
+          --exit-code 1 --skip-dirs /src/.venv /src
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --extra dev --extra mlops
 
-      - name: Lint
-        # Advisory, not a hard gate — matches `make lint`'s own `|| true`.
-        # There's pre-existing lint debt (mostly unused imports in the
-        # notebooks) not addressed by this change; fixing that is a
-        # separate cleanup pass, not a reason to block CI on unrelated PRs.
-        continue-on-error: true
-        run: uv run ruff check src/ tests/
-
-      - name: Test
+      - name: Test + coverage gate
+        # fail_under=85 lives in pyproject.toml [tool.coverage.report];
+        # measured 93% (branch coverage) when the gate was introduced.
         env:
           MOCK_LLM: "1"
-        run: uv run pytest -v
+          MLFLOW_DISABLE_AGENT_HINT: "1"
+        run: uv run pytest -v --cov --cov-report=term --cov-report=xml
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: ignore
 
       - name: Eval — complaint classifier golden set
         env:
@@ -68,8 +157,182 @@ jobs:
         run: uv run python -m scripts.evaluate_retrieval
 
       - name: Eval gate — hard reliability floors
-        # Unlike Lint above, this is NOT advisory — it fails the build.
-        # Floors are anchored to committed baseline values (DECISIONS.md
-        # D21, D28); both harnesses are deterministic under MOCK_LLM=1, so
-        # a failure here means a real regression, not noise. See D29.
+        # Fails the build. Floors are anchored to committed baseline values
+        # (DECISIONS.md D21, D28); both harnesses are deterministic under
+        # MOCK_LLM=1, so a failure here means a real regression, not noise.
+        # See D29.
         run: uv run python -m scripts.check_eval_floors
+
+  integration:
+    # The real backends the unit tests replace with fakes (D53/D54).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      redis:
+        image: redis:8.8.3-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 2s --health-retries 10
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_USER: copilot
+          POSTGRES_PASSWORD: copilot
+          POSTGRES_DB: copilot
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U copilot -d copilot" --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: uv sync --extra dev
+      - name: Integration tests (Redis + Postgres)
+        env:
+          MOCK_LLM: "1"
+          REDIS_URL: redis://localhost:6379/15
+          AUDIT_DATABASE_URL: postgresql://copilot:copilot@localhost:5432/copilot
+        run: uv run pytest -v -m integration
+
+  deploy-config:
+    # Every deployment artifact is validated, not just the Python.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Kubernetes manifests — kustomize render + kubeconform (strict)
+        run: |
+          for dir in k8s/base k8s/overlays/local; do
+            echo "::group::$dir"
+            kubectl kustomize "$dir" | docker run --rm -i ${{ env.KUBECONFORM_IMAGE }} -strict -summary -
+            echo "::endgroup::"
+          done
+      - name: OTel Collector config
+        run: >
+          docker run --rm -v "$PWD/deploy/otel-collector/config.yaml:/c.yaml:ro"
+          ${{ env.OTELCOL_IMAGE }} validate --config=/c.yaml
+      - name: Prometheus config + rules
+        run: |
+          docker run --rm --entrypoint promtool -v "$PWD/deploy/prometheus:/etc/prometheus:ro" \
+            ${{ env.PROMETHEUS_IMAGE }} check rules /etc/prometheus/rules.yml
+      - name: Grafana dashboard is valid JSON
+        run: python3 -m json.tool deploy/grafana/dashboards/copilot.json > /dev/null
+      - name: docker-compose config
+        run: docker compose -f docker-compose.yml config --quiet
+
+  container:
+    needs: [lint, typecheck, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: merchant-copilot:ci
+          build-args: |
+            VERSION=ci-${{ github.sha }}
+            REVISION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test — same runtime constraints as k8s (read-only rootfs, non-root, no caps)
+        env:
+          SECRET: ci-only-secret-0123456789abcdef0123456789
+        run: |
+          docker run -d --name copilot -p 8001:8001 \
+            --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
+            -e MOCK_LLM=1 -e AUTH_MODE=jwt -e AUTH_JWT_SECRET="$SECRET" \
+            merchant-copilot:ci
+          for _ in $(seq 1 30); do curl -fsS localhost:8001/health && break; sleep 2; done
+          test "$(docker exec copilot id -u)" = "10001"
+          curl -fsS localhost:8001/ready
+          test "$(curl -s -o /dev/null -w '%{http_code}' -XPOST localhost:8001/ask -H 'content-type: application/json' -d '{"question":"x"}')" = "401"
+          TOKEN=$(docker run --rm -e SECRET="$SECRET" --entrypoint python merchant-copilot:ci -c \
+            "import os; from src.copilot.infra.auth import mint_dev_token; print(mint_dev_token(os.environ['SECRET']))")
+          curl -fsS -XPOST localhost:8001/ask -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+            -d '{"question":"Is merchant 90001 at risk of churning?","merchant_id":90001}' | python3 -m json.tool
+          curl -fsS localhost:8001/metrics | grep -q copilot_ask_requests_total
+          docker inspect --format '{{.State.Health.Status}}' copilot
+
+      - name: Smoke test logs
+        if: failure()
+        run: docker logs copilot
+
+      - name: Trivy image scan (gate — fixable HIGH/CRITICAL fail the build)
+        run: >
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ${{ env.TRIVY_IMAGE }}
+          image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
+          merchant-copilot:ci
+
+  # ───────────────────────────── CD ─────────────────────────────
+  publish:
+    needs: [lint, typecheck, security, test, integration, deploy-config, container]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write      # push to GHCR
+      id-token: write      # cosign keyless signing via GitHub OIDC
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=sha,format=long
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            REVISION=${{ github.sha }}
+          # SBOM + SLSA provenance attached to the image as attestations.
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha
+
+      - name: Sign image (cosign keyless — identity = this workflow run)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+
+      - name: Summary
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "### Published \`${IMAGE}@${DIGEST}\`"
+            echo
+            echo "Deploy by digest: \`cd k8s/base && kustomize edit set image merchant-copilot=${IMAGE}@${DIGEST}\`"
+            echo
+            echo "Verify: \`cosign verify ${IMAGE}@${DIGEST} --certificate-identity-regexp 'https://github.com/${GITHUB_REPOSITORY}/' --certificate-oidc-issuer https://token.actions.githubusercontent.com\`"
+          } >> "$GITHUB_STEP_SUMMARY"

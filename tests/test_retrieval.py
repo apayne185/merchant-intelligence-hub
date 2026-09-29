@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from src.parte4_api.retrieval import (
     SimpleVectorStore,
     _dedupe_by_resolution,

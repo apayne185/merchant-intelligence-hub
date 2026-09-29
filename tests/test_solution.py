@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-
 from src.parte1_pandas import load_clean, merchants_at_risk, monthly_kpis, quality_report
 
 

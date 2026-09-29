@@ -75,6 +75,9 @@ def top_merchants_by_tpv(
         params.append(mcc)
     params.append(limit)
 
+    # Bandit B608 (suppressed on the closing line): only the fixed clause
+    # strings built above — never caller input — are interpolated; every
+    # value is bound via `?` params (D23).
     sql = f"""
         SELECT
             merchant_id,
@@ -89,7 +92,7 @@ def top_merchants_by_tpv(
         GROUP BY merchant_id
         ORDER BY tpv DESC
         LIMIT ?
-    """
+    """  # nosec B608
     con = duckdb.connect()
     try:
         con.register("transactions", df)

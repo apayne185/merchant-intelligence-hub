@@ -14,7 +14,6 @@ import pytest
 pyspark = pytest.importorskip("pyspark")
 
 from pyspark.sql import Row, SparkSession  # noqa: E402
-
 from src.parte1_pyspark import (  # noqa: E402
     get_spark,
     load_clean,
