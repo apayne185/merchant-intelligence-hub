@@ -20,7 +20,7 @@
 # (.github/dependabot.yml), not silently on every build the way `uv:latest`
 # used to be. Literal FROM lines rather than ARG defaults on purpose:
 # dependabot only rewrites image references it can see in FROM.
-FROM ghcr.io/astral-sh/uv:0.11.17@sha256:03bdc89bb9798628846e60c3a9ad19006c8c3c724ccd2985a33145c039a0577b AS uv
+FROM ghcr.io/astral-sh/uv:0.12.20@sha256:100047e74f30778ab704942321a09750d6158739573ff58bf3924085cc6cd2d8 AS uv
 
 # --platform=linux/amd64 pinned explicitly on both stages, not just
 # documented via the `buildx --platform` build command above — a plain
