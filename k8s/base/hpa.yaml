@@ -1,0 +1,41 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: merchant-copilot
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: merchant-copilot
+  minReplicas: 3     # one per zone; also the PDB's floor + 1
+  maxReplicas: 12
+  metrics:
+    # In real mode /ask is mostly waiting on the LLM (I/O), so CPU is a
+    # lagging signal; it's the dependable built-in one. The natural next
+    # step is scaling on copilot_ask in-flight requests via prometheus-adapter.
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 65
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+    scaleDown:
+      # Slow scale-down: avoid flapping on bursty traffic.
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60

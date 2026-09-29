@@ -1,0 +1,35 @@
+# Production manifests for the copilot API (DECISIONS.md D56).
+#
+#   kubectl kustomize k8s/base                 # render
+#   kubectl apply -k k8s/base                  # apply (after creating the Secret — see secret.example.yaml)
+#
+# Validated in CI: `kubectl kustomize` + kubeconform against the k8s schemas
+# (.github/workflows/ci.yml, job `deploy-config`). The image tag below is
+# rewritten by the CD job / your GitOps tool (`kustomize edit set image`) —
+# production should pin by digest, which the publish job outputs.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: merchant-intelligence
+
+labels:
+  - pairs:
+      app.kubernetes.io/name: merchant-copilot
+      app.kubernetes.io/part-of: merchant-intelligence-hub
+    includeSelectors: true
+
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml
+  - hpa.yaml
+  - pdb.yaml
+  - ingress.yaml
+  - networkpolicy.yaml
+
+images:
+  - name: merchant-copilot
+    newName: ghcr.io/apayne185/merchant-intelligence-hub
+    newTag: "0.3.0"

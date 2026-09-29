@@ -79,3 +79,6 @@ terraform/.terraform.tfstate.lock.info
 terraform/terraform.tfvars
 terraform/*.auto.tfvars
 terraform/crash.log
+# Local MLflow tracking state (scripts/train_churn_mlflow.py)
+mlruns/
+mlflow.db

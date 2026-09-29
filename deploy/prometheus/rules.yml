@@ -1,0 +1,58 @@
+# Recording + alerting rules for the copilot (D51). Recording rules
+# precompute the p95/p99 series the Grafana dashboard reads, so dashboards
+# stay cheap no matter how many replicas are scraped. Validated in CI with
+# `promtool check rules` (.github/workflows/ci.yml, job `deploy-config`).
+groups:
+  - name: copilot.recording
+    interval: 30s
+    rules:
+      - record: copilot:http_request_duration_seconds:p95
+        expr: histogram_quantile(0.95, sum by (le, handler) (rate(http_request_duration_seconds_bucket[5m])))
+      - record: copilot:http_request_duration_seconds:p99
+        expr: histogram_quantile(0.99, sum by (le, handler) (rate(http_request_duration_seconds_bucket[5m])))
+      - record: copilot:node_duration_seconds:p95
+        expr: histogram_quantile(0.95, sum by (le, node) (rate(copilot_node_duration_seconds_bucket[5m])))
+      - record: copilot:node_duration_seconds:p99
+        expr: histogram_quantile(0.99, sum by (le, node) (rate(copilot_node_duration_seconds_bucket[5m])))
+      - record: copilot:http_5xx_ratio:rate5m
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(http_requests_total[5m])), 1e-9)
+      - record: copilot:llm_cost_usd:rate1h
+        expr: sum(increase(copilot_llm_cost_usd_total[1h]))
+
+  - name: copilot.alerts
+    rules:
+      - alert: CopilotDown
+        expr: up{job="copilot"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Copilot target {{ $labels.instance }} is down"
+
+      - alert: CopilotHighErrorRate
+        expr: copilot:http_5xx_ratio:rate5m > 0.05
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "Copilot 5xx ratio {{ $value | humanizePercentage }} over 5m"
+
+      - alert: CopilotAskLatencyP99High
+        expr: copilot:http_request_duration_seconds:p99{handler="/ask"} > 8
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "/ask p99 latency {{ $value | humanizeDuration }} (SLO 8s)"
+
+      - alert: CopilotLLMSpendHigh
+        expr: copilot:llm_cost_usd:rate1h > 5
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Estimated LLM spend ${{ $value | printf \"%.2f\" }}/h exceeds budget"
+
+      - alert: CopilotPromptInjectionSpike
+        expr: sum(increase(copilot_guardrail_events_total{event="prompt_injection"}[10m])) > 20
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} prompt-injection attempts blocked in 10m — possible probing"
