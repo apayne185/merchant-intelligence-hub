@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 
+from src.copilot.infra.metrics import record_llm_usage
 from src.copilot.schemas import RouteDecision, ToolName
 from src.copilot.state import CopilotState
 
@@ -96,6 +97,7 @@ didn't already supply.
         structured_outputs=True,
     )
     run_output = agent.run(question)
+    record_llm_usage("router", "gpt-4o-mini", run_output)
     content = run_output.content
     if isinstance(content, RouteDecision):
         return content

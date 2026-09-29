@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.copilot.infra.metrics import record_llm_usage
 from src.copilot.state import CopilotState
 
 
@@ -111,6 +112,7 @@ answer under 1200 characters, plain text, no markdown.
     )
     agent = Agent(model=OpenAIChat(id="gpt-4o-mini"), instructions=instructions)
     run_output = agent.run(prompt)
+    record_llm_usage("synthesis", "gpt-4o-mini", run_output)
     return str(run_output.content)
 
 

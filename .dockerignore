@@ -27,3 +27,13 @@ outputs/merchants_at_risk*.csv
 # Terraform's own local state/cache — never belongs in an image.
 terraform/.terraform/
 terraform/*.tfstate*
+
+# Not needed in the image — deployment config, CI, tests, local MLflow state.
+.github/
+k8s/
+deploy/
+tests/
+scripts/
+mlruns/
+mlflow.db
+outputs/traces.jsonl*

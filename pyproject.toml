@@ -54,13 +54,11 @@ dependencies = [
     # 1.5.1 also has no cp313 wheel; 1.5.2 (patch release, same reason as
     # numpy above) does. See DECISIONS.md D31.
     "scikit-learn==1.5.2",
-    "xgboost==2.1.1",
-    "lightgbm==4.5.0",
+    # 4.5.0 -> 4.6.0: CVE-2024-43598 (RCE, HIGH), flagged by the CI Trivy gate
+    # (D56). Verified outputs/model.pkl unpickles and predicts identically
+    # (max abs diff 0.0 over all 9,967 merchants) before bumping.
+    "lightgbm==4.6.0",
     "shap==0.49.1",
-
-    # Notebook (Parte 3)
-    "jupyter==1.1.1",
-    "ipykernel==7.3.0",
 
     # API stack (Parte 4) — uvicorn obligatorio
     "fastapi==0.141.1",
@@ -96,6 +94,24 @@ dependencies = [
     # DECISIONS.md D37 for why this over a hand-rolled tracer.
     "opentelemetry-api==1.44.0",
     "opentelemetry-sdk==1.44.0",
+    # OTLP/HTTP exporter for COPILOT_TRACE_EXPORTER=otlp — ships spans to the
+    # OTel Collector in docker-compose.yml / k8s. Pinned to the same release
+    # train as the SDK above (OTel requires api/sdk/exporter in lockstep).
+    # HTTP not gRPC: no grpcio wheel (~10MB, native) in the image. See D51.
+    "opentelemetry-exporter-otlp-proto-http==1.44.0",
+
+    # Production platform layer (src/copilot/infra/) — see DECISIONS.md D51-D55.
+    # /metrics endpoint: HTTP RED metrics + custom per-node/token/guardrail series.
+    "prometheus-client==0.26.0",
+    "prometheus-fastapi-instrumentator==8.1.0",
+    # Bearer-JWT validation (HS256 shared secret or RS256 via an IdP's JWKS);
+    # [crypto] pulls `cryptography` for RS256/JWKS.
+    "pyjwt[crypto]==2.15.1",
+    # Shared rate-limit counters + response cache across replicas. Optional at
+    # runtime: unset REDIS_URL -> in-process fallback (D53).
+    "redis==8.1.0",
+    # Request audit log (AUDIT_DATABASE_URL). Optional at runtime, same as Redis.
+    "psycopg[binary,pool]==3.3.6",
 
     # Utilidades comunes
     "python-dotenv==1.2.3",
@@ -111,6 +127,33 @@ dev = [
     # Runs .pre-commit-config.yaml locally (D29) — CI enforces the eval gate
     # independently via ci.yml, this is for local hygiene before pushing.
     "pre-commit==4.6.2",
+    # CI quality gates (D56): coverage floor, type checking, SAST.
+    "pytest-cov==7.1.0",
+    "mypy==2.3.1",
+    "bandit==1.9.4",
+]
+
+# MLflow tracking for churn-model retraining (scripts/train_churn_mlflow.py,
+# D57). mlflow-skinny = the tracking client without the server/UI stack
+# (Flask, alembic, SQLAlchemy...) — the server runs as its own container
+# (docker-compose `mlops` profile), so the app/training env never needs it.
+mlops = [
+    "mlflow-skinny==3.16.1",
+    # MLflow 3.x serializes sklearn models with skops (a restricted, no-
+    # arbitrary-code format) instead of pickle by default — the safer
+    # counterpart to the joblib.load() warning in SECURITY.md.
+    "skops==0.16.0",
+]
+
+# Notebook tooling (Parte 3, src/eda/) + xgboost (not imported by any module,
+# app or script). Moved out of core deps in D56: together with xgboost's
+# nvidia-nccl-cu12 dependency they were ~0.9GB of the runtime image that
+# nothing at runtime ever loads — the "accepted tradeoff" D33/D34 recorded,
+# revisited once image size became an explicit goal.
+notebooks = [
+    "jupyter==1.1.1",
+    "ipykernel==7.3.0",
+    "xgboost==2.1.1",
 ]
 
 # Opcional para la Parte 5 bonus (collusion rings)
@@ -154,14 +197,72 @@ addopts = [
 ]
 asyncio_mode = "auto"
 pythonpath = ["."]
+markers = [
+    "integration: needs real Redis/Postgres (REDIS_URL / AUDIT_DATABASE_URL); skipped otherwise",
+]
+
+# -----------------------------------------------------------------------------
+# Coverage — CI gate (D56): `pytest --cov` fails under fail_under.
+# -----------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["src"]
+branch = true
+omit = [
+    # Needs the `pyspark` extra + a JVM; exercised by tests/test_parte1_pyspark.py
+    # only where that's installed, so it can't count toward a gate CI enforces
+    # without it.
+    "src/parte1_pyspark.py",
+]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
+# -----------------------------------------------------------------------------
+# Mypy — CI gate (D56). Package code only (src/copilot, src/mlops); the new
+# platform + MLOps modules are held to --strict. Notebook ports, scripts and
+# Parte 1-5 code predate type checking and aren't in the gate yet.
+# -----------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.10"
+files = ["src/copilot", "src/mlops"]
+explicit_package_bases = true
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true
+
+# The --strict flag set, spelled out: `strict = true` inside an override
+# leaks its global-only flags to every module in the run.
+[[tool.mypy.overrides]]
+module = ["src.copilot.infra.*", "src.mlops.*"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+warn_return_any = true
+no_implicit_reexport = true
+strict_equality = true
 
 # -----------------------------------------------------------------------------
 # Ruff (lint opcional)
 # -----------------------------------------------------------------------------
 [tool.ruff]
-target-version = "py311"
+target-version = "py310"  # matches requires-python (>=3.10)
 line-length = 100
 src = ["src", "tests"]
+# Notebooks carry pre-existing lint debt (D29) and aren't imported by any
+# module; excluding them is what lets CI make lint a hard gate for every
+# .py file (D56) instead of the old advisory-only step.
+extend-exclude = ["*.ipynb"]
 
 [tool.ruff.lint]
 select = [

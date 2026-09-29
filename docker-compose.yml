@@ -1,0 +1,151 @@
+# Local production-like stack for the Merchant Intelligence Copilot (D51, D56).
+#
+#   docker compose up -d --build                  # app + redis + postgres + observability
+#   docker compose --profile mlops up -d          # + MLflow tracking server
+#
+#   TOKEN=$(docker compose exec -T copilot python -m scripts.mint_dev_token)   # or: make token
+#   curl -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+#        -d '{"question": "Which merchants are trending toward churn?"}' localhost:8001/ask
+#
+# UIs: API docs http://localhost:8001/docs · Grafana http://localhost:3000 (anonymous viewer)
+#      Prometheus http://localhost:9090 · Jaeger http://localhost:16686 · MLflow http://localhost:5000
+#
+# Everything defaults to MOCK_LLM=1 (zero cost). For real LLM calls put
+# OPENAI_API_KEY in a .env file next to this one and set MOCK_LLM=0.
+# All secrets below are local-only placeholders — k8s/ reads real ones from
+# a Secret (see k8s/base/secret.example.yaml), never from this file.
+
+name: merchant-intelligence
+
+x-hardening: &hardening
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+
+services:
+  copilot:
+    <<: *hardening
+    build:
+      context: .
+      args:
+        VERSION: "0.3.0-compose"
+    image: merchant-copilot:compose
+    ports: ["8001:8001"]
+    environment:
+      MOCK_LLM: "${MOCK_LLM:-1}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      APP_ENV: development
+      AUTH_MODE: jwt
+      AUTH_JWT_SECRET: "${AUTH_JWT_SECRET:-local-dev-secret-change-me-0123456789}"
+      RATE_LIMIT_PER_MINUTE: "60"
+      REDIS_URL: redis://redis:6379/0
+      CACHE_TTL_SECONDS: "300"
+      AUDIT_DATABASE_URL: postgresql://copilot:copilot@postgres:5432/copilot
+      COPILOT_TRACE_EXPORTER: otlp
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: merchant-intelligence-copilot
+      OTEL_RESOURCE_ATTRIBUTES: service.version=0.3.0,deployment.environment=compose
+      LOG_FORMAT: json
+    # Same runtime constraints as k8s/base/deployment.yaml's securityContext, so
+    # "works in compose" actually predicts "works in the cluster".
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: [ALL]
+    # scripts/ isn't in the image (.dockerignore); mounted read-only so
+    # `make token` can mint a dev JWT with the container's own secret.
+    volumes: ["./scripts:/app/scripts:ro"]
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      otel-collector: { condition: service_started }
+
+  redis:
+    <<: *hardening
+    image: redis:8.8.3-alpine
+    # Cache + rate-limit counters are disposable: no persistence, bounded
+    # memory, LRU eviction — a full Redis degrades caching, never errors.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+
+  postgres:
+    <<: *hardening
+    image: postgres:18.4-alpine
+    environment:
+      POSTGRES_USER: copilot
+      POSTGRES_PASSWORD: copilot
+      POSTGRES_DB: copilot
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U copilot -d copilot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  otel-collector:
+    <<: *hardening
+    image: otel/opentelemetry-collector-contrib:0.161.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes: ["./deploy/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro"]
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus exporter (spanmetrics)
+      - "13133:13133" # health_check extension
+    depends_on: [jaeger]
+
+  jaeger:
+    <<: *hardening
+    image: jaegertracing/jaeger:2.21.0
+    ports: ["16686:16686"]
+
+  prometheus:
+    <<: *hardening
+    image: prom/prometheus:v3.15.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./deploy/prometheus:/etc/prometheus:ro
+      - promdata:/prometheus
+    ports: ["9090:9090"]
+
+  grafana:
+    <<: *hardening
+    image: grafana/grafana:13.2.2
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin}"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/copilot.json
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3000:3000"]
+    depends_on: [prometheus, jaeger]
+
+  mlflow:
+    <<: *hardening
+    profiles: [mlops]
+    image: ghcr.io/mlflow/mlflow:v3.16.1
+    command:
+      - mlflow
+      - server
+      - --host=0.0.0.0
+      - --port=5000
+      - --backend-store-uri=sqlite:////mlflow/mlflow.db
+      - --artifacts-destination=/mlflow/artifacts
+      - --serve-artifacts
+      - --allowed-hosts=localhost:5000,127.0.0.1:5000,mlflow:5000
+    volumes: ["mlflowdata:/mlflow"]
+    ports: ["5000:5000"]
+
+volumes:
+  pgdata:
+  promdata:
+  mlflowdata:

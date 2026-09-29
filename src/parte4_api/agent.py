@@ -20,6 +20,14 @@ import re
 from pathlib import Path
 from typing import Any
 
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools import tool as agno_tool
+from pydantic import BaseModel, Field, conint
+
+from .retrieval import retrieve_similar_cases
+from .schemas import Category
+
 # -----------------------------------------------------------------------------
 # Constantes y helpers
 # -----------------------------------------------------------------------------
@@ -139,14 +147,6 @@ def flag_for_human_review(merchant_id: int, reason: str) -> dict[str, Any]:
 # -----------------------------------------------------------------------------
 # Agente Agno real
 # -----------------------------------------------------------------------------
-from agno.agent import Agent
-from agno.models.openai import OpenAIChat
-from agno.tools import tool as agno_tool
-from pydantic import BaseModel, Field, conint
-
-from .retrieval import retrieve_similar_cases
-from .schemas import Category
-
 _AGENT_INSTRUCTIONS = """
 Eres un clasificador de reclamaciones de merchants para un adquirente de pagos.
 

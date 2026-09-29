@@ -1,0 +1,74 @@
+# OpenTelemetry Collector pipeline (D51).
+#
+#   app --OTLP/HTTP--> collector --OTLP--> Jaeger          (trace storage + UI)
+#                         |
+#                         +--spanmetrics--> :8889 <--scrape-- Prometheus --> Grafana
+#
+# The spanmetrics connector turns spans into RED metrics (calls, errors,
+# duration histograms per span name) — so per-node latency is available
+# from traces alone, independently of the app's own /metrics. The two are
+# deliberately redundant: /metrics keeps working with the collector down,
+# and spanmetrics works for any future service that only emits traces.
+# In k8s, the app ships to a cluster-level collector instead (k8s/base/configmap.yaml).
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # First in every pipeline: sheds load instead of OOM-killing the
+  # collector under a span burst.
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+  batch:
+    send_batch_size: 1024
+    timeout: 5s
+  # Health/metrics probes are already excluded app-side
+  # (src/copilot/infra/middleware.py); this is the belt-and-braces copy for
+  # any other emitter.
+  filter/drop-probes:
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["url.path"] == "/health"'
+        - 'attributes["url.path"] == "/ready"'
+        - 'attributes["url.path"] == "/metrics"'
+
+connectors:
+  span_metrics:
+    histogram:
+      explicit:
+        buckets: [1ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s, 30s]
+    dimensions:
+      - name: http.response.status_code
+    metrics_flush_interval: 15s
+
+exporters:
+  otlp_grpc/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, filter/drop-probes, batch]
+      exporters: [otlp_grpc/jaeger, span_metrics]
+    metrics/span_metrics:
+      receivers: [span_metrics]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]

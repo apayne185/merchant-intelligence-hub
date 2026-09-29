@@ -72,27 +72,16 @@ MODEL_CAVEAT = (
 )
 
 
-def build_merchant_features(
-    df: pd.DataFrame, merchant_id: int, reference_date: pd.Timestamp | None = None
-) -> pd.DataFrame:
-    """Builds the 1-row, 20-column raw feature frame for `merchant_id`,
-    replicating src/parte3_modeling.ipynb cells 5 and 7 exactly: 3m/6m
-    trailing windows off `reference_date`, tpv_trend_3m_6m clipped to
-    [0, 5], log1p-scaled TPV, and days_since_complaint capped at
-    `reference_date` (the same T2 leakage guard load_clean's caller relies
-    on elsewhere in this repo). Computed over the full `df` (matching how
-    training built its feature matrix) then sliced to one row — not
-    optimized for repeated single-merchant scoring at production scale, see
-    DECISIONS.md D24.
-
-    Raises KeyError if `merchant_id` has no transactions on or before
-    `reference_date`.
+def build_feature_matrix(df: pd.DataFrame, reference_date: pd.Timestamp | None = None) -> pd.DataFrame:
+    """The full merchant-level feature matrix (one row per merchant, indexed
+    by merchant_id, FEATURE_NAMES columns + `segment`/`mcc` raw) — the
+    notebook's cells 5 and 7 port. Shared by build_merchant_features()
+    (online, one merchant) and src/mlops/churn_training.py (offline
+    retraining, all merchants), so serving and training can't drift apart
+    in how a feature is computed (DECISIONS.md D57).
     """
     ref_date = reference_date if reference_date is not None else df["reference_date"].max()
     pre = df[df["transaction_date"] <= ref_date].copy()
-    if merchant_id not in set(pre["merchant_id"]):
-        raise KeyError(f"merchant_id {merchant_id} has no transactions on or before {ref_date.date()}")
-
     win_3m = ref_date - pd.Timedelta(days=90)
     win_6m = ref_date - pd.Timedelta(days=180)
 
@@ -148,7 +137,29 @@ def build_merchant_features(
     merchant_df["log_tpv_total"] = np.log1p(merchant_df["tpv_total"])
     merchant_df["log_tpv_3m"] = np.log1p(merchant_df["tpv_3m"].fillna(0))
 
-    return merchant_df.loc[[merchant_id], FEATURE_NAMES]
+    return merchant_df[FEATURE_NAMES]
+
+
+def build_merchant_features(
+    df: pd.DataFrame, merchant_id: int, reference_date: pd.Timestamp | None = None
+) -> pd.DataFrame:
+    """Builds the 1-row, 20-column raw feature frame for `merchant_id`,
+    replicating src/parte3_modeling.ipynb cells 5 and 7 exactly: 3m/6m
+    trailing windows off `reference_date`, tpv_trend_3m_6m clipped to
+    [0, 5], log1p-scaled TPV, and days_since_complaint capped at
+    `reference_date` (the same T2 leakage guard load_clean's caller relies
+    on elsewhere in this repo). Computed over the full `df` (matching how
+    training built its feature matrix) then sliced to one row — not
+    optimized for repeated single-merchant scoring at production scale, see
+    DECISIONS.md D24.
+
+    Raises KeyError if `merchant_id` has no transactions on or before
+    `reference_date`.
+    """
+    ref_date = reference_date if reference_date is not None else df["reference_date"].max()
+    if merchant_id not in set(df.loc[df["transaction_date"] <= ref_date, "merchant_id"]):
+        raise KeyError(f"merchant_id {merchant_id} has no transactions on or before {ref_date.date()}")
+    return build_feature_matrix(df, ref_date).loc[[merchant_id], FEATURE_NAMES]
 
 
 _MODEL_CACHE: dict[str, Any] = {}

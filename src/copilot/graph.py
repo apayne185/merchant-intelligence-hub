@@ -35,6 +35,7 @@ imported — promoting the import statements alone doesn't trigger either.
 """
 from __future__ import annotations
 
+from collections.abc import Hashable
 from typing import Any
 
 import pandas as pd
@@ -227,7 +228,7 @@ _NODE_FNS = {
 }
 
 
-def build_graph():
+def build_graph() -> Any:
     """Compiles the orchestrator graph. No checkpointer: /ask is stateless
     single-turn Q&A in this version — LangGraph's persistence layer would be
     unjustified complexity for that (see DECISIONS.md D26).
@@ -247,7 +248,7 @@ def build_graph():
     graph.add_node("synthesize", traced_node("synthesize", synthesize_node))
 
     graph.add_edge(START, "route")
-    path_map = {**{name: name for name in TOOL_NODES}, "synthesize": "synthesize"}
+    path_map: dict[Hashable, str] = {**{name: name for name in TOOL_NODES}, "synthesize": "synthesize"}
     graph.add_conditional_edges("route", pick_next, path_map)
     for name in TOOL_NODES:
         graph.add_conditional_edges(name, pick_next, path_map)

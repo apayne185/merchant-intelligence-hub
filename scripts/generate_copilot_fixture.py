@@ -94,15 +94,15 @@ def generate_rows() -> list[dict]:
                 if tx_date > REFERENCE_DATE:
                     continue
 
-                amount = round(cfg["base_amount"] * amount_mult * random.uniform(0.85, 1.15), 2)
-                roll = random.random()
+                amount = round(cfg["base_amount"] * amount_mult * random.uniform(0.85, 1.15), 2)  # nosec B311 — synthetic fixture data, not crypto
+                roll = random.random()  # nosec B311 — synthetic fixture data, not crypto
                 if roll < approval:
                     status = "approved"
                 elif roll < approval + 0.06:
                     status = "reversed"
                 else:
                     status = "denied"
-                channel = "ecom" if random.random() < 0.6 else "pos"
+                channel = "ecom" if random.random() < 0.6 else "pos"  # nosec B311 — synthetic fixture data, not crypto
 
                 tx_id += 1
                 rows.append(dict(
@@ -118,7 +118,7 @@ def generate_rows() -> list[dict]:
                     last_complaint_date=cfg["complaint_date"].isoformat() if cfg["complaint_date"] else "",
                     segment=cfg["segment"],
                     mcc=cfg["mcc"],
-                    dat_process=(tx_date + timedelta(days=random.randint(0, 1))).isoformat(),
+                    dat_process=(tx_date + timedelta(days=random.randint(0, 1))).isoformat(),  # nosec B311 — synthetic fixture data, not crypto
                 ))
 
     rows.sort(key=lambda r: (r["transaction_date"], r["transaction_id"]))

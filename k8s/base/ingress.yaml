@@ -1,0 +1,36 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: merchant-copilot
+  annotations:
+    # ingress-nginx + cert-manager assumed; swap for your controller's equivalents.
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # AskRequest caps the question at 10k chars; 64k leaves room for JSON
+    # overhead while rejecting multi-MB bodies before they reach a pod.
+    nginx.ingress.kubernetes.io/proxy-body-size: 64k
+    # Real-mode /ask makes two sequential LLM calls.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    # Coarse edge limit per client IP, in front of the app's per-subject
+    # limiter — absorbs floods before they cost a pod anything.
+    nginx.ingress.kubernetes.io/limit-rps: "20"
+    # /metrics is for in-cluster Prometheus only, never the internet.
+    nginx.ingress.kubernetes.io/server-snippet: |
+      location = /metrics { return 404; }
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [copilot.example.com]
+      secretName: merchant-copilot-tls
+  rules:
+    - host: copilot.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: merchant-copilot
+                port:
+                  name: http
