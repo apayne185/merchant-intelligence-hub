@@ -57,7 +57,7 @@ dependencies = [
     # 4.5.0 -> 4.6.0: CVE-2024-43598 (RCE, HIGH), flagged by the CI Trivy gate
     # (D56). Verified outputs/model.pkl unpickles and predicts identically
     # (max abs diff 0.0 over all 9,967 merchants) before bumping.
-    "lightgbm==4.6.0",
+    "lightgbm==4.7.0",
     "shap==0.49.1",
 
     # API stack (Parte 4) — uvicorn obligatorio
