@@ -1,6 +1,6 @@
 """
 Mints an HS256 access token for local docker-compose / manual testing of
-AUTH_MODE=jwt (DECISIONS.md D52). Production tokens come from the IdP
+AUTH_MODE=jwt (DECISIONS.md D15). Production tokens come from the IdP
 (AUTH_JWKS_URL), never from this script.
 
     TOKEN=$(uv run python -m scripts.mint_dev_token)
