@@ -153,7 +153,7 @@ mlops = [
 notebooks = [
     "jupyter==1.1.1",
     "ipykernel==7.3.0",
-    "xgboost==2.1.1",
+    "xgboost==3.2.0",
 ]
 
 # Opcional para la Parte 5 bonus (collusion rings)
