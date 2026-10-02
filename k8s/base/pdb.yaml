@@ -1,7 +1,7 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: merchant-copilot
+  name: filings-copilot
 spec:
   # Node drains/upgrades may evict at most down to 2 ready replicas.
   minAvailable: 2

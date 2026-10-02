@@ -1,10 +1,10 @@
-# Non-secret runtime config (src/copilot/infra/settings.py). Secrets —
-# AUTH_JWT_SECRET/OPENAI_API_KEY/REDIS_URL/AUDIT_DATABASE_URL — live in the
-# `merchant-copilot` Secret (secret.example.yaml), never here.
+# Non-secret runtime config (src/copilot/infra/settings.py). Secrets
+# (AUTH_JWT_SECRET, OPENAI_API_KEY, REDIS_URL, AUDIT_DATABASE_URL, SEC_USER_AGENT) live in the
+# `filings-copilot` Secret (secret.example.yaml), never here.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: merchant-copilot-config
+  name: filings-copilot-config
 data:
   APP_ENV: production
   MOCK_LLM: "0"
@@ -14,7 +14,7 @@ data:
   # (settings.py refuses AUTH_MODE=none under APP_ENV=production).
   AUTH_MODE: jwt
   AUTH_JWKS_URL: https://idp.example.com/.well-known/jwks.json
-  AUTH_JWT_AUDIENCE: merchant-copilot-api
+  AUTH_JWT_AUDIENCE: filings-copilot-api
   AUTH_JWT_ISSUER: https://idp.example.com/
   AUTH_REQUIRED_SCOPE: copilot:ask
   RATE_LIMIT_PER_MINUTE: "60"
@@ -23,7 +23,7 @@ data:
   # Cluster-level collector (e.g. deployed by the OpenTelemetry Operator),
   # running deploy/otel-collector/config.yaml's pipeline.
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability.svc.cluster.local:4318
-  OTEL_SERVICE_NAME: merchant-intelligence-copilot
+  OTEL_SERVICE_NAME: filings-risk-copilot
   # Trust X-Forwarded-For only from the pod network the ingress controller
   # runs in (uvicorn --proxy-headers); adjust to your cluster's pod CIDR.
   FORWARDED_ALLOW_IPS: 10.0.0.0/8

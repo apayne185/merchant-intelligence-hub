@@ -1,5 +1,5 @@
 output "alb_dns_name" {
-  description = "URL to hit once the service is healthy — e.g. http://<this>/health or http://<this>/ask"
+  description = "URL to hit once the service is healthy, e.g. http://<this>/health or http://<this>/ask"
   value       = "http://${aws_lb.app.dns_name}"
 }
 

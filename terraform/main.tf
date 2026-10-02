@@ -8,13 +8,13 @@ terraform {
     }
   }
 
-  # Local state file (terraform.tfstate, gitignored) — deliberate, not an
+  # Local state file (terraform.tfstate, gitignored), deliberate, not an
   # oversight. No S3+DynamoDB remote backend: this deployment is meant to
   # be applied and destroyed within a single demo session on one machine,
-  # not shared/persisted across machines or sessions — a remote backend
+  # not shared/persisted across machines or sessions, a remote backend
   # would itself be the one resource in this stack that runs 24/7, which
   # is exactly what everything else here is designed to avoid. See
-  # DECISIONS.md D33.
+  # DECISIONS.md D20.
 }
 
 provider "aws" {

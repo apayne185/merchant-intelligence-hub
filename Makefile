@@ -1,63 +1,55 @@
-.PHONY: setup test test-api run run-copilot eval eval-copilot eval-retrieval precommit lint clean help \
-	coverage typecheck security check test-integration docker-build up down token k8s-validate train-mlflow
-
-# Gestor de dependencias por defecto: uv (https://docs.astral.sh/uv/).
-# Si no tienes uv: curl -LsSf https://astral.sh/uv/install.sh | sh
+.PHONY: help setup test run eval bench fixtures lint typecheck security style cpp-test check coverage \
+	test-integration docker-build up down replay token k8s-validate clean
 
 help:
-	@echo "Targets disponibles:"
-	@echo "  make setup       - uv sync --extra dev (resuelve + crea .venv + genera uv.lock)"
-	@echo "  make test        - corre todos los tests (pytest) con MOCK_LLM=1"
-	@echo "  make test-api    - corre solo los tests de la API de reclamaciones"
-	@echo "  make run-copilot - arranca el Merchant Intelligence Copilot (puerto 8001, MOCK_LLM=1)"
-	@echo "  make run         - arranca la API de reclamaciones (Parte 4, puerto 8000, MOCK_LLM=1)"
-	@echo "  make eval        - eval golden-set del clasificador de reclamaciones"
-	@echo "  make eval-copilot- eval golden-set del copilot"
-	@echo "  make eval-retrieval - benchmark recall@k/MRR del retriever (mock vs. real embeddings)"
-	@echo "  make precommit   - corre los hooks de pre-commit (ruff + gitleaks) sobre todo el repo"
-	@echo "  make lint        - chequeos con ruff"
-	@echo "  make clean       - elimina caches, .venv y artefactos build"
-	@echo ""
-	@echo "Plataforma de producción (D51-D57):"
-	@echo "  make check       - ruff + mypy + bandit + tests con gate de cobertura (lo mismo que CI)"
-	@echo "  make test-integration - tests contra Redis/Postgres reales (make up antes)"
-	@echo "  make docker-build - construye la imagen endurecida"
-	@echo "  make up / down   - stack docker-compose (app, redis, postgres, otel, jaeger, prometheus, grafana)"
-	@echo "  make token       - JWT de desarrollo para el stack de compose"
-	@echo "  make k8s-validate - kustomize + kubeconform sobre k8s/"
-	@echo "  make train-mlflow - reentrena el modelo de churn con tracking MLflow + drift"
+	@echo "Development"
+	@echo "  make setup            uv sync --extra dev (also compiles the C++ engine)"
+	@echo "  make run              API on :8001 with MOCK_LLM=1"
+	@echo "  make test             pytest, mock LLM"
+	@echo "  make eval             golden-set eval + adversarial verifier test -> outputs/eval_report.json"
+	@echo "  make bench            C++ riskcore vs NumPy -> outputs/benchmark_riskcore.json"
+	@echo "  make cpp-test         C++ unit tests, release and ASan/UBSan builds"
+	@echo "  make check            lint + style + typecheck + security + coverage (what CI runs)"
+	@echo "  make fixtures         refresh data/ from SEC EDGAR (needs SEC_USER_AGENT)"
+	@echo "Platform"
+	@echo "  make up / down        docker-compose stack (API, ingest workers, Redis, Postgres, observability)"
+	@echo "  make replay           publish the fixture filing index into the ingest stream"
+	@echo "  make token            dev JWT for the compose stack"
+	@echo "  make test-integration tests against the compose Redis/Postgres"
+	@echo "  make k8s-validate     kustomize + kubeconform"
 
 setup:
-	uv sync --extra dev --extra mlops --extra notebooks
-	@echo "✓ Setup completo · venv en .venv/ · activa con: source .venv/bin/activate (opcional, uv run no lo requiere)"
+	uv sync --extra dev
+
+run:
+	MOCK_LLM=1 uv run uvicorn src.copilot.api:app --reload --port 8001
 
 test:
 	MOCK_LLM=1 uv run pytest -v
 
-test-api:
-	MOCK_LLM=1 uv run pytest -v tests/test_api.py
-
-run-copilot:
-	MOCK_LLM=1 uv run uvicorn src.copilot.api:app --reload --port 8001
-
-run:
-	MOCK_LLM=1 uv run uvicorn src.parte4_api.main:app --reload --port 8000
-
 eval:
-	MOCK_LLM=1 uv run python -m scripts.evaluate_classifier
+	MOCK_LLM=1 LOG_LEVEL=WARNING uv run python -m scripts.evaluate_copilot
+	uv run python -m scripts.check_eval_floors
 
-eval-copilot:
-	MOCK_LLM=1 uv run python -m scripts.evaluate_copilot
+bench:
+	uv run python -m scripts.benchmark_riskcore
 
-eval-retrieval:
-	MOCK_LLM=1 uv run python -m scripts.evaluate_retrieval
+fixtures:
+	uv run python -m scripts.fetch_fixtures
 
-precommit:
-	uv run pre-commit run --all-files
+cpp-test:
+	cmake -S cpp/riskcore -B cpp/riskcore/build/release -DRISKCORE_PYTHON=OFF -DRISKCORE_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+	cmake --build cpp/riskcore/build/release -j
+	ctest --test-dir cpp/riskcore/build/release --output-on-failure
+	cmake -S cpp/riskcore -B cpp/riskcore/build/asan -DRISKCORE_PYTHON=OFF -DRISKCORE_TESTS=ON -DRISKCORE_SANITIZE=ON -DCMAKE_BUILD_TYPE=Debug
+	cmake --build cpp/riskcore/build/asan -j
+	ctest --test-dir cpp/riskcore/build/asan --output-on-failure
 
-# Hard gate now, matching CI (D56) — no more `|| true`.
 lint:
 	uv run ruff check src/ tests/ scripts/
+
+style:
+	python3 scripts/check_no_em_dash.py
 
 typecheck:
 	uv run mypy
@@ -66,9 +58,9 @@ security:
 	uv run bandit -r src scripts -q
 
 coverage:
-	MOCK_LLM=1 MLFLOW_DISABLE_AGENT_HINT=1 uv run pytest --cov --cov-report=term
+	MOCK_LLM=1 uv run pytest --cov --cov-report=term
 
-check: lint typecheck security coverage
+check: lint style typecheck security coverage
 
 test-integration:
 	REDIS_URL=redis://localhost:6379/15 \
@@ -76,7 +68,7 @@ test-integration:
 	MOCK_LLM=1 uv run pytest -v -m integration
 
 docker-build:
-	docker buildx build --platform linux/amd64 --load -t merchant-copilot:dev .
+	docker buildx build --platform linux/amd64 --load -t filings-copilot:dev .
 
 up:
 	docker compose up -d --build
@@ -84,7 +76,10 @@ up:
 down:
 	docker compose down
 
-# Mints with the secret the running copilot container was started with.
+replay:
+	docker compose run --rm poller-replay
+
+# Mints with the secret the running API container was started with.
 token:
 	@docker compose exec -T copilot python -m scripts.mint_dev_token
 
@@ -93,10 +88,6 @@ k8s-validate:
 		kubectl kustomize $$d | docker run --rm -i ghcr.io/yannh/kubeconform:v0.7.0 -strict -summary - || exit 1; \
 	done
 
-train-mlflow:
-	MLFLOW_DISABLE_AGENT_HINT=1 uv run python -m scripts.train_churn_mlflow
-
 clean:
-	rm -rf .venv .pytest_cache .ruff_cache build dist *.egg-info
+	rm -rf .venv .pytest_cache .ruff_cache .mypy_cache build dist *.egg-info cpp/riskcore/build
 	find . -name __pycache__ -type d -not -path "./.venv/*" -exec rm -rf {} +
-	@echo "✓ Caches eliminados (uv.lock y outputs/ conservados)"

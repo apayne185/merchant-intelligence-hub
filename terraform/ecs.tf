@@ -4,11 +4,11 @@ resource "aws_ecs_cluster" "main" {
   tags = { Name = local.cluster_name }
 }
 
-# Declared explicitly with retention_in_days set — otherwise ECS
+# Declared explicitly with retention_in_days set, otherwise ECS
 # auto-creates this on first log write with infinite retention, and
 # because Terraform never created it, `terraform destroy` never deletes it
 # either: a quiet, permanent violation of "nothing persists between
-# demos." See DECISIONS.md D33.
+# demos." See DECISIONS.md D20.
 resource "aws_cloudwatch_log_group" "app" {
   name              = "/ecs/${var.project_name}"
   retention_in_days = var.log_retention_days
@@ -23,13 +23,13 @@ resource "aws_ecs_task_definition" "app" {
   cpu                      = var.fargate_cpu
   memory                   = var.fargate_memory
   execution_role_arn       = aws_iam_role.execution.arn
-  # No task_role_arn — deliberate, see iam.tf: the app makes zero AWS SDK
+  # No task_role_arn, deliberate, see iam.tf: the app makes zero AWS SDK
   # calls at runtime under MOCK_LLM=1, and Fargate has no minimum
   # permission floor on the task role.
 
   # Match whatever architecture the image was actually built/pushed for
   # (docker buildx build --platform linux/amd64, per the Dockerfile/README)
-  # rather than relying on defaults agreeing. See DECISIONS.md D33.
+  # rather than relying on defaults agreeing. See DECISIONS.md D20.
   runtime_platform {
     cpu_architecture        = "X86_64"
     operating_system_family = "LINUX"
@@ -45,9 +45,9 @@ resource "aws_ecs_task_definition" "app" {
         protocol      = "tcp"
       }]
       environment = [
-        # var.mock_llm, not a hardcoded literal — controllable via tfvars
+        # var.mock_llm, not a hardcoded literal, controllable via tfvars
         # without hand-editing this file. Defaults to "1": zero-cost,
-        # deterministic mock mode (DECISIONS.md D22), same pattern used
+        # deterministic mock mode, same pattern used
         # everywhere else in this repo.
         { name = "MOCK_LLM", value = var.mock_llm },
       ]
@@ -75,21 +75,19 @@ resource "aws_ecs_service" "app" {
   desired_count   = var.desired_count
   launch_type     = "FARGATE"
 
-  # Gives the task time to finish its (heavy) import chain — pandas,
-  # sklearn, shap, lightgbm, duckdb, langgraph, agno all import eagerly at
-  # module load (src/copilot/graph.py imports every tool at the top of the
-  # file specifically so this cost lands here, at startup, not on
-  # whichever live request is first to route to a given node) — before
-  # ALB health-check failures start counting against it. See DECISIONS.md D33.
+  # Startup loads the fact store, price history and retrieval indexes
+  # (graph.warm_up) before serving, so that cost lands here rather than on
+  # the first request; the grace period covers it before ALB health checks
+  # count. See DECISIONS.md D20.
   health_check_grace_period_seconds = 60
 
   network_configuration {
     subnets         = aws_subnet.public[*].id
     security_groups = [aws_security_group.task.id]
-    # Not the Terraform default (false) — with no NAT gateway, omitting
+    # Not the Terraform default (false), with no NAT gateway, omitting
     # this leaves the task with no path to the internet at all, failing
     # silently (CannotPullContainerError / timeout) in a way that doesn't
-    # obviously point back to this one flag. See DECISIONS.md D33.
+    # obviously point back to this one flag. See DECISIONS.md D20.
     assign_public_ip = true
   }
 

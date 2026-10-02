@@ -14,9 +14,9 @@ resource "aws_lb_target_group" "app" {
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
   # Fargate's awsvpc mode registers targets by ENI private IP, not
-  # instance id — target_type defaults to "instance", which breaks target
+  # instance id, target_type defaults to "instance", which breaks target
   # registration outright if left unset. The single most common
-  # ECS+Fargate+ALB Terraform mistake. See DECISIONS.md D33.
+  # ECS+Fargate+ALB Terraform mistake. See DECISIONS.md D20.
   target_type = "ip"
 
   health_check {
@@ -25,7 +25,7 @@ resource "aws_lb_target_group" "app" {
     matcher  = "200"
     # Tuned for "apply, then immediately demo" rather than the 30s-interval/
     # 5-healthy-check default (which would take ~2.5 minutes after the task
-    # reaches RUNNING before the target flips healthy). See DECISIONS.md D33.
+    # reaches RUNNING before the target flips healthy). See DECISIONS.md D20.
     interval            = 15
     timeout             = 10
     healthy_threshold   = 2
@@ -40,9 +40,9 @@ resource "aws_lb_listener" "http" {
   port              = 80
   protocol          = "HTTP"
 
-  # HTTP only, no ACM/TLS cert — there's no custom domain for this
+  # HTTP only, no ACM/TLS cert, there's no custom domain for this
   # portfolio deployment to validate a cert against. A deliberate
-  # tradeoff, not an oversight. See DECISIONS.md D33.
+  # tradeoff, not an oversight. See DECISIONS.md D20.
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.app.arn

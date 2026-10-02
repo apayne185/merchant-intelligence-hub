@@ -1,12 +1,12 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: merchant-copilot
+  name: filings-copilot
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: merchant-copilot
+    name: filings-copilot
   minReplicas: 3     # one per zone; also the PDB's floor + 1
   maxReplicas: 12
   metrics:

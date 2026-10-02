@@ -1,4 +1,4 @@
-# Recording + alerting rules for the copilot (D51). Recording rules
+# Recording + alerting rules for the copilot. Recording rules
 # precompute the p95/p99 series the Grafana dashboard reads, so dashboards
 # stay cheap no matter how many replicas are scraped. Validated in CI with
 # `promtool check rules` (.github/workflows/ci.yml, job `deploy-config`).
@@ -20,6 +20,14 @@ groups:
             / clamp_min(sum(rate(http_requests_total[5m])), 1e-9)
       - record: copilot:llm_cost_usd:rate1h
         expr: sum(increase(copilot_llm_cost_usd_total[1h]))
+      - record: copilot:llm_ttft_seconds:p95
+        expr: histogram_quantile(0.95, sum by (le, call) (rate(copilot_llm_time_to_first_token_seconds_bucket[5m])))
+      - record: copilot:verification_failure_ratio:rate15m
+        expr: |
+          sum(rate(copilot_answer_verification_total{outcome=~"failed|fallback"}[15m]))
+            / clamp_min(sum(rate(copilot_answer_verification_total[15m])), 1e-9)
+      - record: ingest:filing_lag_seconds:p95
+        expr: histogram_quantile(0.95, sum by (le) (rate(ingest_filing_lag_seconds_bucket[30m])))
 
   - name: copilot.alerts
     rules:
@@ -55,4 +63,42 @@ groups:
         expr: sum(increase(copilot_guardrail_events_total{event="prompt_injection"}[10m])) > 20
         labels: { severity: warning }
         annotations:
-          summary: "{{ $value }} prompt-injection attempts blocked in 10m — possible probing"
+          summary: "{{ $value }} prompt-injection attempts blocked in 10m: possible probing"
+
+      # The LLM drafts needing a retry or the deterministic fallback: a rising
+      # ratio means a model or prompt change is producing unsupported numbers.
+      - alert: CopilotAnswerVerificationDegraded
+        expr: copilot:verification_failure_ratio:rate15m > 0.05
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of answers failed numeric verification"
+
+      - alert: CopilotTimeToFirstTokenHigh
+        expr: copilot:llm_ttft_seconds:p95{call="synthesis"} > 2
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Synthesis TTFT p95 {{ $value | humanizeDuration }}"
+
+      - alert: IngestFilingsDeadLettered
+        expr: sum(increase(ingest_messages_total{outcome="dead_lettered"}[30m])) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} filing(s) moved to edgar:filings:dlq; inspect with XRANGE"
+
+      - alert: IngestLagHigh
+        expr: ingest:filing_lag_seconds:p95 > 900
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "New filings take {{ $value | humanizeDuration }} (p95) to reach the fact store"
+
+      # Every API replica applies every update; divergence means one replica
+      # stopped tailing edgar:facts and is serving stale fundamentals.
+      - alert: FactStoreReplicasDiverged
+        expr: max(copilot_fact_store_version) - min(copilot_fact_store_version) > 0
+        for: 10m
+        labels: { severity: critical }
+        annotations:
+          summary: "API replicas disagree on fact store version ({{ $value }} updates apart)"
