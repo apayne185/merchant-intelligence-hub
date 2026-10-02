@@ -1,8 +1,8 @@
 """
-Structured JSON logging with correlation IDs (D55).
+Structured JSON logging with correlation IDs (DECISIONS.md D16).
 
 Every log line carries `request_id` (from the X-Request-ID header, or
-generated) and the active OTel `trace_id`/`span_id` — so a log line in
+generated) and the active OTel `trace_id`/`span_id`, so a log line in
 Loki/CloudWatch/ELK can be joined to its trace in Jaeger and to its row in
 the audit table, and one ID pasted into a support ticket finds all three.
 
@@ -21,9 +21,9 @@ from opentelemetry import trace
 
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 
-# Attributes every LogRecord has — anything else on the record came from
+# Attributes every LogRecord has, anything else on the record came from
 # `extra={...}` and belongs in the JSON output.
-# `color_message` is uvicorn's ANSI-coloured duplicate of `message` — noise in JSON.
+# `color_message` is uvicorn's ANSI-coloured duplicate of `message`, noise in JSON.
 _STD_ATTRS = frozenset(vars(logging.makeLogRecord({}))) | {"message", "asctime", "taskName", "color_message"}
 
 
@@ -69,7 +69,7 @@ class TextFormatter(logging.Formatter):
 def configure_logging(fmt: str = "text", level: str = "INFO") -> None:
     """Replaces the root handler, and routes uvicorn's own loggers through
     it so the container's stdout is one consistent format. Called from the
-    app's lifespan — i.e. after uvicorn has installed its own log config,
+    app's lifespan, i.e. after uvicorn has installed its own log config,
     which this deliberately overrides."""
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter() if fmt == "json" else TextFormatter())

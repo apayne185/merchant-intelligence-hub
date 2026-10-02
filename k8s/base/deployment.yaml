@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: merchant-copilot
+  name: filings-copilot
 spec:
   # Initial size; the HPA (hpa.yaml) owns replicas from here on.
   replicas: 3
@@ -23,7 +23,7 @@ spec:
         prometheus.io/port: "8001"
         prometheus.io/path: /metrics
     spec:
-      serviceAccountName: merchant-copilot
+      serviceAccountName: filings-copilot
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 30
       securityContext:
@@ -33,7 +33,7 @@ spec:
         fsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
-      # Spread replicas across zones and nodes — one zone/node failure
+      # Spread replicas across zones and nodes, one zone/node failure
       # must not take out every replica.
       topologySpreadConstraints:
         - maxSkew: 1
@@ -50,7 +50,7 @@ spec:
               app.kubernetes.io/component: api
       containers:
         - name: api
-          image: merchant-copilot
+          image: filings-copilot
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -58,18 +58,18 @@ spec:
               protocol: TCP
           envFrom:
             - configMapRef:
-                name: merchant-copilot-config
+                name: filings-copilot-config
             - secretRef:
-                name: merchant-copilot
+                name: filings-copilot
           env:
             - name: POD_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.version=0.3.0,deployment.environment=production,k8s.pod.name=$(POD_NAME)
-          # Sized from measurement, not guesswork: ~370MiB RSS warm in
-          # docker-compose (pandas frame + pickled model + TF-IDF index).
+              value: service.version=1.0.0,deployment.environment=production,k8s.pod.name=$(POD_NAME)
+          # Sized from measurement: warm RSS in docker-compose with the fact
+          # store, price history and BM25 indexes loaded (see DECISIONS.md).
           # No CPU limit on purpose: CFS throttling on a latency-sensitive
           # API hurts p99 more than a noisy neighbour does; the request
           # guarantees the share and the HPA scales on it.
@@ -84,8 +84,8 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
-          # Model + data load on the first request that needs them; the
-          # startup probe gives the process time before liveness applies.
+          # Fact store, prices and retrieval indexes load at startup
+          # (graph.warm_up); the startup probe covers that window.
           startupProbe:
             httpGet: { path: /health, port: http }
             periodSeconds: 2
@@ -95,9 +95,9 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 2
             failureThreshold: 3
-          # /ready reports Redis/audit DB but only fails on the graph —
-          # both backends are fail-open (src/copilot/schemas.py
-          # ReadinessResponse), so a Redis blip doesn't empty the Service.
+          # /ready fails only on the graph or an empty fact store. Redis and
+          # the audit DB are reported but fail open, so a Redis blip does not
+          # empty the Service.
           readinessProbe:
             httpGet: { path: /ready, port: http }
             periodSeconds: 5

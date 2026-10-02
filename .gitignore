@@ -3,74 +3,48 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
 *.egg-info/
-.eggs/
 build/
 dist/
 
-# Virtual env
+# Environments
 .venv/
 venv/
-env/
-ENV/
+.env
+.env.local
 
-# IDEs
+# C++ build trees
+cpp/riskcore/build/
+
+# IDEs / OS
 .vscode/
 .idea/
 *.swp
 .DS_Store
-Thumbs.db
 
-# Testing / linting
+# Test / lint caches
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
 .coverage
+coverage.xml
 htmlcov/
 
-# Jupyter
-.ipynb_checkpoints/
-
-# Secrets — NUNCA committear
-.env
-.env.local
+# Secrets
 *.key
 *.pem
 
-# Datos grandes — no versionado por tamaño
-# (los derivados en outputs/ sí se versionan)
+# Local-only data that is never part of the product
 data/transactions_sample.csv
 
-# Outputs generados
-# outputs/  ← deliberadamente NO ignorado (los eval_report*.json/model.pkl/etc.
-# son artefactos curados que sí se versionan)
-#
-# Excepción: sinks append-only de solo-escritura poblados por side effects
-# reales en tiempo de ejecución (no eval reports curados) — crecen sin
-# límite y pueden contener texto de requests reales de un usuario (la
-# pregunta completa de /ask vía src/copilot/tracing.py's file exporter, o
-# el motivo de flag_for_human_review en src/parte4_api/agent.py). Un `git
-# add outputs/` amplio los arrastraría adentro por accidente. Ninguno de
-# los dos existe en un checkout limpio — solo aparecen si alguien
-# configura COPILOT_TRACE_EXPORTER=file o llama a flag_for_human_review.
-outputs/traces.jsonl
-outputs/human_review_queue.jsonl
+# outputs/ is versioned on purpose (eval and benchmark reports are evidence).
+# The trace file sink is not: it grows without bound and can contain request text.
+outputs/traces.jsonl*
 
-# Roadmap/planning notes — not part of the public portfolio repo
+# Planning notes
 context/
 
-# Delta Lake tables (parte1_pyspark.py) — binarios regenerables, no se versionan
-outputs/delta/
-
-# PySpark local run artifacts
-derby.log
-metastore_db/
-spark-warehouse/
-
-# Terraform (terraform/) — local state is deliberate (DECISIONS.md D33),
-# but state files themselves (may contain resource attributes/ARNs) and
-# the downloaded provider plugin cache never belong in git.
+# Terraform: state can contain resource attributes and ARNs; never in git.
 terraform/.terraform/
 terraform/terraform.tfstate
 terraform/terraform.tfstate.backup
@@ -79,6 +53,3 @@ terraform/.terraform.tfstate.lock.info
 terraform/terraform.tfvars
 terraform/*.auto.tfvars
 terraform/crash.log
-# Local MLflow tracking state (scripts/train_churn_mlflow.py)
-mlruns/
-mlflow.db

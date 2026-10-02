@@ -1,169 +1,93 @@
-"""
-Tests for the copilot API (src/copilot/api.py).
-
-Must pass with MOCK_LLM=1 — no OpenAI dependency for CI. Uses the
-force_fixture_csv fixture (tests/conftest.py) per-test so results are
-deterministic regardless of whether the real (gitignored)
-transactions_sample.csv happens to be present locally.
-
-Run with:
-    MOCK_LLM=1 pytest -v tests/test_copilot_api.py
-"""
+"""HTTP contract of the copilot API (mock LLM mode)."""
 from __future__ import annotations
-
-import os
 
 import pytest
 from fastapi.testclient import TestClient
-
-# Forzamos MOCK_LLM antes de importar la app, por si lee el env en import
-# time — mismo patrón defensivo que tests/test_api.py.
-os.environ.setdefault("MOCK_LLM", "1")
-
-from src.copilot.api import app, get_graph  # noqa: E402
-from src.copilot.tracing import _request_span_buffer  # noqa: E402
+from src.copilot.api import app, get_graph
+from src.copilot.tracing import _request_span_buffer
 
 
 @pytest.fixture(scope="module")
-def client() -> TestClient:
-    return TestClient(app)
+def client():
+    with TestClient(app) as c:
+        yield c
 
 
-# -----------------------------------------------------------------------------
-# /health
-# -----------------------------------------------------------------------------
 def test_health(client: TestClient) -> None:
-    r = client.get("/health")
+    assert client.get("/health").json() == {"status": "ok", "model": "mock", "version": app.version}
+
+
+def test_ask_returns_verified_cited_answer(client: TestClient) -> None:
+    r = client.post("/ask", json={"question": "What was Apple's revenue and net margin in FY2025?"})
     assert r.status_code == 200
     body = r.json()
-    assert body["status"] == "ok"
-    assert "model" in body
-    assert "version" in body
+    assert body["route"] == ["fundamentals"]
+    assert body["verification"]["status"] == "verified"
+    assert body["verification"]["numbers_checked"] == body["verification"]["numbers_verified"] >= 2
+    rev = next(e for e in body["evidence"] if e["id"].startswith("AAPL:revenue:FY2025"))
+    assert rev["values"]["value"] == 416_161_000_000
+    assert rev["source"]["accession"] == "0000320193-25-000079"
+    assert rev["source"]["url"].startswith("https://www.sec.gov/Archives/edgar/data/320193/")
+    assert f"[{rev['id']}]" in body["answer"]
+    assert {t["node"] for t in body["trace"]} >= {"route", "fundamentals", "synthesize"}
 
 
-# -----------------------------------------------------------------------------
-# /ask — happy paths
-# -----------------------------------------------------------------------------
-def test_ask_flagship_question(client: TestClient, force_fixture_csv: None) -> None:
-    payload = {
-        "question": (
-            "Which merchants are trending toward churn and why, and does anything "
-            "in our onboarding policy flag them?"
-        ),
-    }
-    r = client.post("/ask", json=payload)
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert set(body["route"]) == {"risk", "grounding"}
-    assert len(body["citations"]) > 0
-    assert any(c["source_type"] == "model_output" for c in body["citations"])
-    assert any(c["source_type"] == "policy_doc" for c in body["citations"])
-    assert "0.58" in body["answer"]
-    assert body["mode"] == "mock"
-    assert body["latency_ms"] >= 0
-
-    # Trace should have one span per node that actually ran (route +
-    # each routed tool + synthesize), all with a non-negative duration —
-    # see DECISIONS.md D37.
-    traced_nodes = {span["node"] for span in body["trace"]}
-    assert {"route", "risk", "grounding", "synthesize"}.issubset(traced_nodes)
-    assert all(span["duration_ms"] >= 0 for span in body["trace"])
+def test_ask_point_in_time(client: TestClient) -> None:
+    body = client.post("/ask", json={"question": "Apple diluted EPS for fiscal 2019", "as_of": "2020-06-01"}).json()
+    assert "$11.89" in body["answer"] and body["as_of"] == "2020-06-01"
 
 
-def test_ask_merchant_specific_question(client: TestClient, force_fixture_csv: None) -> None:
-    payload = {"question": "Is this merchant at risk of churning and why?", "merchant_id": 90001}
-    r = client.post("/ask", json=payload)
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert "data_analyst" in body["route"]
-    assert "risk" in body["route"]
-    assert "90001" in body["answer"]
+def test_ask_with_explicit_portfolio(client: TestClient) -> None:
+    body = client.post("/ask", json={
+        "question": "What is the expected shortfall of this portfolio?",
+        "portfolio": [{"ticker": "jpm", "weight": 0.5}, {"ticker": "GS", "weight": 0.5}],
+    }).json()
+    assert body["route"] == ["market_risk"]
+    assert body["tool_calls"][0]["args"]["positions"] == {"JPM": 0.5, "GS": 0.5}
 
 
-def test_ask_complaint_routes_to_classifier_only(client: TestClient, force_fixture_csv: None) -> None:
-    payload = {
-        "question": "I want to cancel my account, this is unacceptable.",
-        "merchant_id": 90001,
-        "locale": "en",
-    }
-    r = client.post("/ask", json=payload)
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["route"] == ["complaint_classifier"]
+@pytest.mark.parametrize("payload", [
+    {},
+    {"question": ""},
+    {"question": "x" * 4001},
+    {"question": "hi", "locale": "fr"},
+    {"question": "hi", "as_of": "June 2024"},
+    {"question": "hi", "portfolio": [{"ticker": "AAPL", "weight": 2.0}]},
+])
+def test_ask_validation(client: TestClient, payload: dict) -> None:
+    assert client.post("/ask", json=payload).status_code == 422
 
 
-# -----------------------------------------------------------------------------
-# /ask — response shape / contract
-# -----------------------------------------------------------------------------
-def test_ask_response_matches_schema_fields(client: TestClient, force_fixture_csv: None) -> None:
-    r = client.post("/ask", json={"question": "What does onboarding require?"})
-    assert r.status_code == 200
-    body = r.json()
-    assert set(body.keys()) == {
-        "question", "route", "answer", "citations", "tool_calls", "mode", "latency_ms", "trace",
-        "pii_redactions", "cached",
-    }
-    for c in body["citations"]:
-        assert set(c.keys()) == {"source_type", "id", "title", "excerpt"}
-    for tc in body["tool_calls"]:
-        assert set(tc.keys()) == {"tool", "args", "summary"}
-    for span in body["trace"]:
-        assert set(span.keys()) == {"node", "duration_ms"}
-
-
-def test_ask_invalid_input_missing_question(client: TestClient) -> None:
-    r = client.post("/ask", json={"merchant_id": 1})
-    assert r.status_code == 422
-
-
-def test_ask_invalid_locale(client: TestClient) -> None:
-    r = client.post("/ask", json={"question": "hi", "locale": "fr"})
-    assert r.status_code == 422
-
-
-def test_ask_rejects_question_over_max_length(client: TestClient) -> None:
-    # AskRequest.question previously had no max_length at all — the one
-    # unguarded field on the actual untrusted-input boundary (a real HTTP
-    # request body), while every other string field in this module is
-    # capped. A multi-MB question used to be accepted and would flow
-    # uncapped into embeddings/LLM prompts.
-    r = client.post("/ask", json={"question": "a" * 10_001})
-    assert r.status_code == 422
-
-
-def test_ask_accepts_question_at_max_length(client: TestClient, force_fixture_csv: None) -> None:
-    question = "What does onboarding require? " * 300  # a long but legitimate question, under the 10,000 cap
-    assert len(question) <= 10_000
-    r = client.post("/ask", json={"question": question})
-    assert r.status_code == 200
-
-
-def test_ask_no_match_still_returns_200_with_fallback_answer(client: TestClient, force_fixture_csv: None) -> None:
-    r = client.post("/ask", json={"question": "hello there"})
-    assert r.status_code == 200
-    assert r.json()["answer"]
-
-
-# -----------------------------------------------------------------------------
-# /ask — error path doesn't leak trace-buffer entries. A prior bug: the
-# `finally` that pops a request's spans out of tracing.py's shared
-# _RequestSpanBuffer didn't exist, so an HTTPException raised inside the
-# root "copilot.ask" span's `with` block skipped the pop entirely — every
-# failed /ask permanently pinned one entry in the buffer (bounded only by
-# its max_traces=256 backstop, never reclaimed). Verified by forcing
-# graph.invoke() to raise and checking the buffer's own size before/after.
-# -----------------------------------------------------------------------------
-def test_ask_failure_does_not_leak_a_trace_buffer_entry(client: TestClient) -> None:
-    class _FailingGraph:
+def test_ask_failure_returns_502_without_leaking_trace(client: TestClient) -> None:
+    class Boom:
         def invoke(self, state):
-            raise RuntimeError("forced failure for the leak test")
+            raise RuntimeError("secret internal detail")
 
-    app.dependency_overrides[get_graph] = lambda: _FailingGraph()
+    buf = _request_span_buffer()
+    buf._by_trace.clear()
+    buf._order.clear()
+    app.dependency_overrides[get_graph] = lambda: Boom()
     try:
-        before = len(_request_span_buffer()._by_trace)
-        r = client.post("/ask", json={"question": "this will fail"})
-        assert r.status_code == 502
-        after = len(_request_span_buffer()._by_trace)
-        assert after == before, "a failed /ask request left an orphaned entry in the trace buffer"
+        r = client.post("/ask", json={"question": "Apple revenue"})
     finally:
-        app.dependency_overrides.pop(get_graph, None)
+        app.dependency_overrides.pop(get_graph)
+    assert r.status_code == 502 and "secret" not in r.text
+    assert buf._by_trace == {}
+
+
+def test_v1_facts_and_versions(client: TestClient) -> None:
+    body = client.get("/v1/facts/aapl", params={"fiscal_year": 2025}).json()
+    assert body["ticker"] == "AAPL" and body["fiscal_year"] == 2025
+    assert any(e["id"].startswith("AAPL:net_margin") for e in body["derived"])
+    v = client.get("/v1/facts/TSLA/capex/versions", params={"fiscal_year": 2024}).json()
+    assert v["restated"] is True and [x["value"] for x in v["versions"]] == [11_339_000_000, 11_342_000_000]
+    assert client.get("/v1/facts/ZZZZ").status_code == 404
+    assert client.get("/v1/facts/AAPL/made_up/versions", params={"fiscal_year": 2024}).status_code == 404
+
+
+def test_v1_risk(client: TestClient) -> None:
+    r = client.post("/v1/risk", json={"portfolio": [{"ticker": "AAPL", "weight": 0.6}, {"ticker": "KO", "weight": 0.4}],
+                                      "mc_paths": 5000})
+    assert r.status_code == 200 and r.json()["backtest"]["observations"] > 0
+    bad = client.post("/v1/risk", json={"portfolio": [{"ticker": "ZZZZ", "weight": 1.0}]})
+    assert bad.status_code == 422

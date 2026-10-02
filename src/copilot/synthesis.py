@@ -1,121 +1,119 @@
 """
-Synthesis — turns tool_results/citations into the final answer text.
+Synthesis: writes the answer, then proves every number in it.
 
-Mock mode: deterministic string templating, zero LLM calls, fully
-reproducible and assertable in tests/eval. Real mode: an Agno agent
-instructed to state ONLY facts present in tool_results/citations, explicitly
-forbidding invented numbers or citation ids — this is the grounding contract
-the eval harness's citation-hallucination check (scripts/evaluate_copilot.py)
-verifies mechanically. See DECISIONS.md D26.
+Mock mode joins the tools' pre-formatted findings (deterministic, correct by
+construction). Real mode asks the LLM to write from the same findings and
+evidence, then runs the numeric verifier:
+
+    draft -> verify -> pass: return
+                    -> fail: regenerate once, told exactly which numbers had no source
+                             -> pass: return
+                             -> fail: return the deterministic answer (fallback_used=True)
+
+So a hallucinated figure can cost a retry or a less fluent answer, but it
+cannot reach the caller. Time to first token and token spend are recorded
+for every LLM call.
 """
 from __future__ import annotations
 
+import time
 from typing import Any
 
-from src.copilot.infra.metrics import record_llm_usage
+from src.copilot.infra.metrics import LLM_TTFT, VERIFICATION_OUTCOMES, record_llm_usage
+from src.copilot.router import TOOL_ORDER
+from src.copilot.schemas import Evidence, VerificationReport
 from src.copilot.state import CopilotState
+from src.copilot.verification import verify_answer
+
+SYNTHESIS_MODEL = "gpt-4o-mini"
+MAX_ANSWER_CHARS = 2400
+
+_INSTRUCTIONS = """
+You are a financial research assistant. Answer ONLY from the findings and
+evidence provided. Rules:
+- Every number you write must appear in the evidence (same value, rounded no
+  more coarsely than shown in the findings). Never compute new figures.
+- Money as "$416.16 billion", ratios as "26.9%", multiples as "1.23x".
+- Cite the evidence id in square brackets after each fact, e.g. [AAPL:revenue:FY2025:0000320193-25-000079].
+- If something asked is missing from the evidence, say it is not available.
+- Plain text, no markdown, under 1500 characters.
+"""
 
 
-def _fmt_pct(x: float | None) -> str:
-    return "n/a" if x is None else f"{x:.0%}"
-
-
-def _summarize_data_analyst(results: dict[str, Any], merchant_id: int | None) -> list[str]:
-    parts = []
-    top = results.get("top_merchants_by_tpv") or []
-    if top:
-        best = top[0]
-        parts.append(
-            f"Top merchant by recent TPV is {best['merchant_id']} "
-            f"(TPV {best['tpv']:.2f}, approval rate {_fmt_pct(best['approval_rate'])})."
-        )
-    segments = results.get("churn_rate_by_segment") or []
-    if segments:
-        worst = max(segments, key=lambda r: r["pct_churn"])
-        parts.append(f"Highest churn rate by segment: {worst['segment']} at {_fmt_pct(worst['pct_churn'])}.")
-    yoy = results.get("yoy_tpv_by_month") or []
-    declines = [r for r in yoy if r["tpv_yoy_pct"] is not None and r["tpv_yoy_pct"] < 0]
-    if declines:
-        worst = min(declines, key=lambda r: r["tpv_yoy_pct"])
-        # yoy_tpv_by_month is only ever computed for a specific merchant_id
-        # (see data_analyst_node) — name it explicitly, otherwise "TPV fell
-        # X% YoY" reads as if it's about the "top merchant" sentence above,
-        # which can be a different merchant entirely.
-        who = f"merchant {merchant_id}" if merchant_id is not None else "this merchant"
-        parts.append(f"TPV for {who} fell {_fmt_pct(worst['tpv_yoy_pct'])} YoY in {worst['month']}.")
-    return parts
-
-
-def _summarize_risk(results: dict[str, Any]) -> list[str]:
-    parts = []
-    for s in results.get("scores", []):
-        if not s["found"]:
-            parts.append(f"No transaction history found for merchant {s['merchant_id']}.")
-            continue
-        drivers = ", ".join(d["feature"] for d in s["top_drivers"])
-        parts.append(
-            f"Merchant {s['merchant_id']} churn risk: {s['risk_tier']} "
-            f"({_fmt_pct(s['churn_probability'])} probability), top drivers: {drivers}."
-        )
-    if results.get("scores"):
-        parts.append(results["scores"][0]["caveat"])
-    return parts
-
-
-def _summarize_grounding(docs: list[dict[str, Any]]) -> list[str]:
-    return [f"Per policy {d['id']} ({d['title']}): {d['text']}" for d in docs]
-
-
-def _summarize_complaint_classifier(result: dict[str, Any]) -> list[str]:
-    return [f"Classified as {result['category']} (urgency {result['urgency']}): {result['reasoning']}"]
-
-
-def synthesize_mock(state: CopilotState) -> str:
-    """Deterministic template over tool_results — no LLM call. Walks
-    results in a fixed tool order so output is reproducible run-to-run."""
-    results = state["tool_results"]
+def template_answer(state: CopilotState) -> str:
     parts: list[str] = []
-
-    if "data_analyst" in results:
-        parts += _summarize_data_analyst(results["data_analyst"], merchant_id=state["merchant_id"])
-    if "risk" in results:
-        parts += _summarize_risk(results["risk"])
-    if "grounding" in results:
-        parts += _summarize_grounding(results["grounding"])
-    if "complaint_classifier" in results:
-        parts += _summarize_complaint_classifier(results["complaint_classifier"])
-
-    if not parts:
-        return "No information was found for this question."
-    return " ".join(parts)
+    for tool in TOOL_ORDER:
+        parts.extend(state["findings"].get(tool, []))
+    parts.extend(state["gaps"])
+    return " ".join(parts) if parts else "No information was found for this question."
 
 
-def synthesize_real(state: CopilotState) -> str:
-    """Real-mode synthesis: an Agno agent grounded strictly in
-    tool_results/citations already gathered — no tools attached, it doesn't
-    call anything itself, just writes up what the specialist nodes found."""
+def _evidence_digest(evidence: list[dict[str, Any]]) -> str:
+    lines = []
+    for ev in evidence:
+        vals = ", ".join(f"{k}={v:.6g}" for k, v in ev.get("values", {}).items())
+        excerpt = f' excerpt="{ev["excerpt"][:300]}"' if ev.get("excerpt") else ""
+        lines.append(f"- [{ev['id']}] {ev['label']} ({ev.get('unit') or ''}) {vals}{excerpt}")
+    return "\n".join(lines)
+
+
+def _llm(prompt: str, locale: str, call: str) -> str:  # pragma: no cover - network
     from agno.agent import Agent
     from agno.models.openai import OpenAIChat
+    from agno.run.agent import RunCompletedEvent, RunContentEvent
 
-    instructions = """
-You answer merchant-intelligence questions using ONLY the tool results and
-citations provided below. Never invent numbers, merchant ids, or citation
-ids that aren't present in the provided data. If a churn-risk score is
-present, you MUST include its caveat about model reliability. If the data
-doesn't answer the question, say so plainly rather than guessing. Keep the
-answer under 1200 characters, plain text, no markdown.
-"""
+    language = "Spanish" if locale == "es" else "English"
+    agent = Agent(model=OpenAIChat(id=SYNTHESIS_MODEL), instructions=_INSTRUCTIONS + f"\nWrite in {language}.")
+    t0 = time.perf_counter()
+    first = None
+    chunks: list[str] = []
+    for event in agent.run(prompt, stream=True, stream_events=True):
+        if isinstance(event, RunContentEvent) and event.content:
+            if first is None:
+                first = time.perf_counter() - t0
+                LLM_TTFT.labels(model=SYNTHESIS_MODEL, call=call).observe(first)
+            chunks.append(str(event.content))
+        elif isinstance(event, RunCompletedEvent):
+            record_llm_usage(call, SYNTHESIS_MODEL, event)
+    return "".join(chunks)
+
+
+def synthesize_real(state: CopilotState, evidence: list[Evidence]) -> tuple[str, VerificationReport]:
+    findings = "\n".join(f"- {f}" for tool in TOOL_ORDER for f in state["findings"].get(tool, []))
     prompt = (
-        f"Question: {state['question']}\n\n"
-        f"Tool results: {state['tool_results']}\n\n"
-        f"Citations: {state['citations']}"
+        f"Question: {state['question']}\n\nFindings:\n{findings}\n\nGaps: {state['gaps']}\n\n"
+        f"Evidence:\n{_evidence_digest(state['evidence'])}"
     )
-    agent = Agent(model=OpenAIChat(id="gpt-4o-mini"), instructions=instructions)
-    run_output = agent.run(prompt)
-    record_llm_usage("synthesis", "gpt-4o-mini", run_output)
-    return str(run_output.content)
+    draft = _llm(prompt, state["locale"], "synthesis")
+    report = verify_answer(draft, evidence)
+    if report.status != "failed":
+        return draft, report
+
+    bad = ", ".join(u.text for u in report.unverified)
+    retry_prompt = (
+        f"{prompt}\n\nYour previous answer contained numbers that are not in the evidence: {bad}. "
+        "Rewrite it using only numbers that appear in the evidence."
+    )
+    draft = _llm(retry_prompt, state["locale"], "synthesis_retry")
+    report = verify_answer(draft, evidence)
+    report.attempts = 2
+    if report.status != "failed":
+        return draft, report
+
+    answer = template_answer(state)
+    fallback = verify_answer(answer, evidence)
+    fallback.fallback_used = True
+    fallback.attempts = 2
+    return answer, fallback
 
 
-def synthesize_node(state: CopilotState) -> dict:
-    answer = synthesize_mock(state) if state["mock"] else synthesize_real(state)
-    return {"answer": answer[:1500]}
+def synthesize_node(state: CopilotState) -> dict[str, Any]:
+    evidence = [Evidence(**e) for e in state["evidence"]]
+    if state["mock"]:
+        answer = template_answer(state)
+        report = verify_answer(answer, evidence)
+    else:
+        answer, report = synthesize_real(state, evidence)
+    outcome = "fallback" if report.fallback_used else report.status
+    VERIFICATION_OUTCOMES.labels(outcome=outcome).inc()
+    return {"answer": answer[:MAX_ANSWER_CHARS], "verification": report.model_dump()}

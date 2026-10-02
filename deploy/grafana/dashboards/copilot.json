@@ -1,6 +1,6 @@
 {
   "uid": "copilot-overview",
-  "title": "Merchant Intelligence Copilot",
+  "title": "Filings & Risk Copilot",
   "tags": [
     "copilot"
   ],
@@ -698,7 +698,7 @@
     {
       "title": "Traces (Jaeger)",
       "type": "link",
-      "url": "http://localhost:16686/search?service=merchant-intelligence-copilot",
+      "url": "http://localhost:16686/search?service=filings-risk-copilot",
       "targetBlank": true
     }
   ]

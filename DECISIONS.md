@@ -1,1367 +1,463 @@
-# DECISIONS.md — Payne, Anna
+# Design decisions
 
-> Reasoning behind the pipeline design. For each relevant technical decision, **4 questions**:
-> 1. **Qué hice** (acción concreta, no descripción genérica).
-> 2. **Por qué** (criterio o evidencia, no "best practice").
-> 3. **Qué descarté** (alternativas que consideraste y por qué no).
-> 4. **Qué supuse** (supuesto que verificarías con un stakeholder real).
+**English** | [Español](#decisiones-de-diseño)
 
+Every decision below answers four questions: **what I did** (the concrete action), **why** (the criterion or evidence, not "best practice"), **what I rejected** (the alternatives and why not), and **what I assumed** (what I would confirm with a stakeholder). Where building or testing exposed a bug, it is recorded under **found while building**, because those are the parts that show whether a design was actually exercised.
 
----
-
-
-
-
-## Parte 1 · Pandas
-
-### D1 · Tratamiento de tipos en `load_clean`
-*Type handling in `load_clean`*
-
-- **Qué hice**: Cargue el CSV con `dtype=str` y convertí explícitamente cada columna. Para el columna `amount`, quité el separador de miles (.), reemplacé ls coma decimal por punto, y despues apliqué `pd.to_numeric(errors='coerce')`. `transaction_date`: dos pasadas, primero `dayfirst=False` para el 90% YYYY-MM-DD datos, luego `dayfirst=True` en las filas que quedaron NaT  (el 10% DD/MM/YYYY = trampa T4). `merchant_id`/`transaction_id` a `Int64` nullable. Use categoricals de baja cardinalidad para ahorrar mas memoria
-
-- *What I did: Loaded the CSV with `dtype=str`  and then explicitly converted each column. For column `amount`, I removed the thousands separator (.), replaced the decimal comma with periods, and then applied `pd.to_numeric(errors='coerce')`. For `transaction_date`, I did two passes, the first was `dayfirst=False` for the 90% YYYY-MM-DD data, then applied `dayfirst=True` on any rows that remain NaT (the 10% DD/MM/YYYY = trap T4). Last, `merchant_id`/`transaction_id` to nullable `Int64`. Categoricals for the low cardinality columns in order to save memory.* 
-
-
-- **Por que**:El EDA detectó 197913 filas con coma decimal en `amount`, `pd`.  `read_csv` las infiere como un string sin errores, pero cualquier suma devuelve una 0 silenciosamente. El parseo en dos pasadas es la unica forma vectorizada de manejar dos formatos en la misma columna sin iterar fila a fila.   
-
-- *Why*: The EDA detected 197,913 rows with a decimal comma in `amount`, `pd`.`read_csv` assumes them to be strings without error, but any sum then silently returns 0. The two-pass parsing is the only vectorized way to handle two formats in the same column without row-by-row iteration.*
-
-
-- **Qué descarté**: `pd.read_csv(..., decimal=',',thousands='.')`  no funciona cuando la misma columna mezcla los vacíos (~3% NaN= trampa T3b). `dateutil.infer_datetime_format` es mas lento y tambien menos predecible con mezcla de formatos. Regex, fila a fila, viola el requisito de vectorizción.
-- *What I discarded: `pd.read_csv(..., decimal=',',thousands='.')` does not work when the same column mixes empty values (~3% NaN = trap T3b). `dateutil.infer_datetime_format` is slower and also less predictable with any mixed formats. Row-by-row regex will violates the vectorization requirement.*
-
-- **Qué supuse**: Que el separador de miles es siempre (.) y el decimal siempre es (,) (el formato de BR/ES). Si el acquirer operase en un país con un formato diferente (ej. México), habría que parametrizar el parser. Yo verificaría el locale del sistema de caja con el equipo de ingeniería de datos.
-- *What I assumed: That the thousands separator is always . and the decimal always , (BR/ES format). If the acquirer operated in a country with a different format (e.g. Mexico), the parser would need to be parameterized. I would need to verify the POS system locale with the data engineering team.*
+| | Data and correctness | | Risk engine | | Platform |
+|---|---|---|---|---|---|
+| [D1](#d1) | Product scope | [D7](#d7) | C++ engine and its benchmark | [D15](#d15) | API security and audit |
+| [D2](#d2) | Real data, committed fixtures | [D8](#d8) | Monte Carlo model | [D16](#d16) | Observability |
+| [D3](#d3) | XBRL normalization | [D9](#d9) | Backtest and attribution | [D17](#d17) | Container image |
+| [D4](#d4) | Point-in-time fact store | [D10](#d10) | Pre-trade check | [D18](#d18) | Kubernetes |
+| [D5](#d5) | Numeric answer verification | [D11](#d11) | Event-driven ingestion | [D19](#d19) | CI/CD and quality gates |
+| [D6](#d6) | Hybrid retrieval | [D12](#d12) | Cache and Redis policy | [D20](#d20) | AWS ECS (Terraform) |
+| | | [D13](#d13) | Agent orchestration | [D21](#d21) | Dependency maintenance |
+| | | [D14](#d14) | Evaluation | [D22](#d22) | What is deliberately not built |
 
 ---
 
+## D1
 
+### Product scope: a filings and risk copilot, not a trading bot
 
+- **What I did**: Built a research copilot over SEC filings and portfolio risk with four tools (fundamentals, filing search, market risk, pre-trade check), real public data, and a hard rule that every number in an answer is verified against its source.
+- **Why**: The audience is a FinTech team building AI into proprietary trading systems. What such a team needs from an LLM is trust in its numbers, freedom from look-ahead bias, and risk figures with evidence of calibration. Those are verifiable properties on real data. A "trading copilot" fed by mocked order books and news would demonstrate none of them, and its first interview question ("where does the order book come from?") has no good answer.
+- **What I rejected**: An alpha-generation and order-routing agent on simulated market feeds (indefensible data, no way to measure correctness); claiming sub-15 ms LLM inference (not measurable on this hardware, and LLM latency is not where this system's correctness lives).
+- **What I assumed**: That a team evaluating LLMs for trading values a system that refuses to state an unsupported number over one that answers more questions.
 
-### D2 · Estrategia de deduplicación
-*Deduplication strategy*
+## D2
 
-- **Qué hice**: Imputé `amount` nulo con mediana por segmento antes de deduplicar. Luego yo eliminé las filas con `drop_duplicates(subset=["merchant_id","transaction_date","amount","status", "channel"], keep="first")`. El resultado fue 4182 duplicados eliminados de 204000 filas (casi 2.05% = coherente con la trampa T5)
+### Real SEC data, committed as fixtures, fetched under SEC fair access
 
-- *What I did: Imputed null `amount` with median by segment before deduplicating. Then I went to remove rows with `drop_duplicates(subset=["merchant_id","transaction_date","amount","status", "channel"], keep="first")`. The result was 4182 duplicates removed from 204000 rows (about 2.05% = consistent with trap T5) .*
+- **What I did**: `scripts/fetch_fixtures.py` pulls XBRL company facts, the latest 10-K (Item 1A) and the filing index for 10 issuers across 5 sectors, plus 5 years of daily adjusted prices, and commits them under `data/`. The EDGAR client (`src/filings/edgar.py`) enforces SEC's policy itself: a contact User-Agent read from `SEC_USER_AGENT` (it refuses to run without an email in it), a thread-safe token bucket at 10 requests per second, and retries with full-jitter exponential backoff on 429/5xx only.
+- **Why**: Tests, CI and the mock-LLM demo must run offline and deterministically, while still exercising real data with real quirks (restatements, tag changes, fiscal years that do not match calendar years). A 404 is an answer and is not retried; only transient failures are.
+- **What I rejected**: Synthetic financials (would hide exactly the XBRL problems in D3); fetching at test time (flaky, and hammering a public service from CI); storing the raw 4 MB companyfacts payloads (normalized versions from FY2019 are 2.4 MB for all 10 issuers).
+- **What I assumed**: That 10 issuers are enough to exercise every code path (banks without gross profit, a June fiscal year, a January fiscal year, stock splits, a restatement) and that the universe would be widened by configuration, not code.
 
+## D3
 
-- **Por que**: La trampa T5 genera duplicados con `transaction_id` distinto pero el resto identico, deduplicar por `transaction_id` no los captura. Imputar antes importa para que el valor final de `amount` en los KPIs sea la mediana real y no NaN — pandas ya trata `NaN == NaN` como igual dentro de `duplicated()`/`drop_duplicates()` (a diferencia de `==` escalar), así que el orden no afecta si se detectan como duplicados, pero sí afecta qué valor de `amount` sobrevive.
+### XBRL normalization: two traps handled explicitly
 
-- *Why: Trap T5 generates duplicates with a different `transaction_id` but an otherwise identical row, so deduplicating by `transaction_id` alone doesn't catch them. Imputing first matters so the final `amount` value in the KPIs is the real median, not NaN — pandas already treats `NaN == NaN` as equal inside `duplicated()`/`drop_duplicates()` (unlike scalar `==`), so the ordering doesn't affect whether they're detected as duplicates, but it does affect which `amount` value survives.*
+- **What I did**: `src/filings/xbrl.py` turns companyfacts into canonical, versioned facts. (1) Fiscal labels come from the filing whose own report period a value is, not from the row's `fy`/`fp` fields. (2) Concept aliases (for example `RevenueFromContractWithCustomerExcludingAssessedTax`, then `Revenues`) resolve in priority order **per period and per filing**. Quarterly durations ending on a 10-K's report date are labeled Q4; year-to-date durations are dropped.
+- **Why**: In companyfacts, `fy` describes the filing: a FY2025 10-K reports FY2024 and FY2023 comparatives also tagged `fy=2025`. Using it naively assigns three different years' revenue to FY2025. Issuers also change tags (Apple used `Revenues` until 2018).
+- **Found while building**: My first alias rule resolved per period. A unit test with a legacy tag in an old filing and the new tag in a later comparative showed the original value disappeared, so a point-in-time query before the later filing found *no* revenue at all. Resolving per (period, filing) keeps every filed version. The fix changed Apple's fact count from 794 to 845 versions.
+- **What I rejected**: SEC's `frames` API (calendar-aligned, which mislabels non-December fiscal years); hand-mapping each issuer (does not scale).
+- **What I assumed**: That a period seen only as a comparative, with no filing of its own in the data, should be left out rather than guessed. This is pinned by a test.
 
-- **Qué descarté**: Deduplicar solo por `transaction_id` no captura T5. Hash de todas las columnas, una`transaction_id` diferente las haría distintas, es el mismo problema   
-- *What I discarded: Deduplicating only by thhe `transaction_id` does not catch T5. Hashing of all columns means a different `transaction_id` would make them distinct, same problem.*
+## D4
 
-- **Qué supuse**: Que dos transacciones con los mismos merchant, fecha, importe, estado y canal son siempre duplicados y no compras legítimas distintas. En POS real podría haber dos compras idénticas en el mismo minuto. Tendria a pregunatr si hay granularidad de tiempo disponible 
-- *What I assumed: two transactions with the same merchant, date, amount, status and channel are always duplicates not distinct legitimate purchases. In real POS there could be two identical purchases in the same minute. I have to would ask whether time granularity is available.*
+### A point-in-time fact store with lineage
+
+- **What I did**: `src/filings/factstore.py` holds every filed version of every fact in DuckDB, keyed by (ticker, metric, fiscal year, period, accession). Every query takes `as_of` and sees only versions filed on or before it; without it, the latest filing wins. Derived metrics (margins, leverage, free cash flow, YoY growth, implied Q4 = FY - Q1 - Q2 - Q3) are objects carrying their formula and the exact fact ids they were computed from. Upserts are idempotent and bump a `data_version` counter.
+- **Why**: "What did we know on date D" is the core question of any backtest, and a store that keeps only the latest value silently answers it with restated numbers. The real data has examples: Apple's FY2019 diluted EPS was filed as $11.89 and restated to $2.97 after the 2020 split; Tesla's FY2024 capex was $11.339B in the original 10-K and $11.342B in the next one, which changes free cash flow depending on `as_of`. Both are golden-set cases.
+- **Found while building**: The first load used DuckDB `executemany` and took 35 s for 6.8k rows (row-at-a-time). A bulk insert from a DataFrame takes 0.7 s.
+- **What I rejected**: Postgres (an extra service for read-mostly, in-memory-sized data); keeping only the latest value (look-ahead bias by construction).
+- **What I assumed**: That filing date is the right "knowledge" timestamp. EDGAR's acceptance time is more precise for intraday use and is carried in the ingestion events (D11).
+
+## D5
+
+### Numeric answer verification: verify, regenerate once, then fall back
+
+- **What I did**: `src/copilot/verification.py` extracts every quantity from the answer (currency with scale, percentages, multiples, plain numbers), infers its precision from how it is written ("$416.2 billion" means plus or minus $0.05B), and accepts it only if some evidence value falls in that interval. Years, ISO dates, fiscal periods, accession numbers, form types and citation markers are not claims. In real mode, a failed draft is regenerated once with the exact unsupported numbers named in the prompt; if it fails again, the answer is replaced by the deterministic template built from the same evidence, and `fallback_used` is set.
+- **Why**: Instructions to "only use provided numbers" reduce hallucinations but do not eliminate them; a check does. Precision-aware matching is what lets "$416.2B" pass and "$416.3B" (a 0.03% error) fail. Numbers quoted inside a retrieved 10-K passage become evidence of that passage, so quoting the filing is allowed and inventing a figure is not.
+- **Found while building**: The verifier rejected my own template twice. "Kupiec test at the 5% level" stated a significance level that was not recorded as evidence (it had passed only because another 0.05 happened to be present), and a growth formula string "revenue[FY2024] / revenue[FY2023] - 1" contained a bare constant. Both were fixed in the template, not by loosening the verifier.
+- **What I rejected**: An LLM judge (non-deterministic, costs a call, and cannot be gated in CI); exact string matching (rejects every legitimate rounding).
+- **What I assumed**: That sign is not checked for amounts and percentages ("fell 3.1%" and "growth of -3.1%" describe the same value, and VaR is reported as a positive loss), and that over-strictness (a regeneration) is the right failure direction. Dates and entity names are not verified yet (README, limitations).
+
+## D6
+
+### Retrieval: hybrid BM25 + dense with Reciprocal Rank Fusion
+
+- **What I did**: `src/copilot/retrieval_core.py` implements Okapi BM25 over postings lists (light suffix stemming, stop words plus question scaffolding words) and fuses it with dense embeddings (OpenAI or Azure OpenAI) by Reciprocal Rank Fusion (k = 60) in real mode; mock mode uses BM25 alone. One index per issuer plus one for the whole universe, so a question about NVIDIA searches only NVIDIA's 10-K. Excerpts are query-focused: they start at the sentence sharing the most query terms.
+- **Why**: Dense embeddings handle paraphrase; legal text is decided by rare exact terms ("talc", "Section 232", "export controls") that embeddings average away. RRF combines ranks, so the two scores never need calibrating against each other. At 833 passages, brute-force scoring is sub-millisecond, so an ANN index would add an operational dependency for no measurable gain.
+- **Found while building**: The eval's retrieval hit rate was 78% with my first lexical setup. Two causes: an inconsistent stemmer ("regulation" became "regul" while "regulatory" became "regulat", so they never matched; "mention" became "ment") and question words like "does" carrying the highest IDF in the query. Separately, the right JNJ passage ranked first but its relevant clause ("talc") was at character 990, beyond the 600-character excerpt. After fixing the stemmer, the stop list and the snippet selection: 100%. Rewriting BM25 without scikit-learn and SciPy also removed about 195 MB from the image.
+- **What I rejected**: TF-IDF cosine (what the mock path used before: weak on short queries); a vector database (D6's scale note); cross-encoder reranking (a model download for offline mode).
+- **What I assumed**: That Item 1A is the right first corpus for risk questions; MD&A would be the next section to index.
+
+## D7
+
+### The C++ engine, and the benchmark that first said it was slower
+
+- **What I did**: `cpp/riskcore` is a C++20 library with pybind11 bindings, built by scikit-build-core as a uv workspace member, so `uv sync` compiles it. It provides historical, parametric and Monte Carlo VaR/ES, a rolling backtest with Kupiec's test, Cholesky and an inverse normal CDF. Inputs are zero-copy views of NumPy buffers, and the GIL is released during computation. A NumPy reference implementation (`src/risk/reference.py`) is both the parity oracle (deterministic estimators agree to floating-point precision) and the benchmark baseline, and it is written as good vectorized NumPy, not as a loop.
+- **Why**: Risk checks sit on the request path of the pre-trade tool and must run concurrently across API threads; that needs compute that releases the GIL and uses all cores. The role asks for Python plus another OO language, and the boundary between them (memory ownership across the binding, GIL, determinism) is where hybrid systems actually break.
+- **Found while building**: The first benchmark showed the C++ engine **slower** than NumPy for historical VaR (21 ms vs 4 ms) and the backtest (0.5x). Profiling showed three causes: libstdc++'s `std::nth_element` is about twice as slow as NumPy's introselect on this input; the bindings copied every input twice (16 MB of fresh, page-faulted allocations for 1M scenarios); and the backtest re-selected each 250-day window from scratch. Fixes: a sample-then-filter selection for thin tails (a threshold from a 32k strided sample with a 4-sigma margin, one linear pass, then selection among about 1.5k candidates, with a full-select fallback so the result is always exact); zero-copy `std::span` views; and a sliding sorted window for the backtest. Result: 2-3x faster on historical VaR, about 8x on the backtest, about 1.2x on single-threaded Monte Carlo and 7-8x with 8 threads. Adversarial C++ tests (sorted, reverse-sorted, constant and heavily duplicated inputs at 1M values) check the fast path against a full sort.
+- **What I rejected**: Hand-written SIMD intrinsics (`-O3` auto-vectorizes the inner loops, and `-march=native` would make the wheel non-portable); Numba (does not demonstrate a second language or binding design); reporting only the favourable numbers.
+- **What I assumed**: That the benchmark machine (a 4-core laptop with thermal throttling) gives representative ratios but not absolute times, so the README reports ranges.
+
+## D8
+
+### Monte Carlo model: multi-day horizon, Student-t shocks, reproducible across thread counts
+
+- **What I did**: Daily log returns are drawn from a multivariate Normal or Student-t (5 degrees of freedom, rescaled so its covariance equals the sample covariance), compounded over a 10-day horizon, with P&L = sum of w_i (exp(cumulative return_i) - 1). Paths are generated in fixed blocks of 4096, each with its own xoshiro256** stream seeded from (seed, block index); threads pull blocks from an atomic counter. Normals use the Marsaglia polar method; the chi-square draw uses Marsaglia-Tsang gamma sampling.
+- **Why**: For a one-day linear portfolio under an elliptical distribution, portfolio P&L is univariate and Monte Carlo just reproduces a closed form, so implementing it would be decoration. Compounding over 10 days makes P&L nonlinear and sums of t shocks are not t, so simulation is needed. Reproducibility is a requirement for a risk number: the result is bit-identical for 1, 2, 3 and 8 threads (tested). Standard-library distributions were avoided because `std::normal_distribution` differs between libstdc++ and libc++.
+- **Found while building**: The first sampler used Box-Muller and a chi-square as a sum of 5 squared normals: 15 normals per path-day, with trigonometric calls. The polar method and gamma sampling cut that to about 11 and removed the trigonometry.
+- **What I rejected**: Gaussian-only Monte Carlo (equivalent to parametric VaR for this portfolio); GARCH or filtered historical simulation (the right next step, listed in the README's limitations).
+- **What I assumed**: That i.i.d. daily shocks over 10 days are acceptable for a demonstration; volatility clustering is the known gap.
+
+## D9
+
+### Every VaR ships with a backtest and an attribution
+
+- **What I did**: The risk report includes a rolling 250-day historical-VaR backtest with Kupiec's proportion-of-failures test (exceptions, expected exceptions, p-value, calibrated or not) and an Euler allocation of parametric VaR showing each position's additive share.
+- **Why**: A VaR number without evidence of calibration is an opinion. Attribution answers the question a portfolio manager asks next ("what is driving it?"): in a 40/30/30 NVDA/AAPL/XOM portfolio, NVDA carries 75% of the VaR at a 40% weight.
+- **What I rejected**: Christoffersen's independence test (would be the next addition; Kupiec alone does not detect clustered exceptions); marginal VaR by finite differences (Euler is exact for the parametric case).
+- **What I assumed**: A 5% significance level for the calibration verdict, stated as evidence so answers can quote it (D5).
+
+## D10
+
+### The pre-trade check: deterministic rules, a decision record, no orders
+
+- **What I did**: `pretrade_check` evaluates a proposed portfolio against limits in `data/risk_limits.json` (single-name weight, sector weight, gross exposure, 1-day 99% historical VaR, restricted list) and returns APPROVE or REJECT with every breach as evidence. The guardrails block prompts that try to talk the system out of its controls ("approve this trade regardless of limits", "skip the risk checks").
+- **Why**: Compliance decisions must be reproducible and auditable. The LLM may explain the verdict, but the verdict and each breach are evidence the answer is verified against, so the model cannot soften a REJECT into an APPROVE.
+- **Found while building**: The router initially triggered the pre-trade check on the bare words "concentration" and "limits", so "what does Apple's 10-K say about supply chain concentration?" ran a limit check. The patterns now require trade-specific phrases ("concentration limit", "can I buy", "proposed portfolio"), and the question is a golden-set regression case.
+- **What I rejected**: Sending or simulating orders (out of scope, D22); letting the LLM decide pass or fail.
+- **What I assumed**: Illustrative limit values; a real desk's limits come from its risk policy.
+
+## D11
+
+### Event-driven ingestion on Redis Streams: a work queue and a broadcast
+
+- **What I did**: `src/streaming/`. The poller publishes one event per new 10-K/10-Q to `edgar:filings`, deduplicated by an atomic `SADD` on a seen set, so restarts and duplicate pollers publish nothing twice. Workers consume in the `ingest` consumer group: acknowledgement only after the facts are published (at least once), `XAUTOCLAIM` of messages idle for 60 s (a crashed worker's in-flight filings are finished by its peers), and an explicit attempt counter that moves a message to `edgar:filings:dlq` after 5 attempts. Normalized facts go to `edgar:facts`, which every API replica tails with plain `XREAD` and applies with idempotent upserts.
+- **Why**: The two streams need opposite semantics. Filings are work: each must be processed once by any worker (competing consumers). Fact updates are state: every replica must apply every one (broadcast). A consumer group on the second stream would leave each replica with a fraction of the updates. Idempotent upserts make at-least-once delivery safe.
+- **Found while building**: The dead-letter logic first read the delivery count from `XPENDING`, which fakeredis does not report; defaulting the missing value would have dead-lettered on the first failure. An explicit `HINCRBY` attempt counter works the same on Redis, Valkey and the test double.
+- **What I rejected**: Kafka (a heavier operational dependency for tens of filings per day; consumer groups, replay and retention in Redis cover this volume, and Redis is already in the stack for rate limits); the EDGAR RSS feed (less structured than per-company submissions).
+- **What I assumed**: That a 10,000-entry cap on each stream is enough history for a restarting replica to catch up; beyond that, replicas boot from the committed snapshot.
+
+## D12
+
+### Response cache keyed on the data version, and a Redis eviction policy that cannot drop the queue
+
+- **What I did**: The `/ask` cache key includes the redacted question, the request context (tickers, `as_of`, portfolio), locale, mode, app version and the fact store's `data_version`. Redis runs with `volatile-lru` eviction and AOF persistence.
+- **Why**: Before streaming, the data was a static snapshot and the app version alone invalidated the cache. Now a 10-Q can land at any time, and an answer cached before it must not be served after it. The previous `allkeys-lru` policy was right for a cache-only Redis but would silently evict the filings stream under memory pressure; `volatile-lru` only evicts keys with a TTL (cache entries, rate-limit counters).
+- **What I rejected**: A separate Redis for streams (better isolation at scale, unnecessary here, noted for production); time-based cache expiry alone (serves stale answers until the TTL runs out).
+- **What I assumed**: That no tool applies per-caller authorization, so the key does not include the caller; tenant-scoped data would require the tenant in the key first.
+
+## D13
+
+### Orchestration: LangGraph control flow, Agno LLM calls, a closed tool set
+
+- **What I did**: LangGraph owns state and control flow; LLM calls inside nodes go through Agno. The router computes the full ordered tool list once and each tool node pops itself off the front (a bounded worker queue). Tool names are a closed `Literal` set, the real-mode router can only add tickers that exist in the covered universe, and tools never execute model-generated code or SQL.
+- **Why**: A bounded queue gives deterministic ordering and a fixed number of LLM calls per request (router, synthesis, at most one retry) regardless of how many tools fire. Entity extraction is deterministic in both modes, so a hallucinated ticker cannot reach a tool.
+- **What I rejected**: A ReAct loop (unbounded LLM calls and tool choices per request); parallel fan-out (merge conflicts for no latency need at these tool timings, which are 2-20 ms each); a checkpointer (single-turn Q&A).
+- **What I assumed**: That single-turn questions cover the use case; follow-up questions would need conversation state.
+
+## D14
+
+### Evaluation: independent ground truth, an adversarial verifier test, hard floors in CI
+
+- **What I did**: `data/golden_set.json` has 37 cases (fundamentals, derived metrics, point-in-time, restatements, honest gaps, retrieval, risk, pre-trade, mixed routes). Expected figures were taken from SEC companyfacts by concept and period end date with a separate script, so the eval does not grade the normalizer against itself. `scripts/evaluate_copilot.py` runs every case through the real FastAPI app, then corrupts each number of each correct answer (from -10% to +50%, and digit transpositions) and measures how many corrupted answers the verifier rejects. `scripts/check_eval_floors.py` fails CI below the floors.
+- **Why**: A golden set alone measures the happy path; the adversarial test measures the safety mechanism directly (442 corruptions, 100% caught, 0 false positives on correct answers). Under the mock LLM everything is deterministic, so any drop is a regression, not noise.
+- **Found while building**: The first adversarial run reported 97.9% recall. All misses were bugs in the harness, not the verifier: it located claims with `str.find`, which found the "10" inside the date "2026-10-01" instead of the claim, and corrupted the date. Claims now carry exact character spans.
+- **What I rejected**: LLM-graded answers (non-deterministic, cannot gate CI); generating expected values from the fact store (circular).
+- **What I assumed**: That mock-mode metrics prove the pipeline and the verifier, not the model; the real-model run (`--real`) records time to first token, tokens and cost per answer but needs an API key.
+
+## D15
+
+### API security, guardrails and the audit log
+
+- **What I did**: Bearer JWT validation (RS256 through the identity provider's JWKS, or HS256 for local use) with an explicit algorithm allowlist that never includes `none`, required `exp`/`sub`, audience, issuer and scope checks; the service refuses to start with `APP_ENV=production` and authentication off. PII is redacted before the router, the LLM, the cache key, logs and the audit log (cards must pass Luhn, SSN ranges the SSA never issues are excluded, Spanish DNI/NIE, IBAN, email, phone numbers of 9-15 digits so ISO dates survive). Prompt-injection patterns in English and Spanish, plus attempts to bypass the pre-trade controls, return 400. Rate limiting is a fixed window per subject (or IP) in Redis, applied after authentication so a 401 never consumes quota. Every request writes an audit row (subject, outcome, route, latency, PII counts, request and trace ids) with only the SHA-256 of the redacted question, never the text.
+- **Why**: Validated rules are auditable and deterministic, which keeps CI's mock mode deterministic; the real security boundary is architectural (closed tool set, rule-based verdicts, verified numbers). Rate limits and the audit log fail open so a Redis or Postgres outage degrades protection instead of taking `/ask` down.
+- **Found while building**: (1) FastAPI drops `BackgroundTasks` when an endpoint raises, which lost exactly the `blocked` and `error` audit rows an auditor most wants; those paths now return a response with the background task instead of raising. (2) `CREATE TABLE IF NOT EXISTS` is not atomic in Postgres: two concurrent first writes raced and one died on a `pg_class` unique violation. A transaction-scoped advisory lock fixed it; the regression test (4 replicas x 8 concurrent writes on a fresh table) fails 3 out of 3 times without the fix.
+- **What I rejected**: LLM-based guardrails such as NeMo Guardrails or Llama Guard (an extra model call per request, non-deterministic, and no real traffic to measure false positives on); a synchronous, fail-closed audit write (right for payments, wrong for an analytical tool).
+- **What I assumed**: That token validation belongs in the service even behind an API gateway (defence in depth, and the validated subject keys rate limits and the audit log).
+
+## D16
+
+### Observability: metrics, traces, logs and alerts for an LLM system
+
+- **What I did**: Prometheus metrics for HTTP (RED by handler and exact status), per-graph-node latency histograms, tool invocations, numeric verification outcomes (verified, failed, fallback), LLM time to first token (measured by streaming the synthesis call), tokens and estimated cost, guardrail events, cache hits, ingest processing time and filing lag, and the fact-store version per replica. OpenTelemetry spans per node under a root span per request, exported through a Collector to Jaeger and to Prometheus via span metrics. JSON logs carry request and trace ids. Alerts include verification degradation, high time to first token, dead-lettered filings, ingest lag and **replica divergence** (API replicas disagreeing on fact-store version for 10 minutes, meaning one stopped applying updates and is serving stale numbers).
+- **Why**: For an LLM feature, "is it up" is not enough: the operational questions are whether answers are still verifying, how long users wait for the first token, and whether every replica has the latest filings. Histograms rather than summaries, because quantiles aggregate across replicas only from buckets.
+- **Found while building**: The middleware's SERVER span ends after `/ask` has popped its request trace from the in-process buffer, which would have recreated a span-buffer leak; the buffer ignores SERVER spans, with a regression test.
+- **What I rejected**: The OpenTelemetry FastAPI auto-instrumentation package (another dependency for about 60 lines that also needed the buffer filter); a gRPC exporter (adds a native dependency to the image for no gain at this volume).
+- **What I assumed**: That list prices are an acceptable cost estimate; the metric is labeled as an estimate, and a provider-reported cost is used when present.
+
+## D17
+
+### Container image: a C++ builder stage and three traps
+
+- **What I did**: A multi-stage Dockerfile. The builder installs g++ and compiles riskcore through scikit-build-core (CMake and Ninja come from PyPI); the runtime stage receives only the virtual environment, the source and the data snapshot. Base images are pinned by tag and digest, the runtime runs as UID 10001 with a read-only root filesystem and no capabilities, bytecode is precompiled, the health check uses the standard library (no curl), and the base image's unused pip is removed.
+- **Found while building**: (1) The first image crashed at import: uv installs workspace members *editable* by default, so the virtual environment pointed at `/app/cpp/riskcore`, a path that exists only in the builder. `--no-editable` fixed it, and `--no-install-project` avoids a second copy of the `src` package in site-packages shadowing the real one. The CI smoke test, which runs the image under Kubernetes constraints, is what caught it. (2) The compiled extension depends on libstdc++, which the slim runtime does not guarantee; it is linked statically (`-static-libstdc++ -static-libgcc`). (3) Removing scikit-learn and SciPy (D6) cut about 195 MB; the warm resident memory measured in the container is 226 MiB.
+- **What I rejected**: Shipping the compiler in the runtime image; publishing riskcore as a separate wheel to a registry (the right step once a second service consumes it); distroless (the virtual environment links to the base image's interpreter).
+- **What I assumed**: x86-64 deployment targets (both stages pin `linux/amd64`, matching the Fargate task in D20).
+
+## D18
+
+### Kubernetes: the API and the ingestion pipeline as separate workloads
+
+- **What I did**: Kustomize base and a local overlay. The API Deployment keeps the hardened pod spec (restricted Pod Security, read-only root filesystem, dropped capabilities, seccomp, startup, liveness and readiness probes, a pre-stop delay, zone and node spread, HPA and PDB). Ingestion adds a worker Deployment (2 replicas, metrics on port 9102) and a single poller, both with their own NetworkPolicy allowing only DNS, Redis and HTTPS to sec.gov. Readiness fails on an empty fact store.
+- **Why**: Workers are stateless competing consumers and scale on their own; tying them to API replicas would scale ingestion with query traffic, which is unrelated. The local overlay has no Redis, so it scales ingestion to zero and docker-compose runs the full streaming stack instead.
+- **What I rejected**: Helm (Kustomize covers base and overlays without templating); Redis as a StatefulSet in the namespace (production uses a managed service with persistence and a volatile eviction policy, documented in the Secret example).
+- **What I assumed**: The CIDRs in the NetworkPolicies and `FORWARDED_ALLOW_IPS` are placeholders to adjust per cluster.
+
+## D19
+
+### CI/CD and quality gates
+
+- **What I did**: GitHub Actions jobs for lint (ruff, lockfile freshness, the no-em-dash house rule), mypy (strict on infra, filings, risk, streaming, market data and the verifier), security (Bandit with zero findings, Trivy filesystem scan), **C++** (warnings-as-errors build with `-Wall -Wextra -Wpedantic -Wconversion`, ctest in release and under AddressSanitizer + UndefinedBehaviorSanitizer), tests with an 85% branch-coverage gate (94% measured), the eval and its floors, an informational benchmark in the job summary, integration tests against real Redis and Postgres service containers (including the streams pipeline), deployment config validation (kubeconform, promtool, otelcol, compose), and a container job (build, smoke test under Kubernetes runtime constraints that asserts the answer verified, Trivy image gate). On `main`: publish to GHCR with SBOM and SLSA provenance, cosign keyless signing.
+- **Why**: Each gate catches a class of failure the others cannot: sanitizers catch out-of-bounds and undefined behavior that unit tests miss, the smoke test caught the editable-install crash (D17), and the eval floors catch regressions in answer quality.
+- **What I rejected**: Third-party wrapper actions for scanners (aquasecurity/trivy-action's tags were hijacked in 2026 to steal CI secrets; scanners run as digest-pinned official images and every action is pinned to a commit SHA); making the benchmark a gate (shared CI runners are too noisy for timing thresholds).
+- **What I assumed**: That branch protection requires the `test` job, whose id is kept stable for that reason.
+
+## D20
+
+### AWS ECS via Terraform
+
+- **What I did**: `terraform/` deploys the API on ECS Fargate behind an ALB in a minimal VPC (two public subnets, no NAT gateway), with an ECR repository, CloudWatch logs with explicit retention, an execution role without a task role (the app makes no AWS API calls), and an optional Secrets Manager secret for the LLM key. It is validated (`fmt`, `init`, `validate`) but not applied; nothing costs money until `terraform apply`.
+- **Why**: It shows the same image running on a managed container service with least-privilege IAM, and the cost is bounded (about $35-58 a month if left running, mostly the ALB and Fargate).
+- **What I rejected**: A NAT gateway (about $33 a month on its own, avoided with public subnets and tight security groups); EKS for a single service (the Kubernetes manifests cover that path).
+- **What I assumed**: A demo-scale deployment: one task, local state. A shared environment needs a remote backend with locking and the ingestion workers as additional ECS services.
+
+## D21
+
+### Dependency maintenance: two red pull requests and a red main
+
+- **What I did**: Fixed the failing CI on `main` and two Dependabot pull requests. `main` failed both Trivy gates on HIGH CVEs in transitive dependencies (urllib3 2.7.0 and virtualenv 21.7.3), fixed by upgrading them in the lockfile. PR #60 (uvicorn 0.54.0) failed `uv lock --check` because Dependabot edited the package entry but not the project's recorded requirements; it was superseded by a proper relock. PR #57 (Python 3.14 base image) failed because `requires-python` is `<3.14`, so the image had no compatible interpreter; Dependabot now ignores Python minor and major bumps of the base image, while patch and digest updates still flow.
+- **Why**: A Python minor version is a runtime migration (wheels, C extensions, the compiled engine), not a routine bump, and should be a deliberate pull request.
+- **What I rejected**: Merging PR #57 by widening `requires-python` without testing the stack on 3.14.
+- **What I assumed**: That the CI services (Redis, Postgres) should track the versions in docker-compose; they were aligned (8.10 and 18.6).
+
+## D22
+
+### What is deliberately not built
+
+- **No order routing or execution.** The pre-trade check returns a decision record.
+- **No live market data feed.** Prices are a daily snapshot from a public endpoint for demonstration; the provider sits behind one function (`src/marketdata/prices.py`) so a licensed feed replaces it.
+- **No claims about model serving latency** (vLLM, TensorRT-LLM). The system's latency budget is dominated by the hosted LLM call, which is measured (time to first token) rather than assumed.
+- **No options or nonlinear instruments, and no volatility clustering** in the risk model.
+- **No verification of dates and names**, only of quantities (D5).
+
+Each of these is a scope decision with a stated next step, not an oversight.
 
 ---
 
+# Decisiones de diseño
 
+[English](#design-decisions) | **Español**
 
+Cada decisión responde a cuatro preguntas: **qué hice** (la acción concreta), **por qué** (el criterio o la evidencia, no "buenas prácticas"), **qué descarté** (las alternativas y por qué no) y **qué supuse** (lo que confirmaría con un responsable real). Cuando construir o probar algo destapó un error, queda registrado en **encontrado al construirlo**, porque esas son las partes que demuestran que un diseño se ejercitó de verdad.
 
-### D3 · Heurística de `merchants_at_risk`
-*`merchants_at_risk` heuristic*
-
-- **Que hice**: Score compuesto ponderado de tres señales normalizadas en  [0,1]:
-  - **TPV drop** (45%): `1 - minmax(tpv_30d / tpv_mediano_mensual)`, una caída relativa de volumen.
-  - **Low approval rate** (35%): `1 - minmax(approval_rate_30d)`.
-  - **Recent complaint** (20%): 1 si `last_complaint_date` en los últimos 30 días y si ≤ `reference_date`.
-
-
-- *What I did: Weighted composite score of three signals normalized within [0, 1]:*
-  - *TPV drop (45%): `1 - minmax(tpv_30d / monthly_median_tpv)`, a relative volume drop.*
-  - *Low approval rate  (35%): `1 - minmax(approval_rate_30d)`.*
-  - *Recent complaint (20%): 1 if `last_complaint_date` within  last 30 days and if ≤ `reference_date`*
-
-
-- **Por que**: El EDA confirmó que estos 3 factores tienen correlación con churn. La caída de TPV es la señal mass directa de desactivación pre-churn (peso 45%). Tasa de aprobación baja indica a problemas técnicos que frustran al merchant (35%). Queja reciente es el insatisfacción inmediata (20%). Las ponderaciones son estimacione, en producción se estimarían con importancias SHAP del modelo completo de la Parte 3.
-
-- *Why: The EDA confirmed that those 3 factors correlate with churn. TPV drop is the most direct signal of pre-churn deactivation (weight 45%). Low approval rate indicate technical issues frustrating the merchant (35%). Recent complaint is immediate dissatisfaction (20%). Weights are estimates, in production they would be estimated with SHAP importances from full Part 3 model.*
-
-- **Qué descarté**: Score basado únicamente en TPV (demasiado simple). Usar directamente el score del modelo ML hubiera solapado con la Parte 3. Percentiles absolutos son menos interpretable que el ratio relativo al histórico del propio merchant.
-- *What I discarded: Score based solely on TPV (too simple). Using the ML model score directly would have overlapped with Part 3. Absolute percentiles are less interpretable than the ratio relative to the merchant's own history.*
-
-- **Que supuse**: Que los últimos 30 daas son la ventana relevante para señales debiles. Si el ciclo de intervención del equipo es de 14 días, habría que ajustar la ventana.       
-- *What I assumed: that the last 30 days would be the relevant window for weak signals. If the teams intervention cycle is 14 days, the window would need to be adjustd*
+| | Datos y corrección | | Motor de riesgo | | Plataforma |
+|---|---|---|---|---|---|
+| [D1](#d1-1) | Alcance del producto | [D7](#d7-1) | Motor C++ y su benchmark | [D15](#d15-1) | Seguridad de la API y auditoría |
+| [D2](#d2-1) | Datos reales, fixtures en el repo | [D8](#d8-1) | Modelo Monte Carlo | [D16](#d16-1) | Observabilidad |
+| [D3](#d3-1) | Normalización XBRL | [D9](#d9-1) | Backtest y atribución | [D17](#d17-1) | Imagen de contenedor |
+| [D4](#d4-1) | Almacén de hechos point-in-time | [D10](#d10-1) | Control pre-trade | [D18](#d18-1) | Kubernetes |
+| [D5](#d5-1) | Verificación numérica de respuestas | [D11](#d11-1) | Ingesta orientada a eventos | [D19](#d19-1) | CI/CD y controles de calidad |
+| [D6](#d6-1) | Recuperación híbrida | [D12](#d12-1) | Caché y política de Redis | [D20](#d20-1) | AWS ECS (Terraform) |
+| | | [D13](#d13-1) | Orquestación de agentes | [D21](#d21-1) | Mantenimiento de dependencias |
+| | | [D14](#d14-1) | Evaluación | [D22](#d22-1) | Lo que no se construye a propósito |
 
 ---
 
-## Parte 1b · PySpark rewrite — pandas vs. PySpark tradeoffs
-*Same 4 functions (`load_clean`, `monthly_kpis`, `quality_report`, `merchants_at_risk`), rewritten with the DataFrame API in `src/parte1_pyspark.py`, run locally (`local[*]`) with `delta-spark`, no cluster needed.*
+## D1
 
-- **Qué hice**: Reimplementé las 4 funciones con el DataFrame API de PySpark en vez de pandas, manteniendo exactamente las mismas reglas de negocio (T1-T5, ventanas, pesos del score). Verifiqué numéricamente que ambas implementaciones producen los mismos KPIs y quality_report sobre `data/transactions_sample.csv` antes de dar el rewrite por terminado.
-- *What I did: Reimplemented the 4 functions with PySpark's DataFrame API instead of pandas, keeping the exact same business rules (T1-T5, windows, score weights). I numerically verified both implementations produce the same KPIs and quality_report on `data/transactions_sample.csv` before considering the rewrite done.*
+### Alcance: un copiloto de informes y riesgo, no un bot de trading
 
-- **Diferencias encontradas al comparar output pandas vs. Spark**:
-  1. **Mediana aproximada vs exacta**: usar `percentile_approx` para la mediana de `amount` por segmento (imputación de nulls) introduce ruido de punto flotante en el valor imputado. Como `amount` es parte de la clave de deduplicación (T5), ese ruido cambiaba qué filas se consideraban duplicados exactos, afectando el conteo. Cambié a `percentile` (exacto) para que el imputado coincida bit a bit con la mediana de pandas — con eso, KPIs y quality_report coinciden hasta ruido de suma en punto flotante (~1e-11), esperable por el orden de suma distribuida.
-  2. **Empates en `merchants_at_risk`**: las distribuciones de `risk_score` son idénticas entre pandas y Spark (mismos cuantiles, mismos conteos por valor), pero ~135/200 merchants del top-200 caen en un empate exacto en 0.8. Ni pandas (`sort_values` sin criterio de desempate) ni un `orderBy` naive en Spark garantizan el mismo orden dentro de un empate masivo, así que el conjunto exacto de "top 200" difiere aunque el cálculo sea correcto en ambos. Añadí `merchant_id` ascendente como criterio de desempate secundario en Spark para que el resultado sea al menos reproducible entre corridas.
-  3. **`keep='first'` no tiene equivalente real en Spark**: pandas' `drop_duplicates(keep='first')` conserva la primera fila en el orden de lectura del CSV. Spark no garantiza ningún orden de lectura estable entre particiones, así que como proxy usé "transaction_id más bajo por grupo" (ver comentario en `load_clean`, T5). Esto coincide con "primera fila del CSV" solo si `transaction_id` es monótono con el orden del archivo — supuesto razonable pero **no verificado** contra los datos. Si se genera un CSV donde eso no se cumpla, pandas y Spark podrían quedarse con filas de contenido idéntico en las columnas de dedup pero distintas en columnas no incluidas en la clave (`segment`, `mcc`, `cancellation_reason`, `fla_churn90`), lo cual no se detectaría con los tests actuales.
-- *Differences found comparing pandas vs. Spark output: (1) Approximate vs exact median — using `percentile_approx` for the per-segment `amount` median (null imputation) introduces floating-point noise in the imputed value. Since `amount` is part of the dedup key (T5), that noise changed which rows counted as exact duplicates. Switched to exact `percentile` so the imputed value matches pandas' median bit-for-bit — after that, KPIs and quality_report agree up to distributed-summation floating point noise (~1e-11). (2) Ties in `merchants_at_risk` — risk_score distributions are identical between pandas and Spark (same quantiles, same per-value counts), but ~135/200 top-200 merchants land in an exact tie at 0.8. Neither pandas' `sort_values` (no tiebreak) nor a naive Spark `orderBy` guarantee the same order within a massive tie, so the exact top-200 set differs even though the computation is correct in both. Added ascending `merchant_id` as a secondary Spark sort key so the result is at least reproducible run-to-run. (3) `keep='first'` has no real Spark equivalent — pandas' `drop_duplicates(keep='first')` keeps the first row in CSV read order; Spark doesn't guarantee a stable read order across partitions, so I used "lowest transaction_id per group" as a proxy (see the T5 comment in `load_clean`). This only matches "first row in the CSV" if `transaction_id` happens to be monotonic with file order — a reasonable but **unverified** assumption. If a CSV were ever generated where that doesn't hold, pandas and Spark could keep rows identical on the dedup-key columns but different on non-key columns (`segment`, `mcc`, `cancellation_reason`, `fla_churn90`) — a divergence the current tests wouldn't catch.*
+- **Qué hice**: Un copiloto de investigación sobre informes de la SEC y riesgo de cartera con cuatro herramientas (fundamentales, búsqueda en informes, riesgo de mercado, control pre-trade), datos públicos reales y una regla estricta: cada número de una respuesta se verifica contra su fuente.
+- **Por qué**: El público es un equipo FinTech que integra IA en sistemas de trading propietarios. Lo que ese equipo necesita de un LLM es confiar en sus cifras, ausencia de sesgo de anticipación y cifras de riesgo con evidencia de calibración. Son propiedades verificables sobre datos reales. Un "copiloto de trading" alimentado con libros de órdenes y noticias simulados no demostraría ninguna, y su primera pregunta de entrevista ("¿de dónde sale el libro de órdenes?") no tiene buena respuesta.
+- **Qué descarté**: Un agente de generación de alfa y enrutado de órdenes sobre datos de mercado simulados (datos indefendibles, sin forma de medir la corrección); prometer inferencia LLM por debajo de 15 ms (no medible en este hardware, y la latencia del LLM no es donde reside la corrección de este sistema).
+- **Qué supuse**: Que un equipo que evalúa LLM para trading valora más un sistema que se niega a afirmar una cifra sin respaldo que uno que responde a más preguntas.
 
-- **Cuándo usaría cada uno**: pandas para este volumen (204k filas) es más simple y rápido de iterar (sin overhead de JVM/sesión Spark). PySpark se justifica cuando el dataset no cabe en memoria de una máquina, o cuando el pipeline necesita correr sobre un cluster/Databricks como parte de una arquitectura de datos más amplia (un caso real en acquiring a esa escala). El rewrite aquí es una prueba de portabilidad del pipeline, no una necesidad de escala para este dataset de muestra.
-- *When I'd use each: pandas is simpler and faster to iterate on for this volume (204k rows) — no JVM/Spark session overhead. PySpark is justified once the dataset doesn't fit in a single machine's memory, or the pipeline needs to run on a cluster/Databricks as part of a larger data architecture (a real case in acquiring at that scale). This rewrite is a portability exercise, not a scale necessity for this sample dataset.*
+## D2
 
----
+### Datos reales de la SEC, versionados como fixtures y descargados respetando la política de la SEC
 
+- **Qué hice**: `scripts/fetch_fixtures.py` descarga los hechos XBRL, el último 10-K (Item 1A) y el índice de informes de 10 emisores de 5 sectores, más 5 años de precios diarios ajustados, y los guarda en `data/`. El cliente EDGAR (`src/filings/edgar.py`) aplica la política de la SEC por sí mismo: User-Agent con contacto leído de `SEC_USER_AGENT` (no arranca sin un email), un *token bucket* seguro entre hilos a 10 peticiones por segundo y reintentos con *backoff* exponencial con *jitter* completo solo ante 429/5xx.
+- **Por qué**: Los tests, la CI y la demo con LLM simulado deben funcionar sin red y de forma determinista, y a la vez ejercitar datos reales con sus particularidades (reexpresiones, cambios de etiqueta, años fiscales que no coinciden con el natural). Un 404 es una respuesta y no se reintenta; solo los fallos transitorios.
+- **Qué descarté**: Estados financieros sintéticos (ocultarían justo los problemas de XBRL de D3); descargar en tiempo de test (inestable, y castiga un servicio público desde la CI); guardar los JSON completos de 4 MB (las versiones normalizadas desde FY2019 ocupan 2,4 MB para los 10 emisores).
+- **Qué supuse**: Que 10 emisores bastan para ejercitar cada camino del código (bancos sin beneficio bruto, un año fiscal que cierra en junio, otro en enero, *splits*, una reexpresión) y que el universo se amplía por configuración, no por código.
 
+## D3
 
+### Normalización XBRL: dos trampas tratadas explícitamente
 
-## Parte 2 · SQL
-*SQL*
+- **Qué hice**: `src/filings/xbrl.py` convierte *companyfacts* en hechos canónicos y versionados. (1) Las etiquetas fiscales salen del informe cuyo periodo propio es ese valor, no de los campos `fy`/`fp` de la fila. (2) Los alias de conceptos (por ejemplo `RevenueFromContractWithCustomerExcludingAssessedTax` y después `Revenues`) se resuelven por prioridad **por periodo y por informe**. Las duraciones trimestrales que terminan en la fecha de un 10-K se etiquetan como Q4; las acumuladas del año se descartan.
+- **Por qué**: En *companyfacts*, `fy` describe el informe: un 10-K de FY2025 incluye comparativos de FY2024 y FY2023 también marcados con `fy=2025`. Usarlo sin más asigna a FY2025 los ingresos de tres años distintos. Los emisores también cambian de etiqueta (Apple usó `Revenues` hasta 2018).
+- **Encontrado al construirlo**: Mi primera regla de alias resolvía por periodo. Un test unitario con una etiqueta antigua en un informe viejo y la nueva en un comparativo posterior mostró que el valor original desaparecía, de modo que una consulta *point-in-time* anterior al informe posterior no encontraba *ningún* ingreso. Resolver por (periodo, informe) conserva todas las versiones presentadas. El arreglo llevó a Apple de 794 a 845 versiones de hechos.
+- **Qué descarté**: La API `frames` de la SEC (alineada con el año natural, etiqueta mal los años fiscales que no cierran en diciembre); mapear cada emisor a mano (no escala).
+- **Qué supuse**: Que un periodo que solo aparece como comparativo, sin informe propio en los datos, debe omitirse en lugar de adivinarse. Hay un test que lo fija.
 
-### D14 · Q1 — filtro doble sobre dat_process y transaction_date
+## D4
 
-- **Qué hice**: Filtré `transactions` tanto por `dat_process BETWEEN '2025-07-01' AND '2025-09-30'` (columna de partición) como por `transaction_date BETWEEN '2025-07-01' AND '2025-09-30'` (fecha de negocio).
-- *What I did: Filtered `transactions` both by `dat_process BETWEEN '2025-07-01' AND '2025-09-30'` (partition column) and by `transaction_date BETWEEN '2025-07-01' AND '2025-09-30'` (business date).*
+### Un almacén de hechos point-in-time con trazabilidad
 
-- **Por qué**: `dat_process` es la fecha de ETL/procesamiento, no necesariamente igual a `transaction_date` (una transacción del 30-sep podría procesarse el 1-oct). El filtro sobre `dat_process` habilita partition pruning grueso; el filtro sobre `transaction_date` asegura que el resultado sea correcto por fecha de negocio aunque haya lag entre ambas columnas cerca de un límite de trimestre.
-- *Why: `dat_process` is the ETL/processing date, not necessarily equal to `transaction_date` (a Sep-30 transaction could be processed on Oct-1). Filtering on `dat_process` enables coarse partition pruning; filtering on `transaction_date` ensures the result is correct by business date even if there's lag between the two columns near a quarter boundary.*
+- **Qué hice**: `src/filings/factstore.py` guarda en DuckDB todas las versiones presentadas de cada hecho, con clave (ticker, métrica, año fiscal, periodo, número de registro). Cada consulta acepta `as_of` y solo ve versiones presentadas hasta esa fecha; sin él, gana el último informe. Las métricas derivadas (márgenes, apalancamiento, flujo de caja libre, crecimiento interanual, Q4 implícito = FY - Q1 - Q2 - Q3) son objetos con su fórmula y los identificadores exactos de los hechos de los que salen. Las inserciones son idempotentes e incrementan un contador `data_version`.
+- **Por qué**: "¿Qué sabíamos en la fecha D?" es la pregunta central de cualquier backtest, y un almacén que solo guarda el último valor la responde, sin avisar, con cifras reexpresadas. Los datos reales tienen ejemplos: el BPA diluido de Apple de FY2019 se presentó como 11,89 $ y se reexpresó a 2,97 $ tras el *split* de 2020; el capex de Tesla de FY2024 fue de 11.339 M$ en el 10-K original y de 11.342 M$ en el siguiente, lo que cambia el flujo de caja libre según `as_of`. Ambos son casos del golden set.
+- **Encontrado al construirlo**: La primera carga usaba `executemany` de DuckDB y tardaba 35 s para 6.800 filas (fila a fila). Una inserción masiva desde un DataFrame tarda 0,7 s.
+- **Qué descarté**: Postgres (un servicio más para datos de solo lectura que caben en memoria); guardar solo el último valor (sesgo de anticipación por construcción).
+- **Qué supuse**: Que la fecha de presentación es la marca de "conocimiento" adecuada. La hora de aceptación de EDGAR es más precisa para uso intradía y viaja en los eventos de ingesta (D11).
 
-- **Qué supuse**: Que `dat_process` y `transaction_date` coinciden en la gran mayoría de los casos (lag de 0-1 días). No verificado contra el schema real — lo confirmaría con el equipo de ingeniería de datos antes de confiar en el partition pruning como única garantía de completitud.
-- *What I assumed: That `dat_process` and `transaction_date` coincide in the vast majority of cases (0-1 day lag). Not verified against the real schema — I'd confirm with the data engineering team before relying on partition pruning alone as a completeness guarantee.*
+## D5
 
----
+### Verificación numérica: verificar, regenerar una vez y, si no, plantilla
 
-### D15 · Q1 — approval_rate: denominador incluye reversed
+- **Qué hice**: `src/copilot/verification.py` extrae cada cantidad de la respuesta (importes con escala, porcentajes, múltiplos, números), infiere su precisión de cómo está escrita ("416,2 mil millones de $" significa más o menos 0,05 mil millones) y solo la acepta si algún valor de la evidencia cae en ese intervalo. Años, fechas ISO, periodos fiscales, números de registro, tipos de formulario y marcadores de cita no son afirmaciones. En modo real, un borrador que falla se regenera una vez indicando en el *prompt* los números exactos sin respaldo; si vuelve a fallar, la respuesta se sustituye por la plantilla determinista construida con la misma evidencia y se marca `fallback_used`.
+- **Por qué**: Pedir "usa solo los números proporcionados" reduce las alucinaciones pero no las elimina; una comprobación sí. La comparación según la precisión es lo que permite que "416,2 mil millones" pase y "416,3 mil millones" (un error del 0,03%) falle. Los números citados dentro de un pasaje recuperado del 10-K pasan a ser evidencia de ese pasaje: citar el informe está permitido, inventar una cifra no.
+- **Encontrado al construirlo**: El verificador rechazó dos veces mi propia plantilla. "Kupiec test at the 5% level" afirmaba un nivel de significación que no constaba como evidencia (había pasado solo porque otro 0,05 coincidía), y la fórmula de crecimiento "revenue[FY2024] / revenue[FY2023] - 1" contenía una constante suelta. Ambos se arreglaron en la plantilla, no relajando el verificador.
+- **Qué descarté**: Un LLM como juez (no determinista, cuesta una llamada y no puede ser un control de CI); la coincidencia exacta de cadenas (rechaza cualquier redondeo legítimo).
+- **Qué supuse**: Que el signo no se comprueba en importes y porcentajes ("cayó un 3,1%" y "crecimiento del -3,1%" describen el mismo valor, y el VaR se expresa como pérdida positiva), y que pasarse de estricto (una regeneración) es la dirección de fallo correcta. Las fechas y los nombres aún no se verifican (README, limitaciones).
 
-- **Qué hice**: `approval_rate = n_approved / COUNT(*)`, donde `COUNT(*)` cuenta todas las transacciones del periodo (approved + denied + reversed).
-- *What I did: `approval_rate = n_approved / COUNT(*)`, where `COUNT(*)` counts all transactions in the period (approved + denied + reversed).*
+## D6
 
-- **Qué descarté**: Excluir `reversed` del denominador (solo `approved`/`denied`). Lo descarté porque una transacción `reversed` fue aprobada y luego revertida — sigue siendo relevante para medir qué fracción de los intentos de cobro del merchant resultan en TPV neto retenido.
-- *What I discarded: Excluding `reversed` from the denominator (only `approved`/`denied`). Discarded because a `reversed` transaction was approved and then reversed — still relevant for measuring what fraction of the merchant's charge attempts result in retained net TPV.*
+### Recuperación: BM25 + densa con Reciprocal Rank Fusion
 
-- **Qué supuse**: Que "approval_rate" en el contexto de negocio del acquirer incluye reversals en el denominador. Lo verificaría con el equipo de producto — ver también ASSUMPTIONS.md A1 sobre la misma ambigüedad en TPV.
-- *What I assumed: That "approval_rate" in the business context includes reversals in the denominator. I'd verify this with the product team — see also ASSUMPTIONS.md A1 on the same ambiguity for TPV.*
+- **Qué hice**: `src/copilot/retrieval_core.py` implementa Okapi BM25 sobre listas de *postings* (*stemming* ligero por sufijos, palabras vacías más las palabras propias de una pregunta) y lo combina con *embeddings* densos (OpenAI o Azure OpenAI) mediante Reciprocal Rank Fusion (k = 60) en modo real; el modo simulado usa solo BM25. Hay un índice por emisor y otro para todo el universo, de modo que una pregunta sobre NVIDIA solo busca en el 10-K de NVIDIA. Los extractos se centran en la consulta: empiezan en la frase que comparte más términos con ella.
+- **Por qué**: Los *embeddings* densos captan paráfrasis; en un texto legal deciden términos raros y exactos ("talc", "Section 232", "export controls") que los *embeddings* diluyen. RRF combina posiciones, así que las dos puntuaciones nunca necesitan calibrarse entre sí. Con 833 pasajes, puntuar por fuerza bruta lleva menos de un milisegundo; un índice ANN añadiría una dependencia operativa sin ganancia medible.
+- **Encontrado al construirlo**: La tasa de acierto de recuperación de la evaluación era del 78% con mi primer enfoque léxico. Dos causas: un *stemmer* incoherente ("regulation" quedaba en "regul" y "regulatory" en "regulat", así que nunca coincidían; "mention" quedaba en "ment") y palabras de pregunta como "does" con el IDF más alto de la consulta. Además, el pasaje correcto de JNJ quedaba primero, pero su frase relevante ("talc") estaba en el carácter 990, más allá del extracto de 600. Tras corregir el *stemmer*, la lista de palabras vacías y la selección del extracto: 100%. Reescribir BM25 sin scikit-learn ni SciPy quitó además unos 195 MB de la imagen.
+- **Qué descarté**: Coseno TF-IDF (lo que usaba antes el modo simulado: débil con consultas cortas); una base de datos vectorial (por la escala); un *reranker* cross-encoder (una descarga de modelo para el modo sin red).
+- **Qué supuse**: Que el Item 1A es el primer corpus adecuado para preguntas de riesgo; el MD&A sería la siguiente sección a indexar.
 
----
+## D7
 
-### D16 · Q3 — self-join en vez de LAG(tpv, 12) para el YoY
+### El motor C++, y el benchmark que al principio decía que era más lento
 
-- **Qué hice**: Uní `monthly_tpv` consigo misma por `(merchant_id, mo)` con `prev.yr = 2024`, en vez de usar `LAG(tpv, 12) OVER (PARTITION BY merchant_id ORDER BY month_start)`.
-- *What I did: Joined `monthly_tpv` to itself on `(merchant_id, mo)` with `prev.yr = 2024`, instead of using `LAG(tpv, 12) OVER (PARTITION BY merchant_id ORDER BY month_start)`.*
+- **Qué hice**: `cpp/riskcore` es una librería C++20 con *bindings* pybind11, compilada por scikit-build-core como miembro del *workspace* de uv, de modo que `uv sync` la compila. Ofrece VaR/ES histórico, paramétrico y Monte Carlo, un backtest móvil con el test de Kupiec, Cholesky y la inversa de la normal. Las entradas son vistas sin copia de los *buffers* de NumPy y el GIL se libera durante el cálculo. Una implementación de referencia en NumPy (`src/risk/reference.py`) es a la vez el oráculo de paridad (los estimadores deterministas coinciden con precisión de coma flotante) y la línea base del benchmark, escrita como NumPy vectorizado de calidad, no como un bucle.
+- **Por qué**: Los controles de riesgo están en el camino de la petición del control pre-trade y deben ejecutarse en paralelo entre los hilos de la API; eso exige cálculo que libere el GIL y use todos los núcleos. El puesto pide Python y otro lenguaje orientado a objetos, y la frontera entre ambos (propiedad de la memoria a través del *binding*, GIL, determinismo) es donde de verdad fallan los sistemas híbridos.
+- **Encontrado al construirlo**: El primer benchmark mostró el motor C++ **más lento** que NumPy en VaR histórico (21 ms frente a 4 ms) y en el backtest (0,5x). El perfilado dio tres causas: el `std::nth_element` de libstdc++ es unas dos veces más lento que el *introselect* de NumPy con esta entrada; los *bindings* copiaban cada entrada dos veces (16 MB de memoria nueva, con fallos de página, para 1 M de escenarios); y el backtest volvía a seleccionar cada ventana de 250 días desde cero. Correcciones: una selección por muestreo y filtrado para colas finas (un umbral sacado de una muestra espaciada de 32k con un margen de 4 sigmas, una pasada lineal y una selección entre unos 1.500 candidatos, con recurso a la selección completa para que el resultado sea siempre exacto); vistas `std::span` sin copia; y una ventana ordenada deslizante en el backtest. Resultado: 2-3x más rápido en VaR histórico, unas 8x en el backtest, unas 1,2x en Monte Carlo con un hilo y 7-8x con 8 hilos. Tests adversariales en C++ (entradas ordenadas, inversas, constantes y con muchos duplicados, de 1 M de valores) comprueban la vía rápida contra una ordenación completa.
+- **Qué descarté**: Intrínsecos SIMD escritos a mano (`-O3` autovectoriza los bucles internos, y `-march=native` haría el *wheel* no portable); Numba (no demuestra un segundo lenguaje ni el diseño de un *binding*); publicar solo las cifras favorables.
+- **Qué supuse**: Que la máquina del benchmark (un portátil de 4 núcleos con limitación térmica) da proporciones representativas pero no tiempos absolutos, por eso el README da rangos.
 
-- **Por qué**: `LAG(tpv, 12)` con offset fijo es sintaxis Spark SQL perfectamente válida — la elección no es por falta de soporte. El motivo real es que `monthly_tpv` puede tener huecos: si un merchant no tuvo transacciones en algún mes, ese mes no aparece como fila. `LAG(tpv, 12)` se desplazaría 12 *filas* hacia atrás en la partición, no 12 *meses* — con huecos, terminaría comparando meses que no son realmente el mismo mes del año anterior. El self-join empareja explícitamente por `mo`, así que es correcto independientemente de huecos en la serie.
-- *Why: `LAG(tpv, 12)` with a fixed offset is perfectly valid Spark SQL — the choice isn't due to a lack of support. The real reason is that `monthly_tpv` can have gaps: if a merchant had no transactions in some month, that month doesn't appear as a row. `LAG(tpv, 12)` would shift 12 *rows* back within the partition, not 12 *months* — with gaps, it would end up comparing months that aren't actually the same month a year prior. The self-join matches explicitly on `mo`, so it's correct regardless of gaps in the series.*
+## D8
 
-- **Qué descarté**: `LAG(tpv, 12)` — funcionaría solo si se garantiza una fila por cada (merchant_id, mes) sin huecos, lo cual requeriría un join contra un "calendar spine" primero. El self-join es más simple para este caso.
-- *What I discarded: `LAG(tpv, 12)` — would only work if every (merchant_id, month) combination is guaranteed a row with no gaps, which would require joining against a calendar spine first. The self-join is simpler for this case.*
+### Modelo Monte Carlo: horizonte de varios días, shocks t de Student, reproducible con cualquier número de hilos
 
----
+- **Qué hice**: Las rentabilidades logarítmicas diarias se generan con una Normal o una t de Student multivariante (5 grados de libertad, reescalada para que su covarianza sea la muestral), se acumulan durante 10 días y el resultado es P&L = suma de w_i (exp(rentabilidad acumulada_i) - 1). Las trayectorias se generan en bloques fijos de 4.096, cada uno con su propio flujo xoshiro256** sembrado a partir de (semilla, índice de bloque); los hilos toman bloques de un contador atómico. Las normales usan el método polar de Marsaglia y la chi-cuadrado, el muestreo gamma de Marsaglia-Tsang.
+- **Por qué**: Para una cartera lineal a un día bajo una distribución elíptica, el P&L de la cartera es univariante y el Monte Carlo solo reproduce una fórmula cerrada: implementarlo sería decorativo. Acumular 10 días hace el P&L no lineal y la suma de *shocks* t no es t, así que hace falta simular. La reproducibilidad es un requisito para una cifra de riesgo: el resultado es idéntico bit a bit con 1, 2, 3 y 8 hilos (probado). Se evitaron las distribuciones de la librería estándar porque `std::normal_distribution` difiere entre libstdc++ y libc++.
+- **Encontrado al construirlo**: El primer muestreador usaba Box-Muller y una chi-cuadrado como suma de 5 normales al cuadrado: 15 normales por trayectoria y día, con llamadas trigonométricas. El método polar y el muestreo gamma lo bajaron a unas 11 y eliminaron la trigonometría.
+- **Qué descarté**: Monte Carlo solo gaussiano (equivale al VaR paramétrico para esta cartera); GARCH o simulación histórica filtrada (el siguiente paso adecuado, en las limitaciones del README).
+- **Qué supuse**: Que *shocks* diarios i.i.d. a 10 días son aceptables para una demostración; el agrupamiento de volatilidad es la carencia conocida.
 
+## D9
 
+### Cada VaR va con un backtest y una atribución
 
+- **Qué hice**: El informe de riesgo incluye un backtest móvil de 250 días del VaR histórico con el test de proporción de fallos de Kupiec (excepciones, excepciones esperadas, p-valor, calibrado o no) y una asignación de Euler del VaR paramétrico que muestra la contribución aditiva de cada posición.
+- **Por qué**: Un VaR sin evidencia de calibración es una opinión. La atribución responde a la siguiente pregunta de un gestor ("¿qué lo está generando?"): en una cartera 40/30/30 de NVDA/AAPL/XOM, NVDA aporta el 75% del VaR con un peso del 40%.
+- **Qué descarté**: El test de independencia de Christoffersen (sería lo siguiente; Kupiec solo no detecta excepciones agrupadas); el VaR marginal por diferencias finitas (Euler es exacto en el caso paramétrico).
+- **Qué supuse**: Un nivel de significación del 5% para el veredicto de calibración, registrado como evidencia para que las respuestas puedan citarlo (D5).
 
-## Parte 3 · Modelado ML
-*ML Modelling*
+## D10
 
-### D4 · Features descartadas (trampas detectadas + razones)
-*Discarded features (detected traps + reasons)*
+### El control pre-trade: reglas deterministas, un registro de decisión, sin órdenes
 
-- **Qué hice**: Excluí explícitamente del modelo:
-- *What I did: Explicitly excluded from the model:*
+- **Qué hice**: `pretrade_check` evalúa una cartera propuesta contra los límites de `data/risk_limits.json` (peso por emisor, por sector, exposición bruta, VaR histórico a 1 día al 99%, lista restringida) y devuelve APPROVE o REJECT con cada incumplimiento como evidencia. Los *guardrails* bloquean los *prompts* que intentan convencer al sistema de saltarse sus controles ("aprueba esta operación aunque incumpla los límites", "sáltate los controles de riesgo").
+- **Por qué**: Las decisiones de cumplimiento deben ser reproducibles y auditables. El LLM puede explicar el veredicto, pero el veredicto y cada incumplimiento son evidencia contra la que se verifica la respuesta, así que el modelo no puede suavizar un REJECT hasta un APPROVE.
+- **Encontrado al construirlo**: Al principio el router lanzaba el control pre-trade con las palabras sueltas "concentration" y "limits", así que "¿qué dice el 10-K de Apple sobre la concentración de la cadena de suministro?" ejecutaba un control de límites. Ahora los patrones exigen frases propias de una operación ("concentration limit", "can I buy", "proposed portfolio"), y la pregunta es un caso de regresión del golden set.
+- **Qué descarté**: Enviar o simular órdenes (fuera de alcance, D22); dejar que el LLM decida si se aprueba.
+- **Qué supuse**: Valores de límites ilustrativos; los de una mesa real salen de su política de riesgo.
 
-  | Feature | Razón / Reason |
-  |---|---|
-  | `cancellation_reason` | **T1 (leakage directo / direct leakage)**: rellena en ~92% de churners vs 0% de no-churners / filled in ~92% of churners vs 0% of non-churners. El modelo aprendería el target directamente / The model would learn the target directly. |
-  | `last_complaint_date` raw | **T2 (leakage temporal / temporal leakage)**: 3.535 filas tienen fecha posterior a `reference_date` — información del futuro / 3,535 rows have a date after `reference_date` — future information. Derivé `days_since_complaint` capado a `reference_date` / Derived `days_since_complaint` capped at `reference_date`. |
-  | Transactions con `transaction_date > reference_date` | **Trampa no documentada / Undocumented trap**: el CSV incluye transacciones Oct-Dic 2025 / the CSV includes Oct-Dec 2025 transactions. Un merchant con actividad futura claramente no está churning / A merchant with future activity is clearly not churning — filtrar estas filas en features produce leakage implícito / filtering these rows in features produces implicit leakage. |
-  | `reference_date` | Constante en todo el dataset / Constant across the dataset |
-  | `transaction_id` | Surrogate key sin valor predictivo / Surrogate key with no predictive value |   
+## D11
 
+### Ingesta orientada a eventos sobre Redis Streams: una cola de trabajo y una difusión
 
-- **Por que**: Si yo incluyo cualquiera de las tres primeras, el modelo obtendría un AUC cercano a 1.0 pero fallaría en producción donde esos datos no existen en el momento de prediccion.     
+- **Qué hice**: `src/streaming/`. El *poller* publica un evento por cada 10-K/10-Q nuevo en `edgar:filings`, deduplicado con un `SADD` atómico sobre un conjunto de vistos, de modo que los reinicios y los *pollers* duplicados no publican nada dos veces. Los *workers* consumen en el grupo `ingest`: confirmación solo después de publicar los hechos (al menos una vez), `XAUTOCLAIM` de los mensajes inactivos durante 60 s (los informes en curso de un *worker* caído los terminan sus compañeros) y un contador explícito de intentos que mueve un mensaje a `edgar:filings:dlq` tras 5 intentos. Los hechos normalizados van a `edgar:facts`, que cada réplica de la API sigue con un `XREAD` simple y aplica con inserciones idempotentes.
+- **Por qué**: Los dos *streams* necesitan semánticas opuestas. Los informes son trabajo: cada uno debe procesarlo una vez cualquier *worker* (consumidores en competencia). Las actualizaciones de hechos son estado: cada réplica debe aplicarlas todas (difusión). Un grupo de consumidores en el segundo *stream* dejaría a cada réplica con una parte de las actualizaciones. Las inserciones idempotentes hacen segura la entrega al menos una vez.
+- **Encontrado al construirlo**: La lógica de la cola de fallidos leía primero el número de entregas de `XPENDING`, que fakeredis no devuelve; poner un valor por defecto habría enviado el mensaje a la cola de fallidos al primer error. Un contador explícito con `HINCRBY` funciona igual en Redis, Valkey y el doble de pruebas.
+- **Qué descarté**: Kafka (una dependencia operativa más pesada para decenas de informes al día; los grupos de consumidores, la repetición y la retención de Redis cubren este volumen, y Redis ya está en la pila para los límites de peticiones); el RSS de EDGAR (menos estructurado que los *submissions* por empresa).
+- **Qué supuse**: Que un límite de 10.000 entradas por *stream* da suficiente historial para que una réplica que se reinicia se ponga al día; más allá de eso, las réplicas arrancan desde la instantánea del repositorio.
 
-- *Why: If I include any of first three, the model would achieve AUC close to 1.0 but would fail in production where that data does not exist at prediction time*          
+## D12
 
+### Caché de respuestas con la versión de los datos en la clave, y una política de Redis que no puede perder la cola
 
-- **Qué descarté**: Incluir `cancellation_reason` con imputación "desconocido", todavia sigue siendo leakage porque la ausencia del valor es informativa del target. Si usas `last_complaint_date` como numérico sin capado, filtra información futura para ~3500 churners.      
-- *What I discarded: Including `cancellation_reason` with "unknown" imputation, still has leakage because the absence of the value is informative of the target. Using `last_complaint_date` as a number without capping would leaks the future information for ~3500 churners.*
+- **Qué hice**: La clave de caché de `/ask` incluye la pregunta redactada, el contexto (tickers, `as_of`, cartera), el idioma, el modo, la versión de la app y el `data_version` del almacén de hechos. Redis funciona con desalojo `volatile-lru` y persistencia AOF.
+- **Por qué**: Antes del *streaming*, los datos eran una instantánea estática y bastaba la versión de la app para invalidar la caché. Ahora un 10-Q puede llegar en cualquier momento, y una respuesta cacheada antes no debe servirse después. La política anterior, `allkeys-lru`, era correcta para un Redis solo de caché, pero bajo presión de memoria desalojaría sin avisar el *stream* de informes; `volatile-lru` solo desaloja claves con TTL (entradas de caché, contadores de límite).
+- **Qué descarté**: Un Redis aparte para los *streams* (mejor aislamiento a escala, innecesario aquí, anotado para producción); caducidad solo por tiempo (sirve respuestas obsoletas hasta que vence el TTL).
+- **Qué supuse**: Que ninguna herramienta aplica autorización por usuario, así que la clave no incluye al usuario; con datos por cliente, el cliente tendría que entrar antes en la clave.
 
-- **Que supuse**: Que `reference_date` es el punto exacto de predicción en producción. Si el modelo se ejecuta con lag de N días, habría que ajustar el ventana de features.
-- *What I assumed: That `reference_date` is the exact prediction point in production. If the model runs with a lag of N days, the feature window would then need to be adjusted.*
+## D13
 
+### Orquestación: flujo de control con LangGraph, llamadas al LLM con Agno, un conjunto cerrado de herramientas
 
+- **Qué hice**: LangGraph gestiona el estado y el flujo de control; las llamadas al LLM dentro de los nodos pasan por Agno. El router calcula una vez la lista ordenada de herramientas y cada nodo se quita a sí mismo del principio (una cola de trabajo acotada). Los nombres de herramientas son un conjunto `Literal` cerrado, el router en modo real solo puede añadir tickers del universo cubierto y ninguna herramienta ejecuta código ni SQL generado por el modelo.
+- **Por qué**: Una cola acotada da un orden determinista y un número fijo de llamadas al LLM por petición (router, síntesis y como mucho un reintento) se activen las herramientas que se activen. La extracción de entidades es determinista en ambos modos, así que un ticker alucinado no puede llegar a una herramienta.
+- **Qué descarté**: Un bucle ReAct (llamadas y elecciones de herramienta sin límite por petición); el *fan-out* en paralelo (conflictos de fusión sin necesidad de latencia, con herramientas de 2 a 20 ms cada una); un *checkpointer* (preguntas de un solo turno).
+- **Qué supuse**: Que las preguntas de un solo turno cubren el caso de uso; las repreguntas necesitarían estado de conversación.
 
+## D14
 
+### Evaluación: verdad de referencia independiente, un test adversarial del verificador y umbrales obligatorios en CI
 
----
+- **Qué hice**: `data/golden_set.json` tiene 37 casos (fundamentales, métricas derivadas, *point-in-time*, reexpresiones, carencias honestas, recuperación, riesgo, pre-trade, rutas mixtas). Las cifras esperadas se tomaron de *companyfacts* de la SEC por concepto y fecha de cierre con un script aparte, para que la evaluación no califique al normalizador consigo mismo. `scripts/evaluate_copilot.py` pasa cada caso por la app FastAPI real y después corrompe cada número de cada respuesta correcta (de -10% a +50%, y con dígitos transpuestos) y mide cuántas respuestas corrompidas rechaza el verificador. `scripts/check_eval_floors.py` hace fallar la CI por debajo de los umbrales.
+- **Por qué**: Un golden set solo mide el camino feliz; el test adversarial mide directamente el mecanismo de seguridad (442 corrupciones, el 100% detectadas, 0 falsos positivos en respuestas correctas). Con el LLM simulado todo es determinista, así que cualquier caída es una regresión, no ruido.
+- **Encontrado al construirlo**: La primera ejecución adversarial dio un 97,9% de *recall*. Todos los fallos eran errores del arnés, no del verificador: localizaba las afirmaciones con `str.find`, que encontraba el "10" dentro de la fecha "2026-10-01" en lugar de la afirmación, y corrompía la fecha. Ahora las afirmaciones llevan su posición exacta en el texto.
+- **Qué descarté**: Respuestas calificadas por un LLM (no deterministas, no pueden ser un control de CI); generar los valores esperados desde el almacén de hechos (circular).
+- **Qué supuse**: Que las métricas en modo simulado prueban el pipeline y el verificador, no el modelo; la ejecución con modelo real (`--real`) registra el tiempo hasta el primer token, los tokens y el coste por respuesta, pero necesita una clave de API.
 
+## D15
 
-### D5 · Split temporal aware y prevención de leakage
-*Temporal aware split and leakage prevention*
+### Seguridad de la API, guardrails y log de auditoría
 
-- **Que hice**: Split estratificado 80/20 de `merchant_id` (7973 train/1994 test). No hice un split temporal por snapshot porque este dataset tiene una sola `reference_date` (2025-09-30), no hay multiples snapshots disponibles para simular un evaluación temporal real. Riesgo de leakage temporal se mitigó íntegramente en la ingeniería de features, todas las agregaciones usan solo `transaction_date <=reference_date`
+- **Qué hice**: Validación de JWT Bearer (RS256 vía el JWKS del proveedor de identidad, o HS256 en local) con una lista explícita de algoritmos que nunca incluye `none`, `exp`/`sub` obligatorios y comprobación de audiencia, emisor y *scope*; el servicio se niega a arrancar con `APP_ENV=production` y la autenticación desactivada. La PII se redacta antes del router, del LLM, de la clave de caché, de los logs y del log de auditoría (las tarjetas deben pasar Luhn, se excluyen rangos de SSN que la SSA nunca emite, DNI/NIE, IBAN, email, teléfonos de 9 a 15 dígitos para que las fechas ISO sobrevivan). Los patrones de inyección de *prompt* en inglés y español, y los intentos de saltarse los controles pre-trade, devuelven 400. El límite de peticiones es una ventana fija por sujeto (o IP) en Redis, aplicada después de la autenticación para que un 401 nunca consuma cuota. Cada petición escribe una fila de auditoría (sujeto, resultado, ruta, latencia, recuentos de PII, ids de petición y de traza) con solo el SHA-256 de la pregunta redactada, nunca el texto.
+- **Por qué**: Las reglas validadas son auditables y deterministas, lo que mantiene determinista el modo simulado de la CI; el verdadero límite de seguridad es arquitectónico (conjunto cerrado de herramientas, veredictos por reglas, cifras verificadas). Los límites de peticiones y la auditoría fallan en abierto, para que una caída de Redis o Postgres reduzca la protección en lugar de tumbar `/ask`.
+- **Encontrado al construirlo**: (1) FastAPI descarta las `BackgroundTasks` cuando un endpoint lanza una excepción, lo que perdía justo las filas `blocked` y `error` que más interesan a un auditor; esos caminos ahora devuelven una respuesta con la tarea en segundo plano en lugar de lanzar. (2) `CREATE TABLE IF NOT EXISTS` no es atómico en Postgres: dos primeras escrituras concurrentes compitieron y una murió con una violación de unicidad en `pg_class`. Un *advisory lock* de transacción lo arregló; el test de regresión (4 réplicas x 8 escrituras concurrentes sobre una tabla nueva) falla 3 de 3 veces sin el arreglo.
+- **Qué descarté**: *Guardrails* basados en LLM como NeMo Guardrails o Llama Guard (una llamada de modelo más por petición, no deterministas y sin tráfico real con el que medir sus falsos positivos); una escritura de auditoría síncrona que falla en cerrado (correcta para pagos, incorrecta para una herramienta analítica).
+- **Qué supuse**: Que la validación del token pertenece al servicio aunque haya un API gateway delante (defensa en profundidad, y el sujeto validado es la clave del límite de peticiones y de la auditoría).
 
-- **Por qué**: Con un unico snapshot, el split temporal clásico no aplica, pero el split por merchant garantiza que no hay contaminación de datos entre train y test. La estratificación preserva el 8.75 de churn en los dos splits
-- *Why: With only a single snapshot, the classic temporal split doesn't apply. However, merchant split guarantees no data contamination between train and test. Stratification preserves the 8.75% churn rate in both splits*
+## D16
 
-- **Qué descarté**:Split de `transaction_date`, poque el target es por merchant, no por transacción. Y `TimeSeriesSplit` de sklearn porque requiere múltiples snapshots temporales del target.
-- *What I discarded: Split by `transaction_date` because the target is per merchant, not transaction. sklearn's `TimeSeriesSplit` as well, as it requires multiple temporal snapshots of the target.*
+### Observabilidad: métricas, trazas, logs y alertas para un sistema con LLM
 
-- **Qué supuse**: Que en producción habría multiples snapshots mensuales (un rolling window). Con mas de 3 snapshots implementaría rolling origin validation para estimar AUC fuera de muestra de forma mas robusta.
-- *What I assumed: In production there would be many monthly snapshots (a rolling window). With more than 3 snapshots I would implement rolling origin validation so to estimate out-of-sample AUC more robustly.*
+- **Qué hice**: Métricas de Prometheus para HTTP (RED por *handler* y código exacto), histogramas de latencia por nodo del grafo, herramientas invocadas, resultados de la verificación numérica (verificada, fallida, plantilla), tiempo hasta el primer token del LLM (medido en *streaming* de la llamada de síntesis), tokens y coste estimado, eventos de *guardrails*, aciertos de caché, tiempo de procesamiento y retraso de la ingesta, y la versión del almacén de hechos por réplica. *Spans* de OpenTelemetry por nodo bajo un *span* raíz por petición, exportados a través de un Collector a Jaeger y a Prometheus con *span metrics*. Logs JSON con ids de petición y de traza. Las alertas incluyen degradación de la verificación, tiempo hasta el primer token alto, informes en la cola de fallidos, retraso de ingesta y **divergencia entre réplicas** (réplicas de la API con distinta versión del almacén durante 10 minutos: una dejó de aplicar actualizaciones y sirve cifras obsoletas).
+- **Por qué**: Para una función con LLM no basta con saber si está arriba: las preguntas operativas son si las respuestas siguen verificándose, cuánto espera el usuario el primer token y si todas las réplicas tienen los últimos informes. Histogramas y no *summaries*, porque los cuantiles solo se agregan entre réplicas a partir de los *buckets*.
+- **Encontrado al construirlo**: El *span* SERVER del *middleware* termina después de que `/ask` haya sacado su traza del *buffer* en proceso, lo que habría recreado una fuga del *buffer*; el *buffer* ignora los *spans* SERVER, con un test de regresión.
+- **Qué descarté**: El paquete de autoinstrumentación de FastAPI de OpenTelemetry (otra dependencia para unas 60 líneas que además necesitaban el filtro del *buffer*); un exportador gRPC (añade una dependencia nativa a la imagen sin ganancia a este volumen).
+- **Qué supuse**: Que los precios de lista son una estimación aceptable del coste; la métrica se etiqueta como estimación y, si el proveedor devuelve el coste, se usa ese.
 
+## D17
 
+### Imagen de contenedor: una etapa de compilación C++ y tres trampas
 
----
+- **Qué hice**: Un Dockerfile multietapa. La etapa de compilación instala g++ y compila riskcore con scikit-build-core (CMake y Ninja vienen de PyPI); la etapa final recibe solo el entorno virtual, el código y la instantánea de datos. Las imágenes base están fijadas por *tag* y *digest*, el proceso corre como UID 10001 con sistema de ficheros de solo lectura y sin *capabilities*, el *bytecode* está precompilado, el *health check* usa la librería estándar (sin curl) y se elimina el pip no usado de la imagen base.
+- **Encontrado al construirlo**: (1) La primera imagen falló al importar: uv instala los miembros del *workspace* en modo *editable* por defecto, así que el entorno apuntaba a `/app/cpp/riskcore`, una ruta que solo existe en la etapa de compilación. `--no-editable` lo arregló, y `--no-install-project` evita una segunda copia del paquete `src` en *site-packages* que taparía la real. Lo detectó la prueba de humo de la CI, que ejecuta la imagen con las restricciones de Kubernetes. (2) La extensión compilada depende de libstdc++, que la imagen *slim* no garantiza; se enlaza de forma estática (`-static-libstdc++ -static-libgcc`). (3) Quitar scikit-learn y SciPy (D6) ahorró unos 195 MB; la memoria residente medida en caliente en el contenedor es de 226 MiB.
+- **Qué descarté**: Incluir el compilador en la imagen final; publicar riskcore como *wheel* aparte en un registro (el paso adecuado cuando lo consuma un segundo servicio); *distroless* (el entorno virtual enlaza con el intérprete de la imagen base).
+- **Qué supuse**: Despliegue en x86-64 (ambas etapas fijan `linux/amd64`, igual que la tarea de Fargate de D20).
 
-### D6 · Métricas y umbralización
-*Metrics and thresholding*
+## D18
 
-- **Qué hice**: Reporté ROC-AUC=0.58, PR-AUC=0.11, Brier score=0.12, y recall@k (k=1%, 5%, 10%). No umbralicé en 0.5, caso de negocio de retención requiere rankear merchants para priorizar llamadas, no clasificar binario.
-- *What I did: Reported ROC-AUC=0.58, PR-AUC=0.11, Brier score=0.12, and recall@k (k=1%, 5%, 10%). I didn't threshold at 0.5, the retention business case needs ranking merchants in order to prioritize calls, not binary classification.*
+### Kubernetes: la API y la ingesta como cargas separadas
 
-- **Por qué**: Con 8.75% de positivos, accuracy es casi inutil. PR-AUC es la métrica principal para imbalanced problems, porque mide la calidad del ranking en la región de alta precisión. Recall@10% indica cuántos churners capturaríamos si contactásemos al top-10% asi que es directamente accionable para un equipo de retención. El ROC-AUC de 0.58 es modesto,  sin features de leakage, predecir churn a 90 días desde una sola snapshot transaccional es un poco difícil.
+- **Qué hice**: Base de Kustomize y un *overlay* local. El Deployment de la API mantiene la especificación endurecida (Pod Security restringido, sistema de ficheros de solo lectura, *capabilities* eliminadas, seccomp, sondas de arranque, *liveness* y *readiness*, retardo antes de parar, reparto por zona y nodo, HPA y PDB). La ingesta añade un Deployment de *workers* (2 réplicas, métricas en el puerto 9102) y un único *poller*, ambos con su propia NetworkPolicy que solo permite DNS, Redis y HTTPS hacia sec.gov. La *readiness* falla si el almacén de hechos está vacío.
+- **Por qué**: Los *workers* son consumidores sin estado que compiten entre sí y escalan por su cuenta; atarlos a las réplicas de la API haría escalar la ingesta con el tráfico de consultas, que no tiene relación. El *overlay* local no tiene Redis, así que pone la ingesta a cero y la pila completa de *streaming* se ejecuta con docker-compose.
+- **Qué descarté**: Helm (Kustomize cubre base y *overlays* sin plantillas); Redis como StatefulSet en el *namespace* (en producción es un servicio gestionado con persistencia y una política de desalojo *volatile*, documentado en el ejemplo de Secret).
+- **Qué supuse**: Los CIDR de las NetworkPolicies y `FORWARDED_ALLOW_IPS` son valores de ejemplo que hay que ajustar a cada clúster.
 
-- *Why: With the 8.75 positives, accuracy is basically useless. PR-AUC is the main metric for imbalanced problems, it measures ranking quality in the high precision region. Recall@10% indicates how many churners we would capture if we contacted the top-10%, therefore itsdirectly actionable for the retention team. The ROC-AUC of 0.58 is modes, without leakage features, predicting churn 90 days out from a single transactional snapshot is difficult.*
+## D19
 
-  
+### CI/CD y controles de calidad
 
-- **Qué descarté**: el F1 score depende del umbral elegido. Tambien, acuracy porque es engañosa con un imbalance. Un AUC > 0.95 habría sido señal de leakage y lo habría investigado antes de reportar.
-- *What got discarded: F1 score, because it depends on the chosen threshold. Accuracy as well, because it is misleading with imbalance. An AUC > 0.95 would have been a leakage signal and I would have investigated before reporting.*
+- **Qué hice**: *Jobs* de GitHub Actions para lint (ruff, lockfile actualizado, la norma de estilo sin rayas largas), mypy (estricto en infraestructura, informes, riesgo, *streaming*, datos de mercado y el verificador), seguridad (Bandit sin hallazgos, escaneo de Trivy del repositorio), **C++** (compilación con avisos como errores `-Wall -Wextra -Wpedantic -Wconversion`, ctest en *release* y con AddressSanitizer + UndefinedBehaviorSanitizer), tests con un umbral del 85% de cobertura de ramas (94% medido), la evaluación y sus umbrales, un benchmark informativo en el resumen del *job*, tests de integración contra contenedores reales de Redis y Postgres (incluido el pipeline de *streams*), validación de la configuración de despliegue (kubeconform, promtool, otelcol, compose) y un *job* de contenedor (compilación, prueba de humo con las restricciones de Kubernetes que comprueba que la respuesta se verificó, escaneo de Trivy de la imagen). En `main`: publicación en GHCR con SBOM y procedencia SLSA, y firma *keyless* con cosign.
+- **Por qué**: Cada control detecta una clase de fallo que los demás no ven: los *sanitizers* detectan accesos fuera de rango y comportamiento indefinido que los tests unitarios pasan por alto, la prueba de humo detectó el fallo del *editable install* (D17) y los umbrales de evaluación detectan regresiones en la calidad de las respuestas.
+- **Qué descarté**: *Actions* de terceros que envuelven escáneres (los *tags* de aquasecurity/trivy-action se secuestraron en 2026 para robar secretos de CI; los escáneres se ejecutan como imágenes oficiales fijadas por *digest* y cada *action* está fijada a un SHA de commit); hacer del benchmark un control (los *runners* compartidos de CI son demasiado ruidosos para umbrales de tiempo).
+- **Qué supuse**: Que la protección de rama exige el *job* `test`, cuyo identificador se mantiene estable por ese motivo.
 
-- **Qué supuse**: que equipo de retencion trabaja con listas ranked y puede asignar un budget de N llamadas cada semana. Si necesitan clasificación binaria hard, añadiría una calibracion isotónica y  elegiría el umbral maximizando F2 (recall pesa 2x que precision para retención).
-- *What I assumed: retention team will be worknig with ranked lists and can assign a budget of N calls per week. If they need hard binary classification, I would add isotonic calibration and choose the threshold maximizing F2 (recall weighs 2x as much as precision for retention).*
+## D20
 
----
+### AWS ECS con Terraform
 
+- **Qué hice**: `terraform/` despliega la API en ECS Fargate detrás de un ALB en una VPC mínima (dos subredes públicas, sin NAT gateway), con un repositorio ECR, logs de CloudWatch con retención explícita, un rol de ejecución sin rol de tarea (la app no llama a ninguna API de AWS) y un secreto opcional de Secrets Manager para la clave del LLM. Está validado (`fmt`, `init`, `validate`) pero no aplicado; nada cuesta dinero hasta `terraform apply`.
+- **Por qué**: Muestra la misma imagen en un servicio de contenedores gestionado con IAM de mínimo privilegio, y el coste está acotado (unos 35-58 $ al mes si se deja encendido, sobre todo el ALB y Fargate).
+- **Qué descarté**: Un NAT gateway (unos 33 $ al mes por sí solo, evitado con subredes públicas y grupos de seguridad estrictos); EKS para un único servicio (los manifiestos de Kubernetes cubren ese camino).
+- **Qué supuse**: Un despliegue a escala de demostración: una tarea y estado local. Un entorno compartido necesita un *backend* remoto con bloqueo y los *workers* de ingesta como servicios ECS adicionales.
 
+## D21
 
+### Mantenimiento de dependencias: dos pull requests en rojo y un main en rojo
 
-## Parte 4 · FastAPI + Agno
+- **Qué hice**: Arreglé la CI rota de `main` y de dos *pull requests* de Dependabot. `main` fallaba en los dos controles de Trivy por CVE HIGH en dependencias transitivas (urllib3 2.7.0 y virtualenv 21.7.3), corregidas actualizándolas en el *lockfile*. El PR #60 (uvicorn 0.54.0) fallaba en `uv lock --check` porque Dependabot editó la entrada del paquete pero no los requisitos registrados del proyecto; se sustituyó por un *relock* correcto. El PR #57 (imagen base con Python 3.14) fallaba porque `requires-python` es `<3.14`, así que la imagen no tenía un intérprete compatible; Dependabot ignora ahora los saltos de versión menor y mayor de Python en la imagen base, mientras que los parches y las actualizaciones de *digest* siguen llegando.
+- **Por qué**: Una versión menor de Python es una migración del entorno de ejecución (*wheels*, extensiones en C, el motor compilado), no una actualización rutinaria, y debe ser un *pull request* deliberado.
+- **Qué descarté**: Fusionar el PR #57 ampliando `requires-python` sin probar la pila en 3.14.
+- **Qué supuse**: Que los servicios de la CI (Redis, Postgres) deben seguir las versiones de docker-compose; se alinearon (8.10 y 18.6).
 
-### D7 · Por qué Agno (vs LangChain/LlamaIndex /código normal)
-*Why Agno*
+## D22
 
-- **Qué hice**: Usé Agno, tal como especifica el enunciado. El scaffolding de `src/parte4_api/agent.py` ya incluía el mock funcional y el esqueleto de herramientas.
-- *What I did: Used Agno, as specified by the brief. The scaffolding from `src/parte4_api/agent.py` already included the functional mock and the tools skeleton.*
+### Lo que no se construye a propósito
 
-- **Por qué**: Agno ofrece `response_model` Pydantic nativo (structured output forzado, sin JSON parsing manual), tools  que el agente puede invocar, e el integración directa con OpenAI. Esto elimina el punto de fallo más habitual en los pipelines agentic
-- *Why: Agno offers native Pydantic `response_model` (forced structured output w/out manual JSON parsing),  tools the agent invoke, and also direct OpenAI integration. This removes the most common failure point within agentic pipelines.*
+- **Sin enrutado ni ejecución de órdenes.** El control pre-trade devuelve un registro de decisión.
+- **Sin datos de mercado en tiempo real.** Los precios son una instantánea diaria de un endpoint público para demostración; el proveedor está detrás de una función (`src/marketdata/prices.py`) para que lo sustituya uno con licencia.
+- **Sin afirmaciones sobre la latencia de servir modelos** (vLLM, TensorRT-LLM). El presupuesto de latencia del sistema lo domina la llamada al LLM alojado, que se mide (tiempo hasta el primer token) en lugar de suponerse.
+- **Sin opciones ni instrumentos no lineales, y sin agrupamiento de volatilidad** en el modelo de riesgo.
+- **Sin verificación de fechas ni nombres**, solo de cantidades (D5).
 
-
-
-
----
-
-### D8 · Modelo elegido + estimación de coste a 5000 emails cada día
-*Chosen model and cost estimate at 5000 emails a day*
-
-- **Modelo / Model**:`gpt-4o-mini` en producción, mock determinístico cuando `MOCK_LLM=1`.
-
-- **Tokens medios por request**:
-  - Input: 300 tokens (system prompt ~200 + email ~100)
-  - Output: 80 tokens (JSON estructurado)
-  - Total: ~380 tokens/request
-
-- **Coste por request** (precios OpenAI en mayo 2026 :
-  - gpt-4o-mini: $0.15/1M input + $0.60/1M output     
-  - Input: 300 × $0.00000015 = $0.000045    
-  - Output: 80 × $0.00000060 = $0.000048   
-  - Total: $0.000093/request
-
-- **Coste mensual estimado**:
-  - 5000 emails/dia × 30 dias = 150000 requests de mes 
-  - 150000×$0.000093 ≈ $14/mes
-  - Con buffer de retries y overhead (+20%): $17/mes
-
-
-
----
-
-
-
-
-### D9 · Diseño del schema Pydantic
-*Pydantic schema design*
-
-- **Que hice**: `ClassifyResponse` con  `category: Category` (StrEnum cerrado de 6 valors), `urgency: conint(ge=1,le=5)`, `reasoning: str` (max_length=300), `requires_human_escalation: bool`, `merchant_context_used: bool`,  `latency_ms: int`
-- *What I did:`ClassifyResponse` with `category: Category` (closed StrEnum of 6 values), `urgency: conint(ge=1,le=5)`, `reasoning: str` (max_length=300), `requires_human_escalation: bool`, `merchant_context_used: bool`,  `latency_ms: int`.*
-
-- **Por qué enum cerrado de categorías**: Evita que el LLM invente categorías libres que el sistema de ticketing no reconocería, el enum fuerza al agente a elegir entre opcines predefinidas de `response_model`.
-- *Why a closed category enum: Prevent the LLM from inventing free categories that the ticketing system does not recognize, the enum forces the agent to choose from predefined options of `response_model`.*
-
-- **Por qué cap 300 chars en `reasoning`**: Suficiente para que un agente humano entienda la clasificación sin leyendo el email completo. Sin límite, es posible que el LLM genera respuestas de 2000+ tokens que inflan costes.
-- *Why cap 300 chars in `reasoning`: It is enough for human agents to understand the classifcation without reading the full email. Without a limit, the LLM might generates 2000+ token responses that inflate costs without need*
-
-
----
-
-
-
-
-
-### D10 · Estrategia de evaluación antes de producción
-*Evaluation strategy before production*
-
-- **Qué haría**:
-  1. **Golden set**: 50 emails por categoría × 6 categorías = 300 emails minimo, etiquetados por los agentes de customer service (fuente de verdad operacional). Estratificado por idima (es/pt/en), y segmento
-  2. **Métricas**: accuracy de categoria >85%, recall de `churn_threat` >90% (un falso negativo = merchant perdido sin intervencion), y tasa de detección de prompt injection = 100%.
-  3. **LLM as judge**: usar gpt-4o para evaluar si el reasoning es coherente con el email y la categoría asignada. Esto coste: ~$0.001/evaluación.
-  4. **Shadow mode**: desplegar en paralelo con el flujo actual durante 2 semanas, comparar categorías del modelo vs sistema legacy.
-
-- *What I would do:*
-  *1. Golden set: 50 emails per category × 6 categores = 300 emails minimum, labeled by the customer service agents (operational ground truth). Stratified by language (es/pt/en) and segment.*
-  *2. Metrics: category accuracy > 85%, `churn_threat` recall > 90% (one false negative = lost merchant w/out intervention), prompt injection detection rate = 100%*
-  *3. LLM as judge:use gpt-4o to evaluate whether the reasoning is consistent with email and the assigned category. Costs ~$0.001/ evaluation.*
-  *4. Shadow mode: deploy in parallel with the current flow for 2 weeks, compare model categories vs legacy system.*
-
----
-
-### D11 · Mitigación cuando el LLM falla (urgencia 5 clasificada como 2)
-*Mitigation when the LLM fails (urgency 5 classified as 2)*
-
-- **Qué hice**: Dos capas de seguridad: 
-* El guardrail de prompt injection devuelve `requires_human_escalation=True` de forma determinista antes de llegar al LLM     
-* La tool `flag_for_human_review` escribe en `outputs/human_review_queue.jsonl` cuando el agente detecta alta urgencia o churn threat,  permitiendo auditoría post-hoc. 
-
-- *What I did: two safety layers:*
-* *the prompt injection guardrail deterministically returns `requires_human_escalation=True` before reaching the LLM.* 
-* *The `flag_for_human_review` tool writes to `outputs/human_review_queue.jsonl` when a agent detects high urgency or churn threat, allowing for post-hoc auditing.*
-
-- **Por qué**: El LLM puede equivocar el numero exacto de urgency pero raramente va a clasificar `fraud` como `billing`. Las reglas de escalación basadas en `category` son mas robustas que confiar solo en el numero exacto de urgency.
-- *Why:the LLM might get the exact urgency number wrong but will rarely classifies `fraud` as `billing`. Escalation rules based on `category` are more robust than simply relying on the exact urgency number.*
-
-- **Qué descarté**: Umbral de confianza del LLM, porque no tiene calibración fiable. Ensemble de dos modelos porque duplica los costes. Tambien, rescoring de urgency con keywords post-hoc, añade complejidad sin garantías.
-- *What I discarded: LLM confidence threshold, because it has no reliable calibration. Ensemble of two models doubles costs. Post-hoc urgency re-scoring with keywords adds complexity without guarantees.*
-
-
----
-
-
-
-
-
-## Parte 4b · RAG retrieval — recuperación de casos históricos similares
-*RAG retrieval — retrieval of similar historical cases*
-
-### D17 · Vector store en el repo en vez de una base de datos vectorial real
-
-- **Qué hice**: Implementé `SimpleVectorStore` (`src/parte4_api/retrieval.py`) — una clase pequeña con `add()`/`query()` que hace búsqueda por similitud coseno por fuerza bruta sobre un array de numpy en memoria, en vez de usar chromadb/FAISS/pgvector.
-- *What I did: Implemented `SimpleVectorStore` (`src/parte4_api/retrieval.py`) — a small class with `add()`/`query()` doing brute-force cosine-similarity search over an in-memory numpy array, instead of using chromadb/FAISS/pgvector.*
-
-- **Por qué**: El corpus (`data/historical_complaints.json`) tiene 42 registros. Una búsqueda vectorial por fuerza bruta sobre esa cantidad tarda microsegundos; una base de datos vectorial real añadiría una dependencia pesada (chromadb trae onnxruntime) para resolver un problema de escala que no existe todavía.
-- *Why: The corpus (`data/historical_complaints.json`) has 42 records. Brute-force vector search over that count takes microseconds; a real vector database would add a heavy dependency (chromadb pulls in onnxruntime) to solve a scale problem that doesn't exist yet.*
-
-- **Qué descarté**: chromadb — evalué usarlo por ser el más reconocible como "vector store" para un lector técnico, pero decidí que demostrar saber cuándo NO sobre-diseñar es una señal más fuerte que una dependencia extra sin necesidad real. FAISS — más ligero que chromadb, pero sigue siendo ceremonia innecesaria para 42 filas.
-- *What I discarded: chromadb — considered using it since it's the most recognizable "vector store" to a technical reader, but decided that demonstrating knowing when NOT to over-engineer is a stronger signal than an unnecessary extra dependency. FAISS — lighter than chromadb, but still unnecessary ceremony for 42 rows.*
-
-- **Qué supuse**: Que el corpus se mantendrá en el rango de cientos, no miles/millones, de casos históricos. Si esto creciera a producción real con miles de casos por día, migraría a pgvector (ya versionado, sin infra nueva si ya se usa Postgres) o a un servicio gestionado (Pinecone/Weaviate) con un índice HNSW/IVF para evitar la búsqueda O(n) de fuerza bruta.
-- *What I assumed: That the corpus will stay in the hundreds, not thousands/millions, of historical cases. If this grew to real production scale with thousands of cases a day, I'd migrate to pgvector (already versioned, no new infra if Postgres is already in use) or a managed service (Pinecone/Weaviate) with an HNSW/IVF index to avoid the O(n) brute-force search.*
-
----
-
-### D18 · Embeddings: TF-IDF (mock) vs. OpenAI (real) — no un modelo local descargado
-
-- **Qué hice**: `_MockEmbedder` usa `TfidfVectorizer` de scikit-learn (ya una dependencia) para MOCK_LLM=1; `_OpenAIEmbedder` usa `text-embedding-3-small` cuando hay una API key real. Ningún modelo de embeddings local (ej. sentence-transformers) se descarga ni se ejecuta.
-- *What I did: `_MockEmbedder` uses scikit-learn's `TfidfVectorizer` (already a dependency) for MOCK_LLM=1; `_OpenAIEmbedder` uses `text-embedding-3-small` when a real API key is present. No local embedding model (e.g. sentence-transformers) is downloaded or run.*
-
-- **Por qué**: El proyecto entero corre con `MOCK_LLM=1` sin costes ni llamadas de red — un modelo local de sentence-transformers rompería eso (descarga de ~90MB, tiempo de carga, una dependencia pesada nueva) solo para la ruta mock. TF-IDF es determinístico, instantáneo, y ya está disponible vía scikit-learn.
-- *Why: The whole project runs with `MOCK_LLM=1` at zero cost and no network calls — a local sentence-transformers model would break that (a ~90MB download, load time, a new heavy dependency) just for the mock path. TF-IDF is deterministic, instant, and already available via scikit-learn.*
-
-- **Qué descarté**: sentence-transformers local para el modo mock — descartado por el motivo anterior. Embeddings hasheados sin TF-IDF (bag-of-words puro) — TF-IDF da mejores resultados con casi el mismo coste.
-- *What I discarded: local sentence-transformers for mock mode — discarded for the reason above. Hashed embeddings without TF-IDF (pure bag-of-words) — TF-IDF gives better results at nearly the same cost.*
-
-- **Qué supuse**: Que TF-IDF (similitud léxica, no semántica) es una aproximación aceptable para demostrar el mecanismo de retrieval en modo mock, aunque no capture sinónimos o paráfrasis como lo haría un embedding semántico real. Esto es una limitación documentada, no un intento de simular calidad semántica real.
-- *What I assumed: That TF-IDF (lexical, not semantic, similarity) is an acceptable stand-in to demonstrate the retrieval mechanism in mock mode, even though it won't catch synonyms or paraphrasing the way a real semantic embedding would. This is a documented limitation, not an attempt to fake real semantic quality.*
-
----
-
-### D19 · Cache del case store por modo (mock/real), no un único global
-
-- **Qué hice**: `get_case_store(mock: bool)` cachea el store construido en un diccionario `dict[bool, ...]`, indexado por modo, en vez de un único objeto global.
-- *What I did: `get_case_store(mock: bool)` caches the built store in a `dict[bool, ...]`, indexed by mode, instead of a single global object.*
-
-- **Por qué**: Los tests ejercitan ambos modos (mock y real) en el mismo proceso de pytest (`test_agent_adapter.py` fuerza `MOCK_LLM=0` con `monkeypatch` para un test específico). Un único cache global habría devuelto el embedder equivocado — construido para el modo anterior — al cambiar de modo dentro del mismo proceso.
-- *Why: Tests exercise both modes (mock and real) in the same pytest process (`test_agent_adapter.py` forces `MOCK_LLM=0` via `monkeypatch` for one specific test). A single global cache would have returned the wrong embedder — built for the previous mode — when switching modes within the same process.*
-
-- **Qué supuse**: Que construir el store es lo suficientemente barato (TF-IDF sobre 42 textos cortos) para que cachear por modo, en vez de invalidar/reconstruir explícitamente, sea aceptable incluso si ambos modos se usan en el mismo proceso de producción (lo cual no debería pasar — MOCK_LLM se fija por proceso/despliegue).
-- *What I assumed: That building the store is cheap enough (TF-IDF over 42 short texts) that caching per mode, rather than explicit invalidation/rebuilding, is fine even if both modes were ever used in the same production process (which shouldn't happen — MOCK_LLM is fixed per process/deployment).*
-
----
-
-### D20 · Gestión de context window en retrieval: dedup + presupuesto de caracteres
-
-- **Qué hice**: `retrieve_similar_cases` ahora sobre-recupera `2k` candidatos, elimina casos con `resolution_notes` idéntico (`_dedupe_by_resolution`), y recorta el resultado final a un presupuesto total de caracteres (`_fit_to_budget`, default 800), truncando con "…" y descartando los casos peor rankeados si el presupuesto se agota.
-- *What I did: `retrieve_similar_cases` now over-fetches `2k` candidates, drops cases with identical `resolution_notes` (`_dedupe_by_resolution`), and trims the final result to a total character budget (`_fit_to_budget`, default 800), truncating with "…" and dropping the lowest-ranked cases once the budget runs out.*
-
-- **Por qué**: Sin esto, casos casi-duplicados (mismo incidente logueado dos veces, o dos casos resueltos igual) ocupan espacio de contexto sin aportar señal nueva, y no había ningún límite explícito a cuánto texto se inyecta en el prompt — un corpus futuro con notas más largas podría acercarse al límite de tokens del modelo sin ningún control.
-- *Why: Without this, near-duplicate cases (the same incident logged twice, or two cases resolved the same way) take up context space without adding new signal, and there was no explicit cap on how much text gets injected into the prompt — a future corpus with longer notes could approach the model's token limit with no control in place.*
-
-- **Qué descarté**: Un presupuesto en tokens reales (via `tiktoken`) en vez de caracteres — más preciso, pero es una dependencia nueva para un corpus de texto corto y en un idioma consistente donde caracteres es una aproximación razonable. Deduplicación semántica (embeddings similares, no solo texto idéntico) — más robusta pero más cara de calcular; el corpus actual no tiene casos semánticamente duplicados con texto distinto, así que no se justificaba todavía.
-- *What I discarded: A real token budget (via `tiktoken`) instead of characters — more precise, but a new dependency for a short-text, single-language-family corpus where characters are a reasonable approximation. Semantic deduplication (similar embeddings, not just identical text) — more robust but more expensive to compute; the current corpus has no semantically-duplicate cases with different text, so it wasn't justified yet.*
-
-- **Qué supuse**: Que sobre-recuperar `2k` es suficiente margen para que, tras deduplicar, sigan quedando `k` casos distintos en la mayoría de queries. Con un corpus mucho más denso en duplicados, este margen tendría que crecer o el dedup tendría que aplicarse a nivel de todo el corpus antes de rankear, no solo sobre el top-`2k`.
-- *What I assumed: That over-fetching `2k` is enough margin that, after deduping, `k` distinct cases remain for most queries. With a much more duplicate-dense corpus, this margin would need to grow, or dedup would need to run over the whole corpus before ranking, not just over the top-`2k`.*
-
----
-
-### D21 · Golden-set eval harness — una porción real de D10
-
-- **Qué hice**: Construí `scripts/evaluate_classifier.py` + `data/golden_set.json` (28 ejemplos etiquetados, las 6 categorías, 3 idiomas, 3 casos de prompt injection). El script corre el golden set contra el agente y reporta accuracy general y por categoría, recall de `churn_threat`, tasa de detección de prompt injection, precisión@k de retrieval (si los casos históricos recuperados comparten la categoría esperada), tasa de cumplimiento del `expected_min_urgency` (piso, no valor exacto — subestimar severidad es el fallo que importa, no sobreestimarla), y accuracy de la flag `requires_human_escalation`.
-- *What I did: Built `scripts/evaluate_classifier.py` + `data/golden_set.json` (28 labeled examples, all 6 categories, 3 languages, 3 prompt-injection cases). The script runs the golden set against the agent and reports overall/per-category accuracy, `churn_threat` recall, prompt-injection detection rate, retrieval precision@k (whether retrieved historical cases share the expected category), the `expected_min_urgency` floor-compliance rate (a floor, not an exact target — underestimating severity is the failure mode that matters, not overestimating it), and `requires_human_escalation` flag accuracy.*
-
-- **Por qué**: D10 (arriba) describe una estrategia de evaluación completa pero nunca ejecutada — "qué haría", no "qué hice". Con 28 ejemplos (no 300) y el `_MockAgent` (no un LLM real), no reemplaza ese plan, pero da un artefacto real y corrible que demuestra el mecanismo de evaluación, en vez de dejarlo solo en prosa. Los campos `expected_min_urgency`/`expected_requires_escalation` ya estaban en `golden_set.json` desde el principio pero no se usaban en `evaluate()` — encontrado en una revisión posterior y corregido, para que los datos que el golden set declara validar sean realmente los que se validan.
-- *Why: D10 (above) describes a complete evaluation strategy that was never actually run — "what I would do," not "what I did." With 28 examples (not 300) and `_MockAgent` (not a real LLM), it doesn't replace that plan, but it gives a real, runnable artifact demonstrating the evaluation mechanism, instead of leaving it only as prose. The `expected_min_urgency`/`expected_requires_escalation` fields were already in `golden_set.json` from the start but weren't used in `evaluate()` — found in a later review and fixed, so what the golden set claims to validate is actually what gets validated.*
-
-- **Resultado honesto de correrlo**: contra `_MockAgent`, 32% accuracy general — 0% en 4/6 categorías porque el stub es reglas simples (detecta prompt injection y menciones de "cancelar/churn", todo lo demás cae en `other`), no un clasificador real. 100% de detección de prompt injection. **89% de precisión@k en retrieval** — esta cifra es la que importa: confirma que el retrieval (TF-IDF, D18) funciona razonablemente bien de forma independiente a la limitación conocida del mock. Piso de urgencia cumplido solo 46% de las veces y accuracy de escalación 79% — ambos consistentes con un stub que no razona sobre severidad real, solo pattern-matching de keywords. Correr `--real` con una `OPENAI_API_KEY` real daría los números reales del clasificador, que no se han medido (ver P3 en `SELF_REVIEW.md`).
-- *Honest result from running it: against `_MockAgent`, 32% overall accuracy — 0% on 4/6 categories because the stub is simple rules (detects prompt injection and "cancel/churn" mentions, everything else falls into `other`), not a real classifier. 100% prompt-injection detection. **89% retrieval precision@k** — this is the number that matters: it confirms retrieval (TF-IDF, D18) works reasonably well independent of the mock's known limitation. Urgency floor met only 46% of the time and escalation accuracy 79% — both consistent with a stub that doesn't reason about real severity, just keyword pattern-matching. Running `--real` with a real `OPENAI_API_KEY` would give the classifier's actual numbers, which haven't been measured (see `SELF_REVIEW.md` P3).*
-
-- **Qué descarté**: Un golden set de 300 ejemplos como en D10 — no justificable para un proyecto de portfolio sin un equipo de customer service etiquetando datos reales. LLM-as-judge para evaluar `reasoning` — añade coste y una llamada real a OpenAI por ejemplo evaluado, fuera de scope para una primera versión del harness.
-- *What I discarded: A 300-example golden set like D10 — not justifiable for a portfolio project without a customer service team labeling real data. LLM-as-judge to evaluate `reasoning` — adds cost and a real OpenAI call per evaluated example, out of scope for a first version of the harness.*
-
-- **Qué supuse**: Que 28 ejemplos, aunque estadísticamente débiles para conclusiones fuertes por categoría, son suficientes para validar que el harness en sí funciona correctamente (formas de datos correctas, métricas calculadas correctamente) — la confiabilidad estadística vendría de escalar el golden set, no de cambiar el harness.
-- *What I assumed: That 28 examples, while statistically weak for strong per-category conclusions, are enough to validate that the harness itself works correctly (correct data shapes, correctly computed metrics) — statistical reliability would come from scaling the golden set, not from changing the harness.*
-
----
-
-
-
-
-## Parte 5 · Pregunta-trampa (collusion rings)
-*Trick question  (collusion rings)*
-
-### D12 · Honestidad técnica
-*Technical honesty*
-
-- **Por que este problema es difícil**: Los anillos de colusión requieren detectar patrones de transacciones cruzadas entre merchants (A-B-C-A). Esto no es detectable con una analisis por merchant individual. En datos de acquiring, las transacciones son entre merchants y su clientes para detectar colusión real necesitaríamos el `cardholder_id` de cada transacción, para ver si el "cliente" de A es el propio B
-
-- *Why is this problem is difficult: Collusion rings require detecting patterns of cross transactions between merchants (A-B-C-A). This is is not detectable with individual merchant analysis. When acquiring the data, transactions are between these merchants and their customers, to detect real collusion we would need the `cardholder_id` of each transaction to see if A's "customer" is truly B itself.*
-
-- **Qué datos pedirías**: `cardholder_id` o `device_fingerprint` por transacción. Datos de onboarding (comparten dirección, teléfono, representante legal?). Series temporales de reciprocidad (A cobra a B que cobra a A en ventana corta).
-
-
-- *What data I would request: `cardholder_id` or `device_fingerprint` per transaction. Onboarding data (share address, phone, legal representative?). Reciprocity time series (A charges B who charges A in a short window).*
-
-
-- **Qué algoritmos investigaría**:
-  1. **Proyección bipartita de grafo**: construir grafo merchant-cliente, proyectar sobre merchants, detectar comunidades con Louvain.
-  2. **Detección de ciclos**: buscar ciclos de longitud 3+ con importes similares en ventana temporal < 72h.
-  3. **Isolation Forest sobre pares**: features de par (A, B) — reciprocidad, frecuencia, similitud de importes.
-
-- *What algorithms you would investigate:*
-  *1. Bipartite graph projection: builds merchant client graph, projects onto merchants, and detect communities with Louvain.*
-  *2. Cycle detection: look for cycles of length +3, with similar amounts within a time window of 72h.*
-  *3. Isolation Forest on pairs: pair features (A, B) (reciprocity, frequecy, amount similarity).*
-
-- **Tiempo realista necesario**: 2-3 semanas con los datos correctos
-  * 1 semana exploración + construcción del grafo
-  * 1 semana algoritmos, 
-  * 1 semana validacion con los casos conocidos del equipo de fraude 
-
-
-- *Realistic time needed: 2-3 weeks with the correct data.*
-  * *1 week exploration + graph construction*
-  * *1 week algorithms*
-  * *1 week validation with known cases from the fraud team.*
-
-
-
----
-
-
-
-
-
-
-## Parte 6 · Merchant Intelligence Copilot — capa de agentes multi-tool
-*Merchant Intelligence Copilot — multi-tool agent layer*
-
-> El clasificador de reclamaciones (Parte 4/4b) pasa a ser una especialidad más
-> dentro de un sistema mayor: un orquestador que responde preguntas en lenguaje
-> natural sobre merchants, llamando herramientas reales (SQL/KPIs, el modelo de
-> churn) y recuperando contexto de políticas (RAG) con citas. Ver `src/copilot/`.
-> *The complaint classifier (Parte 4/4b) becomes one specialty inside a larger
-> system: an orchestrator that answers natural-language merchant questions by
-> calling real tools (SQL/KPIs, the churn model) and retrieving policy context
-> (RAG) with citations. See `src/copilot/`.*
-
-### D22 · Extracción de retrieval_core.py — vector store compartido entre corpus
-
-- **Qué hice**: Moví `SimpleVectorStore`, los embedders mock/real, y los helpers de dedup/presupuesto de contexto (antes solo en `src/parte4_api/retrieval.py`, D17-D20) a `src/copilot/retrieval_core.py`, generalizados para aceptar cualquier corpus (parametrizados por `text_field`/`dedupe_field` y cacheados por `(corpus_name, mock)` en vez de solo por `mock`). `retrieval.py` ahora importa de ahí y mantiene su propia lógica de caché específica del corpus de reclamaciones sin cambios.
-- *What I did: Moved `SimpleVectorStore`, the mock/real embedders, and the dedup/context-budget helpers (previously only in `src/parte4_api/retrieval.py`, D17-D20) to `src/copilot/retrieval_core.py`, generalized to accept any corpus (parameterized by `text_field`/`dedupe_field`, cached per `(corpus_name, mock)` instead of just `mock`). `retrieval.py` now imports from there and keeps its own complaints-corpus-specific caching logic unchanged.*
-
-- **Por qué**: El Grounding tool necesita un segundo corpus (`data/policy_docs.json`) con el mismo mecanismo de retrieval — over-fetch, cosine similarity, dedup, presupuesto de caracteres. Duplicar esa clase ya probada en vez de compartirla sería exactamente el tipo de reinvención innecesaria que D17-D19 argumentan evitar, solo que en la dirección opuesta (no añadir una dependencia nueva vs. no copiar código que ya funciona).
-- *Why: The Grounding tool needs a second corpus (`data/policy_docs.json`) with the same retrieval mechanism — over-fetch, cosine similarity, dedup, character budget. Duplicating that already-tested class instead of sharing it would be exactly the kind of unnecessary reinvention D17-D19 argue against, just in the opposite direction (not adding an unneeded dependency vs. not copying working code).*
-
-- **Qué descarté**: Reescribir `retrieval.py` para importar todo directamente sin capa de compatibilidad — descartado porque `tests/test_retrieval.py` importa `SimpleVectorStore`, `_dedupe_by_resolution`, `_fit_to_budget`, `retrieve_similar_cases` directamente desde `src.parte4_api.retrieval`; mantener esos nombres/firmas intactos evita tocar tests que no tienen nada que ver con el cambio. Verifiqué la suite completa (56 passed/1 skipped, sin cambios) inmediatamente después del refactor, antes de construir nada encima.
-- *What I discarded: Rewriting `retrieval.py` to import everything directly with no compatibility layer — discarded because `tests/test_retrieval.py` imports `SimpleVectorStore`, `_dedupe_by_resolution`, `_fit_to_budget`, `retrieve_similar_cases` directly from `src.parte4_api.retrieval`; keeping those names/signatures intact avoided touching tests unrelated to this change. Verified the full suite (56 passed/1 skipped, unchanged) immediately after the refactor, before building anything on top of it.*
-
-- **Qué supuse**: Que ningún código fuera de este repo importa `_MockEmbedder`/`_OpenAIEmbedder`/`build_case_store`/`get_case_store` directamente (solo usado internamente) — verificado por grep antes de renombrarlos sin guion bajo en el módulo compartido.
-- *What I assumed: That no code outside this repo imports `_MockEmbedder`/`_OpenAIEmbedder`/`build_case_store`/`get_case_store` directly (only used internally) — verified by grep before renaming them without a leading underscore in the shared module.*
-
----
-
-### D23 · Data Analyst tool — SQL parametrizado sobre DuckDB, no SQL generado por LLM
-
-- **Qué hice**: `src/copilot/tools/data_analyst.py` registra el DataFrame de `load_clean()` en una conexión DuckDB y expone un conjunto **fijo** de 3 funciones (`top_merchants_by_tpv`, `churn_rate_by_segment`, `yoy_tpv_by_month`), adaptadas de Q1-Q3 en `src/parte2_sql.sql`. Solo argumentos tipados (validables con Pydantic en la capa de tool-calling) se bindean como parámetros (`?`) en templates SQL escritos a mano — nunca texto del usuario interpolado en el SQL.
-- *What I did: `src/copilot/tools/data_analyst.py` registers `load_clean()`'s DataFrame on a DuckDB connection and exposes a **fixed** set of 3 functions (`top_merchants_by_tpv`, `churn_rate_by_segment`, `yoy_tpv_by_month`), adapted from Q1-Q3 in `src/parte2_sql.sql`. Only typed arguments (Pydantic-validatable at the tool-calling layer) get bound as parameters (`?`) into hand-written SQL templates — never user text interpolated into SQL.*
-
-- **Por qué**: Dejar que un LLM genere SQL libre contra una conexión viva es una clase de riesgo real de inyección/exfiltración — una pregunta con prompt injection podría pedir un `DROP TABLE` o un scan sin límite disfrazado de pregunta de negocio. Fijar la forma de las queries de antemano y solo parametrizar argumentos elimina esa clase de riesgo por completo, sin perder la demostración de "el agente ejecuta SQL real", no solo describe datos.
-- *Why: Letting an LLM generate free-form SQL against a live connection is a real injection/exfiltration risk class — a prompt-injected question could ask for a `DROP TABLE` or an unbounded scan disguised as a business question. Fixing the query shapes up front and only parameterizing arguments eliminates that risk class entirely, without losing the "the agent executes real SQL" proof point, not just describing data.*
-
-- **Qué descarté**: Un esquema `country` en `top_merchants_by_tpv` calcado de Q1 — descartado porque el CSV real no tiene columna `country` (`data/README.md`); mantenerlo habría sido un parámetro que silenciosamente no hace nada. `yoy_tpv_by_month` con un self-join DuckDB calcado de Q3 — descartado en favor de reusar `monthly_kpis()` (pandas, ya testeado) y un merge explícito por `(year-1, month)`; DuckDB se usa donde aporta valor narrativo real (Q1/Q2), no de forma uniforme solo porque está disponible.
-- *What I discarded: A `country` param in `top_merchants_by_tpv` copied from Q1 — discarded because the real CSV has no `country` column (`data/README.md`); keeping it would have been a parameter that silently did nothing. `yoy_tpv_by_month` with a DuckDB self-join copied from Q3 — discarded in favor of reusing `monthly_kpis()` (pandas, already tested) plus an explicit `(year-1, month)` merge; DuckDB is used where it adds real narrative value (Q1/Q2), not uniformly just because it's available.*
-
-- **Qué supuse**: Que `min_merchants=20` (bajado del `>=100` de Q2) es razonable para el dataset real (~10k merchants); con el fixture pequeño (4 merchants) los tests pasan `min_merchants=1` explícitamente. Lo verificaría con el volumen real de merchants por segmento antes de fijar este default en producción.
-- *What I assumed: That `min_merchants=20` (lowered from Q2's `>=100`) is reasonable for the real dataset (~10k merchants); with the small fixture (4 merchants) tests pass `min_merchants=1` explicitly. I'd verify against real per-segment merchant volume before fixing this default in production.*
-
----
-
-### D24 · Risk tool — port de feature engineering, SHAP por instancia, y un hallazgo honesto
-
-- **Qué hice**: `src/copilot/tools/risk.py:build_merchant_features()` reimplementa (no importa — el notebook no es import-safe) exactamente las celdas 5 y 7 de `src/parte3_modeling.ipynb` para construir las 20 features de un merchant en vivo. `score_merchant()` carga `outputs/model.pkl` y llama `predict_proba()` sobre esa fila cruda (el `ColumnTransformer` del pipeline ya hace imputación/escalado/encoding — no se reimplementa). `explain_drivers()` usa SHAP por instancia (celda 13 del notebook, aplicado a 1 fila en vez del test set completo) en vez de solo la importancia global de `outputs/feature_importance.csv`.
-- *What I did: `src/copilot/tools/risk.py:build_merchant_features()` reimplements (doesn't import — the notebook isn't import-safe) exactly cells 5 and 7 of `src/parte3_modeling.ipynb` to build a live merchant's 20 features. `score_merchant()` loads `outputs/model.pkl` and calls `predict_proba()` on that raw row (the pipeline's `ColumnTransformer` already does imputation/scaling/encoding — not reimplemented). `explain_drivers()` uses per-instance SHAP (notebook cell 13, applied to 1 row instead of the full test set) instead of only `outputs/feature_importance.csv`'s global importance.*
-
-- **Por qué SHAP por instancia**: `shap==0.46.0` ya es una dependencia fijada y el notebook ya construye el `TreeExplainer` exacto — no es una capacidad nueva, solo aplicada a una fila. Un usuario preguntando "¿por qué está marcado este merchant?" quiere una respuesta por instancia; la importancia global solo responde "qué importa en promedio", una respuesta bastante más débil para el caso de uso principal del Risk tool.
-- *Why per-instance SHAP: `shap==0.46.0` is already a pinned dependency and the notebook already builds the exact `TreeExplainer` — not a new capability, just applied to one row. A user asking "why is this merchant flagged" wants a per-instance answer; global importance only answers "what matters on average," a materially weaker answer for the Risk tool's main use case.*
-
-- **Hallazgo honesto al verificar contra el fixture**: el merchant diseñado como "alto riesgo" (90001 — TPV y approval rate colapsan, YoY entre -46% y -100% en jul-sep 2025, queja reciente) obtiene `churn_probability` **más baja** que un merchant sano (90003) al correr `score_merchant()` por primera vez de forma end-to-end. Verifiqué que no es un bug de feature engineering: `tpv_trend_3m_6m` sí distingue correctamente a ambos (0.23 vs 0.53, con ~0.5 como línea base de "estable" en una ventana de 3-de-6-meses). Es el ROC-AUC=0.58 (casi aleatorio, documentado en `outputs/model_card.md` y `SELF_REVIEW.md` P1) manifestándose de forma concreta en inferencia de un solo merchant en vivo — nunca antes ejercida end-to-end. No lo oculté ni ajusté el fixture para que "funcionara" — lo documenté aquí y en los tests (`tests/test_copilot_risk.py`), y cada respuesta de `score_merchant()` incluye `caveat` con este límite explícito, exactamente para que este tipo de discrepancia no llegue a un usuario sin contexto.
-- *Honest finding when verifying against the fixture: the merchant designed as "high risk" (90001 — TPV and approval rate collapse, YoY between -46% and -100% in Jul-Sep 2025, a recent complaint) gets a **lower** `churn_probability` than a healthy merchant (90003) when running `score_merchant()` end-to-end for the first time. Verified this isn't a feature-engineering bug: `tpv_trend_3m_6m` does correctly distinguish both (0.23 vs 0.53, with ~0.5 as the "stable" baseline for a 3-of-6-month window). It's ROC-AUC=0.58 (near-random, documented in `outputs/model_card.md` and `SELF_REVIEW.md` P1) showing up concretely in live single-merchant inference — never exercised end-to-end before. I didn't hide it or tune the fixture to "make it work" — documented here and in the tests (`tests/test_copilot_risk.py`), and every `score_merchant()` response carries `caveat` with this limitation explicit, exactly so this kind of discrepancy doesn't reach a user without context.*
-
-- **Qué descarté**: Cachear/batchear el feature engineering para todos los merchants a la vez — más eficiente para producción, pero `build_merchant_features()` recalcula sobre el DataFrame completo en cada llamada por simplicidad/fidelidad al notebook; aceptable a esta escala (fixture o CSV real de ~10k merchants), no a escala de un batch job diario. Bucketing de `risk_tier` por percentil real de la población en vez de umbrales fijos (0.10/0.20) — más principled pero requeriría puntuar a todos los merchants solo para tener percentiles, fuera de alcance para un tool que puntúa un merchant a la vez.
-- *What I discarded: Caching/batching feature engineering across all merchants at once — more production-efficient, but `build_merchant_features()` recomputes over the full DataFrame on every call for simplicity/fidelity to the notebook; acceptable at this scale (fixture or the real ~10k-merchant CSV), not at daily-batch-job scale. Bucketing `risk_tier` by real population percentile instead of fixed thresholds (0.10/0.20) — more principled but would require scoring every merchant just to get percentiles, out of scope for a tool that scores one merchant at a time.*
-
-- **Qué supuse**: Que `reference_date = df["reference_date"].max()` (igual que el notebook) es el punto de predicción correcto también en el copilot — no hay un concepto de "hoy" separado en los datos. Si el sistema pasara a producción real, el `reference_date` vendría de un reloj real, no del propio dataset.
-- *What I assumed: That `reference_date = df["reference_date"].max()` (same as the notebook) is the correct prediction point in the copilot too — there's no separate "today" concept in the data. If this moved to real production, `reference_date` would come from a real clock, not the dataset itself.*
-
----
-
-### D25 · Complaint classifier como tool — reutilización de Agno sin duplicar
-
-- **Qué hice**: `src/copilot/tools/complaint_classifier.py:classify_complaint()` es un wrapper de 3 líneas sobre `build_agent()` de `src/parte4_api/agent.py` — no reimplementa clasificación, guardrails, ni el split mock/real.
-- *What I did: `src/copilot/tools/complaint_classifier.py:classify_complaint()` is a 3-line wrapper over `build_agent()` from `src/parte4_api/agent.py` — it doesn't reimplement classification, guardrails, or the mock/real split.*
-
-- **Por qué**: `build_agent()` ya contiene el split completo `_MockAgent`/`_RealAgentAdapter` (D7-D11), ambos leyendo `is_mock_mode()`. El copilot hereda ese comportamiento gratis en vez de necesitar su propia rama `MOCK_LLM` — es el mismo razonamiento de D22 (compartir en vez de duplicar), aplicado a un agente completo en vez de a una clase.
-- *Why: `build_agent()` already contains the full `_MockAgent`/`_RealAgentAdapter` split (D7-D11), both reading `is_mock_mode()`. The copilot inherits that behavior for free instead of needing its own `MOCK_LLM` branch — the same reasoning as D22 (share, don't duplicate), applied to a whole agent instead of a class.*
-
-- **Qué supuse**: Que el router (siguiente pieza, orquestador LangGraph) solo enruta aquí cuando la pregunta es una reclamación real pegada por el usuario, no una pregunta analítica ("¿qué merchants están en riesgo?") — este agente clasifica *una* reclamación, no responde preguntas generales. Documentado como advertencia explícita en el docstring del módulo para quien construya el router.
-- *What I assumed: That the router (next piece, the LangGraph orchestrator) only routes here when the question is an actual complaint pasted by the user, not an analytical question ("which merchants are at risk?") — this agent classifies *one* complaint, it doesn't answer general questions. Documented as an explicit warning in the module docstring for whoever builds the router.*
-
----
-
-### D26 · Orquestador LangGraph — cola acotada en vez de fan-out paralelo, y por qué Agno sigue dentro de cada nodo
-
-- **Qué hice**: `src/copilot/graph.py` construye un `StateGraph` (`src/copilot/state.py:CopilotState`) con la forma `START -> route -> {nodo}* -> synthesize -> END`. `route` (`router.py`) calcula la lista completa y ordenada de tools a llamar **una sola vez** (`pending_tools`); `pick_next` — función pura, sin LLM — hace `pop` del primero en cada salto. Cada nodo de tool (`data_analyst_node`, `risk_node`, `grounding_node`, `complaint_classifier_node`, en `graph.py`) adapta la función pura correspondiente de `src/copilot/tools/*.py` a una actualización de `CopilotState`; las tools en sí no importan nada de LangGraph/schemas — solo `graph.py` conoce el estado del grafo.
-- *What I did: `src/copilot/graph.py` builds a `StateGraph` (`src/copilot/state.py:CopilotState`) shaped `START -> route -> {node}* -> synthesize -> END`. `route` (`router.py`) computes the full ordered tool list **once** (`pending_tools`); `pick_next` — a pure function, no LLM — pops the front on every hop. Each tool node (`data_analyst_node`, `risk_node`, `grounding_node`, `complaint_classifier_node`, in `graph.py`) adapts the corresponding pure function in `src/copilot/tools/*.py` into a `CopilotState` update — the tools themselves import nothing from LangGraph/schemas, only `graph.py` knows about graph state.*
-
-- **Por qué una cola acotada y no `Send`/fan-out paralelo de LangGraph**: Con la cola, cada tool corre secuencialmente y cada salto es una función Python pura (`pick_next`) — no hay reducers de merge concurrente que razonar, ni orden no determinista entre ramas paralelas. Esto acota las llamadas reales a LLM por request a un máximo fijo (route + synthesize + la propia llamada Agno de `complaint_classifier` si está en la ruta), sin importar cuántas tools se disparen. Un fan-out paralelo sería más rápido en wall-clock con 3+ tools, pero ese beneficio no compensa la complejidad añadida a esta escala (tools ya son rápidas — SQL en DuckDB sobre datos en memoria, un forward pass de LightGBM, retrieval TF-IDF sobre ~15-42 registros).
-- *Why a bounded queue instead of LangGraph's `Send`/parallel fan-out: With the queue, each tool runs sequentially and every hop is a pure Python function (`pick_next`) — no concurrent-merge reducers to reason about, no nondeterministic ordering between parallel branches. This bounds real LLM calls per request to a fixed max (route + synthesize + complaint_classifier's own Agno call if it's in the route), regardless of how many tools fire. A parallel fan-out would be faster wall-clock with 3+ tools, but that benefit doesn't justify the added complexity at this scale (tools are already fast — DuckDB SQL over in-memory data, one LightGBM forward pass, TF-IDF retrieval over ~15-42 records).*
-
-- **Por qué Agno sigue dentro de los nodos (no LangChain/langchain-openai también)**: LangGraph controla el grafo/estado/flujo de control; las llamadas a LLM dentro de cualquier nodo (`route_real`, `synthesize_real`, y el propio `complaint_classifier` vía `build_agent()`) siguen usando Agno. Añadir `langchain-openai` para tener un segundo patrón de "llamar a un LLM" en el mismo repo sería una dependencia nueva sin una razón real — Agno ya resuelve structured output (`output_schema`, D9) igual de bien para el router y el synthesizer que para el clasificador de reclamaciones.
-- *Why Agno stays inside the nodes (not also LangChain/langchain-openai): LangGraph owns the graph/state/control-flow; LLM calls inside any node (`route_real`, `synthesize_real`, and `complaint_classifier` itself via `build_agent()`) still go through Agno. Adding `langchain-openai` for a second "call an LLM" pattern in the same repo would be a new dependency without a real reason — Agno already solves structured output (`output_schema`, D9) equally well for the router and the synthesizer as it does for the complaint classifier.*
-
-- **Por qué `risk` también dispara `data_analyst` cuando hay `merchant_id`**: Verificado manualmente (ver D24): el modelo de churn tiene discriminación débil, así que una pregunta sobre un merchant específico se responde mejor con la señal ML (con su caveat) **junto a** evidencia KPI concreta (`yoy_tpv_by_month`), no con el score solo. Probado end-to-end contra el merchant 90001 del fixture: la respuesta combina "TPV cayó -100% YoY" (dato concreto, inequívoco) con "riesgo bajo (0%)" del modelo (señal débil, con caveat) — mostrar ambas señales sin ocultar el desacuerdo es más honesto y más útil que forzar una sola narrativa.
-- *Why `risk` also triggers `data_analyst` when `merchant_id` is known: Verified manually (see D24): the churn model has weak discrimination, so a question about a specific merchant is better answered with the ML signal (with its caveat) **alongside** concrete KPI evidence (`yoy_tpv_by_month`), not the score alone. Tested end-to-end against fixture merchant 90001: the answer combines "TPV fell -100% YoY" (concrete, unambiguous fact) with "low risk (0%)" from the model (weak signal, with caveat) — showing both signals without hiding the disagreement is more honest and more useful than forcing a single narrative.*
-
-- **Qué descarté**: Un checkpointer de LangGraph (sqlite/postgres) para persistencia — `/ask` es Q&A de un solo turno en esta versión, sin memoria entre requests, así que la capa de persistencia sería complejidad sin uso. Meter el DataFrame de transacciones dentro de `CopilotState` para evitar recargarlo por nodo — descartado porque `get_clean_transactions()` ya cachea por ruta resuelta (D-anterior en `data_analyst.py`) y `CopilotState` debe poder serializarse razonablemente, no cargar un DataFrame de pandas.
-- *What I discarded: A LangGraph checkpointer (sqlite/postgres) for persistence — `/ask` is single-turn Q&A in this version, no memory across requests, so a persistence layer would be complexity with no use. Putting the transactions DataFrame inside `CopilotState` to avoid reloading it per node — discarded because `get_clean_transactions()` already caches by resolved path (earlier decision in `data_analyst.py`) and `CopilotState` should stay reasonably serializable, not carry a pandas DataFrame.*
-
-- **Qué supuse**: Que `langgraph`'s dependencia transitiva de `langsmith` no hace ninguna llamada de red mientras `LANGCHAIN_TRACING_V2`/`LANGCHAIN_API_KEY` no estén configuradas — no las configuro en ningún sitio de este repo. Esto es parte del mismo compromiso de costo cero que el resto del proyecto (`MOCK_LLM=1`), pero es una forma no obvia de que se rompiera silenciosamente vía el comportamiento por defecto de una dependencia transitiva, así que lo documento aquí explícitamente en vez de asumir que es obvio.
-- *What I assumed: That `langgraph`'s transitive `langsmith` dependency makes zero network calls as long as `LANGCHAIN_TRACING_V2`/`LANGCHAIN_API_KEY` are unset — I don't set them anywhere in this repo. This is part of the same zero-cost commitment as the rest of the project (`MOCK_LLM=1`), but it's a non-obvious way it could silently break via a transitive dependency's default behavior, so documenting it explicitly here rather than assuming it's obvious.*
-
----
-
-### D27 · `/ask` como app FastAPI independiente, no montada sobre `/classify`
-
-- **Qué hice**: `src/copilot/api.py` es una segunda app FastAPI (`uvicorn src.copilot.api:app`, puerto sugerido 8001), separada de `src/parte4_api/main.py` (`/classify`, puerto 8000) — no `app.mount(...)` de una dentro de la otra.
-- *What I did: `src/copilot/api.py` is a second FastAPI app (`uvicorn src.copilot.api:app`, suggested port 8001), separate from `src/parte4_api/main.py` (`/classify`, port 8000) — not one `app.mount(...)`-ed inside the other.*
-
-- **Por qué**: El copilot ya reutiliza `build_agent()` **en proceso** dentro de `complaint_classifier_node` (D25) — no llama a `/classify` por HTTP. Montar ambas apps juntas acoplaría sus ciclos de vida y mecanismos de `dependency_overrides` en los tests sin ningún beneficio funcional real hoy. Mantenerlas separadas también dice algo honesto: `/classify` sigue siendo un servicio real e independiente, no una fachada del copilot.
-- *Why: The copilot already reuses `build_agent()` **in-process** inside `complaint_classifier_node` (D25) — it doesn't call `/classify` over HTTP. Mounting both apps together would couple their lifecycles and test `dependency_overrides` mechanics with no real functional benefit today. Keeping them separate is also an honest signal: `/classify` remains a real, independent service, not a copilot facade.*
-
-- **Hallazgo al probarlo en vivo**: el primer request a `/ask` contra el CSV real (~200k filas, no versionado) tardó ~28s — coste de arranque en frío de `load_clean()` la primera vez que se llama en el proceso, no un problema recurrente: el segundo request tardó 65ms gracias al cache de `get_clean_transactions()` (`data_analyst.py`). Documentado aquí para que no se lea como un bug de latencia si alguien lo prueba en vivo.
-- *Finding from testing it live: the first request to `/ask` against the real CSV (~200k rows, unversioned) took ~28s — a cold-start cost from `load_clean()` running for the first time in the process, not a recurring problem: the second request took 65ms thanks to `get_clean_transactions()`'s cache (`data_analyst.py`). Documented here so it doesn't read as a latency bug if someone tries it live.*
-
-- **Qué descarté**: Reusar el `HealthResponse` de `src/parte4_api/schemas.py` en vez de definir uno nuevo — el contrato (`status`/`model`/`version`) es idéntico, así que reimplementarlo hubiera sido la misma duplicación innecesaria que D22/D25 evitan.
-- *What I discarded: Defining a new HealthResponse instead of reusing `src/parte4_api/schemas.py`'s — the contract (`status`/`model`/`version`) is identical, so reimplementing it would have been the same unnecessary duplication D22/D25 avoid.*
-
-- **Qué supuse**: Que el caller de `/ask` prefiere ver los tools que **realmente** se ejecutaron (`route`, deduplicado en orden de primera aparición) en vez de la lista cruda de `tool_calls` (que puede repetir una tool — `data_analyst` registra una entrada por cada sub-query SQL que corre).
-- *What I assumed: That an `/ask` caller wants to see which tools **actually** ran (`route`, deduplicated in first-occurrence order) rather than the raw `tool_calls` list (which can repeat a tool — `data_analyst` logs one entry per underlying SQL sub-query it runs).*
-
----
-
-### D28 · Golden-set eval del copilot — construido a partir de comportamiento verificado, no de expectativas aspiracionales
-
-- **Qué hice**: `scripts/evaluate_copilot.py` + `data/golden_set_copilot.json` (11 preguntas, incluyendo la pregunta insignia del brief original). Antes de escribir un solo `expected_route`/`expected_citation_ids`, corrí cada pregunta candidata contra el grafo real y anoté lo que de verdad devolvía — el golden set documenta comportamiento verificado, no lo que yo esperaba que pasara. Métricas: route exact-match + recall, **tasa de alucinación de citas** (todo id citado debe existir en `data/policy_docs.json` — debe ser 0%), recall de citas esperadas, tasa de mención del caveat del modelo (chequeo mecánico de la preocupación de honestidad de D24), y accuracy de clasificación para el ejemplo enrutado a `complaint_classifier`.
-- *What I did: `scripts/evaluate_copilot.py` + `data/golden_set_copilot.json` (11 questions, including the flagship question from the original brief). Before writing a single `expected_route`/`expected_citation_ids`, I ran every candidate question against the real graph and recorded what it actually returned — the golden set documents verified behavior, not what I expected to happen. Metrics: route exact-match + recall, **citation hallucination rate** (every cited id must exist in `data/policy_docs.json` — should be 0%), expected-citation recall, risk-caveat mention rate (a mechanical check of D24's honesty concern), and classification accuracy for the one `complaint_classifier`-routed example.*
-
-- **Dos bugs reales encontrados exactamente por este proceso** (documentados con su propio detalle en el commit y en `router.py`/`synthesis.py`): (1) "what is the churn rate by segment?" enrutaba solo a `risk` — la palabra "churn" disparaba el patrón de riesgo sin que nada disparase `data_analyst`, aunque `churn_rate_by_segment()` responde la pregunta directamente. (2) La frase de declive YoY en la síntesis nunca nombraba a qué merchant pertenecía, lo que la volvía ambigua en cualquier respuesta que también mencionara "top merchant by TPV" de otro merchant. Ninguno de los dos se habría encontrado sin verificar manualmente el comportamiento real antes de fijar las expectativas del golden set — la construcción del golden set fue, en sí misma, una forma de testing exploratorio.
-- *Two real bugs found by exactly this process (documented in their own detail in the commit and in `router.py`/`synthesis.py`): (1) "what is the churn rate by segment?" routed to `risk` only — the word "churn" fired the risk pattern with nothing firing `data_analyst`, even though `churn_rate_by_segment()` answers the question directly. (2) The YoY-decline sentence in synthesis never named which merchant it was about, making it ambiguous in any answer that also mentioned "top merchant by TPV" for a different merchant. Neither would have been found without manually verifying real behavior before fixing the golden set's expectations — building the golden set was itself a form of exploratory testing.*
-
-- **Por qué siempre fuerza el fixture, nunca el CSV real**: Los `merchant_id` esperados (90001-90004) y los `expected_citation_ids` son específicos del fixture — evaluar contra el CSV real (~10k merchants con IDs distintos) no tendría sentido para este golden set en particular, a diferencia de `scripts/evaluate_classifier.py` (D21), cuyo golden set no depende de qué dataset de merchants esté cargado. Esto también es lo que hace el harness corrible en CI, que nunca tiene el CSV real (`.gitignore`d por tamaño).
-- *Why it always forces the fixture, never the real CSV: The expected `merchant_id`s (90001-90004) and `expected_citation_ids` are fixture-specific — evaluating against the real CSV (~10k merchants with different ids) wouldn't make sense for this particular golden set, unlike `scripts/evaluate_classifier.py` (D21), whose golden set doesn't depend on which merchant dataset is loaded. This is also what makes the harness runnable in CI, which never has the real (gitignored-by-size) CSV.*
-
-- **Qué descarté**: Un golden set de cientos de preguntas — no justificable sin un equipo real generando/etiquetando preguntas, mismo razonamiento que D21. LLM-as-judge para puntuar la calidad prosa de la respuesta — coste y no-determinismo fuera de alcance para esta pasada, igual que D21 lo descartó para el clasificador.
-- *What I discarded: A golden set of hundreds of questions — not justifiable without a real team generating/labeling questions, same reasoning as D21. LLM-as-judge to score answer prose quality — cost and non-determinism out of scope for this pass, same as D21 discarded it for the classifier.*
-
-- **Qué supuse**: Que un golden set de 11 preguntas, aunque estadísticamente débil, es suficiente para validar que el harness en sí funciona correctamente (formas de datos correctas, métricas bien calculadas) — la fiabilidad estadística vendría de escalar el golden set, no de cambiar el harness. Mismo supuesto que D21 hace explícito para el clasificador.
-- *What I assumed: That an 11-question golden set, while statistically weak, is enough to validate that the harness itself works correctly (correct data shapes, correctly computed metrics) — statistical reliability would come from scaling the golden set, not from changing the harness. Same assumption D21 makes explicit for the classifier.*
-
----
-
-### D29 · Protecciones del repo — gate de CI real, pre-commit acotado, y qué no pude automatizar
-
-- **Qué hice**: (1) `scripts/check_eval_floors.py` — lee `outputs/eval_report.json` y `outputs/eval_report_copilot.json` y falla (exit 1) si alguna métrica cae debajo de un piso anclado al valor ya commiteado (D21/D28); `.github/workflows/ci.yml` ahora corre ambos evals y este check **como gate real**, a diferencia del paso de Lint existente (`continue-on-error: true`). (2) `.pre-commit-config.yaml` — ruff (mismo pin `0.6.9` que `pyproject.toml`) + gitleaks para secretos. (3) `.github/dependabot.yml` — ecosistemas `pip` y `github-actions`, semanal. (4) `SECURITY.md` — datos sintéticos, advertencia de `joblib.load()`, guardrail de prompt injection como best-effort no como límite duro, manejo de secretos.
-- *What I did: (1) `scripts/check_eval_floors.py` — reads `outputs/eval_report.json` and `outputs/eval_report_copilot.json` and fails (exit 1) if any metric drops below a floor anchored to the already-committed value (D21/D28); `.github/workflows/ci.yml` now runs both evals and this check **as a real gate**, unlike the existing Lint step (`continue-on-error: true`). (2) `.pre-commit-config.yaml` — ruff (same `0.6.9` pin as `pyproject.toml`) + gitleaks for secrets. (3) `.github/dependabot.yml` — `pip` and `github-actions` ecosystems, weekly. (4) `SECURITY.md` — synthetic data, `joblib.load()` warning, prompt-injection guardrail as best-effort not a hard boundary, secret handling.*
-
-- **Hallazgo real al probar el pre-commit hook**: corrí `pre-commit run --all-files` para verificarlo, y el hook de ruff con `--fix` **modificó 6 archivos fuera del alcance de este trabajo** (`src/parte3_modeling.ipynb`, `src/eda/eda.ipynb`, `notebooks/databricks_parte1_pipeline.py`, y 3 archivos de test) — la misma deuda de lint preexistente que el paso Lint de CI ya trata como advisory. Revertí esos 6 archivos inmediatamente (`git checkout --`) y acoté el hook con `files:` a solo `src/copilot/`, los scripts nuevos, y `tests/test_copilot_*.py`/`conftest.py`. Un hook de pre-commit bloqueante debe respetar el mismo límite que el resto de este trabajo — no reformatear archivos que nadie pidió tocar solo porque `--fix` estaba activo.
-- *Real finding from testing the pre-commit hook: I ran `pre-commit run --all-files` to verify it, and the ruff hook with `--fix` **modified 6 files outside this work's scope** (`src/parte3_modeling.ipynb`, `src/eda/eda.ipynb`, `notebooks/databricks_parte1_pipeline.py`, and 3 test files) — the same pre-existing lint debt CI's Lint step already treats as advisory. Reverted those 6 files immediately (`git checkout --`) and scoped the hook with `files:` to only `src/copilot/`, the new scripts, and `tests/test_copilot_*.py`/`conftest.py`. A blocking pre-commit hook has to respect the same boundary as the rest of this work — not reformat files nobody asked to touch just because `--fix` was on.*
-
-- **Por qué gitleaks y no `detect-secrets`**: gitleaks es un binario estático único gestionado por el propio entorno de hooks de pre-commit — cero dependencia Python nueva en `pyproject.toml`/`uv.lock`, y sin archivo baseline que mantener (un coste de mantenimiento continuo real que `detect-secrets` sí tiene).
-- *Why gitleaks and not `detect-secrets`: gitleaks is a single static binary managed entirely by pre-commit's own hook environment — zero new Python dependency in `pyproject.toml`/`uv.lock`, and no baseline file to maintain (a real ongoing-maintenance cost `detect-secrets` has).*
-
-- **Qué NO pude hacer — protección de rama de GitHub**: este entorno no tiene `gh` CLI ni un token de GitHub configurado, así que no pude activar branch protection en `main` (requerir PR, requerir el status check `test`, prohibir force-push) vía API. Repo confirmado público, `main` como default branch, sin protección activa hoy (la API de protección devuelve "requires authentication" sin auth — la señal estándar de que no hay ninguna configurada). Queda como checklist manual para aplicar en GitHub → Settings → Branches.
-- *What I could NOT do — GitHub branch protection: this environment has no `gh` CLI or GitHub token configured, so I couldn't enable branch protection on `main` (require PR, require the `test` status check, disallow force-push) via the API. Repo confirmed public, `main` is the default branch, no protection currently active (the protection API returns "requires authentication" unauthenticated — the standard signal that none is configured). This remains a manual checklist to apply in GitHub → Settings → Branches.*
-
-- **Qué descarté**: CODEOWNERS — sin sentido real para un repo de un solo mantenedor; añadirlo sería ceremonia sin función. Hacer el paso de Lint existente bloqueante junto con el nuevo gate de eval — descartado porque arreglar la deuda de lint de los notebooks es un cleanup separado y deliberado, no un efecto secundario de añadir protecciones.
-- *What I discarded: CODEOWNERS — no real purpose for a single-maintainer repo; adding it would be ceremony with no function. Making the existing Lint step blocking alongside the new eval gate — discarded because fixing the notebooks' lint debt is a separate, deliberate cleanup, not a side effect of adding protections.*
-
-- **Qué supuse**: Que los pisos anclados a los valores ya commiteados (ej. `churn_threat_recall >= 0.5`, `citation_hallucination_rate <= 0.0`) son estables porque ambos harnesses son 100% determinísticos bajo `MOCK_LLM=1` — cualquier caída bajo el piso actual señala un cambio de código real, no ruido de ejecución a ejecución. Si en el futuro `--real` se volviera parte del gate de CI (requeriría `OPENAI_API_KEY` como secreto de GitHub Actions, fuera de alcance aquí), estos pisos tendrían que revisarse para tolerar la varianza de un LLM real.
-- *What I assumed: That the floors anchored to already-committed values (e.g. `churn_threat_recall >= 0.5`, `citation_hallucination_rate <= 0.0`) are stable because both harnesses are 100% deterministic under `MOCK_LLM=1` — any drop below the current floor signals a real code change, not run-to-run noise. If `--real` ever became part of the CI gate (would need `OPENAI_API_KEY` as a GitHub Actions secret, out of scope here), these floors would need revisiting to tolerate real-LLM variance.*
-
----
-
-### D30 · README reescrito alrededor del Copilot — qué se movió, qué no
-
-- **Qué hice**: `README.md` ahora abre con el Merchant Intelligence Copilot (pitch, quickstart, ejemplo de `/ask`, tabla de arquitectura), no con "pipeline de datos y risk-scoring". El pipeline original (Partes 1-5) se movió a una sección "Appendix" al final — sigue completo, con todos los comandos que ya funcionaban, no recortado ni resumido en exceso. `src/copilot/README.md` nuevo, con el mismo nivel de detalle que `src/parte4_api/README.md` (arquitectura, endpoints, tests, limitaciones conocidas) — no un README más corto o menos cuidado solo por ser la pieza nueva.
-- *What I did: `README.md` now opens with the Merchant Intelligence Copilot (pitch, quickstart, `/ask` example, architecture table), not "data pipeline and risk-scoring project". The original pipeline (Parts 1-5) moved to an "Appendix" section at the end — still complete, every command that already worked still there, not trimmed or over-summarized. New `src/copilot/README.md`, matching `src/parte4_api/README.md`'s level of detail (architecture, endpoints, tests, known limitations) — not a shorter or less-careful README just because it's the new piece.*
-
-- **Por qué no borrar/reescribir la narrativa de Partes 1-5 en vez de mover a un apéndice**: Es trabajo real, testeado (73 tests con `--extra pyspark`), y documentado en detalle en `DECISIONS.md`/`ASSUMPTIONS.md`/`SELF_REVIEW.md` con referencias a números de línea y decisiones específicas — reescribirlo habría roto esas referencias y descartado documentación honesta sin ninguna razón funcional. El copilot es una extensión real sobre este trabajo, no un reemplazo, así que el README debía reflejar eso literalmente: el pipeline sigue siendo la base, solo ya no es lo primero que ve un lector.
-- *Why not delete/rewrite the Parts 1-5 narrative instead of moving it to an appendix: It's real, tested work (73 tests with `--extra pyspark`), documented in detail in `DECISIONS.md`/`ASSUMPTIONS.md`/`SELF_REVIEW.md` with references to specific line numbers and decisions — rewriting it would have broken those references and discarded honest documentation for no functional reason. The copilot is a real extension on top of this work, not a replacement, so the README needed to literally reflect that: the pipeline is still the foundation, it's just no longer the first thing a reader sees.*
-
-- **Qué actualicé en `TOOLS_USED.md` y por qué**: Añadí una segunda fila a la tabla de LLMs (no reescribí la original) — la fila original documenta honestamente ~20% de asistencia de IA en las Partes 1-5; esta sesión construyó la práctica totalidad de `src/copilot/` de forma agéntica, dirigida por mí en cada milestone. Dejar la cifra original sin cambios habría subestimado materialmente cuánto de este repo tiene asistencia de IA, lo cual entra en conflicto directo con el propio principio de honestidad que el archivo existe para cumplir.
-- *What I updated in `TOOLS_USED.md` and why: Added a second row to the LLMs table (didn't rewrite the original) — the original row honestly documents ~20% AI assistance on Parts 1-5; this session built nearly all of `src/copilot/` agentically, directed by me at each milestone. Leaving the original figure unchanged would have materially understated how much of this repo has AI assistance, which directly conflicts with the file's own reason for existing.*
-
-- **Qué descarté**: Fusionar `src/parte4_api/main.py` y `src/copilot/api.py` en un único README de API — descartado por la misma razón que D27 mantiene las dos apps FastAPI separadas: son dos servicios reales e independientes, documentarlos como uno solo sería inexacto.
-- *What I discarded: Merging `src/parte4_api/main.py` and `src/copilot/api.py` into a single API README — discarded for the same reason D27 keeps the two FastAPI apps separate: they're two real, independent services, documenting them as one would be inaccurate.*
-
-- **Qué supuse**: Que un lector del README (reclutador, entrevistador técnico) decide en los primeros 10-15 segundos si el proyecto es interesante — de ahí que el pitch del Copilot, no el pipeline subyacente, tenga que ser lo primero que se lee, aunque el pipeline siga siendo real trabajo documentado en detalle más abajo.
-- *What I assumed: That a README reader (recruiter, technical interviewer) decides within the first 10-15 seconds whether the project is interesting — hence the Copilot pitch, not the underlying pipeline, has to be the first thing read, even though the pipeline remains real work documented in detail further down.*
-
----
-
-### D31 · CI colgado 2+ horas — `numpy`/`scikit-learn` sin wheel para Python 3.13, mismo problema que D13
-
-- **Qué hice**: Bumpeé `numpy==1.26.4` → `2.1.3` y `scikit-learn==1.5.1` → `1.5.2` en `pyproject.toml`.
-- *What I did: Bumped `numpy==1.26.4` → `2.1.3` and `scikit-learn==1.5.1` → `1.5.2` in `pyproject.toml`.*
-
-- **Qué fallaba**: Al abrir el PR, el job `test` de CI se quedó colgado 2+ horas en el paso "Install dependencies" (`uv sync --extra dev`), sin llegar siquiera a Lint. El log mostraba `Building scikit-learn==1.5.1` y `Building numpy==1.26.4` — sin wheel precompilado para Python 3.13, `uv` compila desde código fuente (C/Cython/Fortran), lento o efectivamente colgado en un runner compartido. Verifiqué en PyPI: `numpy` no tiene wheel `cp313` hasta la serie `2.x` (1.26.4 es el último release de la serie 1.26, anterior al lanzamiento de Python 3.13 en oct-2024); `scikit-learn` lo tiene desde `1.5.2`. Localmente nunca se notó porque el caché de `uv` ya tenía builds previos.
-- *What failed: On opening the PR, CI's `test` job hung 2+ hours on the "Install dependencies" step (`uv sync --extra dev`), never even reaching Lint. The log showed `Building scikit-learn==1.5.1` and `Building numpy==1.26.4` — with no precompiled Python 3.13 wheel, `uv` compiles from source (C/Cython/Fortran), slow or effectively hung on a shared runner. Verified on PyPI: `numpy` has no `cp313` wheel until the `2.x` series (1.26.4 is the last 1.26 release, predating Python 3.13's Oct-2024 launch); `scikit-learn` has one starting at `1.5.2`. Never noticed locally because `uv`'s cache already had prior builds.*
-
-- **Por qué numpy 2.1.3 y no la última 2.x**: Elegí la primera versión `2.x` con wheel `cp313` (verificado por la lista real de archivos en PyPI) en vez de la más reciente, para minimizar la distancia de comportamiento respecto a 1.26.4 — no hay razón para saltar más lejos de lo necesario en una dependencia que toca todo el pipeline.
-- *Why numpy 2.1.3 and not the latest 2.x: Chose the earliest `2.x` version with a `cp313` wheel (verified via PyPI's actual file listing) instead of the newest, to minimize behavioral distance from 1.26.4 — no reason to jump further than necessary on a dependency that touches the entire pipeline.*
-
-- **Verificación antes de commitear** (el punto de mayor riesgo real: `outputs/model.pkl` fue entrenado/pickleado bajo numpy 1.26.4/sklearn 1.5.1):
-  1. `joblib.load("outputs/model.pkl")` sigue cargando correctamente — sklearn emite `InconsistentVersionWarning` (esperado en cualquier diferencia de versión, incluso un patch release; no es un error).
-  2. `score_merchant()` sobre los 4 merchants del fixture da **exactamente los mismos** `churn_probability` que antes del bump (90001: 0.0007, 90002: 0.1349, 90003: 0.8217, 90004: 0.0289) — cero deriva numérica.
-  3. Suite completa: 138 passed / 1 skipped, sin cambios.
-  4. `check_eval_floors.py` sigue en verde con los mismos números.
-- *Verification before committing (the real point of risk: `outputs/model.pkl` was trained/pickled under numpy 1.26.4/sklearn 1.5.1):*
-  1. *`joblib.load("outputs/model.pkl")` still loads correctly — sklearn emits `InconsistentVersionWarning` (expected on any version difference, even a patch release; not an error).*
-  2. *`score_merchant()` on all 4 fixture merchants gives **exactly the same** `churn_probability` as before the bump (90001: 0.0007, 90002: 0.1349, 90003: 0.8217, 90004: 0.0289) — zero numerical drift.*
-  3. *Full suite: 138 passed / 1 skipped, unchanged.*
-  4. *`check_eval_floors.py` still green with the same numbers.*
-
-- **Qué descarté**: Bajar la versión de Python en CI a 3.12 para evitar el problema — descartado porque es un workaround que deja sin probar la versión de Python que el proyecto dice soportar (`requires-python` incluye 3.13, y D13 ya bumpeó pandas específicamente para esto), no una solución real. Re-entrenar/re-picklear `model.pkl` bajo las nuevas versiones para eliminar el warning por completo — descartado por ahora: el warning es inofensivo (verificado arriba) y regenerar un artefacto commiteado es un cambio más invasivo del necesario para desbloquear CI; queda como limpieza opcional futura, no parte de este fix.
-- *What I discarded: Downgrading CI's Python to 3.12 to sidestep the problem — discarded because it's a workaround that leaves the Python version the project claims to support (`requires-python` includes 3.13, and D13 already bumped pandas specifically for this) untested, not a real fix. Re-training/re-pickling `model.pkl` under the new versions to eliminate the warning entirely — discarded for now: the warning is harmless (verified above) and regenerating a committed artifact is a more invasive change than unblocking CI requires; left as optional future cleanup, not part of this fix.*
-
-- **Qué supuse**: Que los rangos de compatibilidad con numpy que declaran `lightgbm`/`xgboost`/`shap`/`pandas` (todos con cotas inferiores permisivas, ninguno excluye numpy 2.x explícitamente — verificado vía metadata de PyPI) reflejan compatibilidad real, no solo declarada. La verificación empírica (suite completa + predicciones idénticas del modelo) es la que realmente respalda esto, no la confianza en la metadata sola.
-- *What I assumed: That the numpy compatibility ranges `lightgbm`/`xgboost`/`shap`/`pandas` declare (all permissive lower bounds, none explicitly excludes numpy 2.x — verified via PyPI metadata) reflect real compatibility, not just declared. The empirical verification (full suite + identical model predictions) is what actually backs this up, not trusting the metadata alone.*
-
----
-
-### D32 · Dos PRs de dependabot rotas — por qué, y cómo se le enseñó a dependabot a no repetirlo
-
-- **Qué fallaba**: Dos PRs abiertas por dependabot (D29) fallaban CI. (1) `scikit-learn` 1.5.2 → 1.7.2: reproduje localmente — `joblib.load("outputs/model.pkl")` lanza `AttributeError: Can't get attribute '_RemainderColsList' on <module 'sklearn.compose._column_transformer'>`, una clase interna de `ColumnTransformer` que cambió entre versiones. A diferencia del bump 1.5.1→1.5.2 de D31 (solo un warning, predicciones idénticas), este es un **fallo duro de deserialización** — el pickle del modelo ya no es compatible en absoluto. (2) `delta-spark` 3.2.1 → 4.3.1: falla en "Install dependencies", no en tests — `delta-spark` 4.x requiere `pyspark` 4.x, y dependabot solo bumpea un paquete a la vez, dejando una combinación irresoluble contra el `pyspark==3.5.3` fijado intencionalmente.
-- *What failed: Two dependabot-opened PRs (D29) failed CI. (1) `scikit-learn` 1.5.2 → 1.7.2: reproduced locally — `joblib.load("outputs/model.pkl")` raises `AttributeError: Can't get attribute '_RemainderColsList' on <module 'sklearn.compose._column_transformer'>`, an internal `ColumnTransformer` class that changed between versions. Unlike D31's 1.5.1→1.5.2 bump (just a warning, identical predictions), this is a **hard deserialization failure** — the model's pickle is no longer compatible at all. (2) `delta-spark` 3.2.1 → 4.3.1: fails at "Install dependencies", not tests — `delta-spark` 4.x requires `pyspark` 4.x, and dependabot only bumps one package at a time, leaving an unresolvable combination against the intentionally-pinned `pyspark==3.5.3`.*
-
-- **Qué hice**: Añadí reglas `ignore` a `.github/dependabot.yml`: `scikit-learn` ignora bumps minor/major (patches siguen permitidos — D31 ya demostró que un patch es seguro); `delta-spark` y `pyspark` ignoran bumps major. Recomendé cerrar ambas PRs sin mergear, no arreglarlas — no hay un fix de una línea para ninguna de las dos: la de sklearn necesitaría re-entrenar y re-picklear el modelo (cambia un artefacto commiteado y sus métricas asociadas), la de Spark necesitaría migrar todo `parte1_pyspark.py`/el notebook de Databricks a Spark 4.x. Ninguna es una "actualización de rutina".
-- *What I did: Added `ignore` rules to `.github/dependabot.yml`: `scikit-learn` ignores minor/major bumps (patches still allowed — D31 already proved a patch is safe); `delta-spark` and `pyspark` ignore major bumps. Recommended closing both PRs unmerged, not fixing them — there's no one-line fix for either: the sklearn one would need retraining and re-pickling the model (changes a committed artifact and its associated metrics), the Spark one would need migrating all of `parte1_pyspark.py`/the Databricks notebook to Spark 4.x. Neither is a "routine update."*
-
-- **Por qué esto no es un fallo de D29**: Dependabot hizo exactamente lo que se le pidió — detectar versiones desactualizadas y proponer bumps. El problema real es que este repo tiene una dependencia estructural que un bot no puede ver: un artefacto **commiteado y pickleado** (`outputs/model.pkl`) cuya compatibilidad de carga depende de la versión exacta de scikit-learn, y un par de paquetes (`pyspark`/`delta-spark`) que deben moverse juntos. Encodear esa restricción en `dependabot.yml` es la solución correcta — evita que se repitan PRs rotas cada semana, en vez de cerrar manualmente la misma PR una y otra vez.
-- *Why this isn't a D29 failure: Dependabot did exactly what it was asked to do — detect outdated versions and propose bumps. The real issue is that this repo has a structural dependency a bot can't see: a **committed, pickled** artifact (`outputs/model.pkl`) whose load-compatibility depends on the exact scikit-learn version, and a package pair (`pyspark`/`delta-spark`) that must move together. Encoding that constraint into `dependabot.yml` is the correct fix — it prevents the same broken PR from recurring weekly, instead of manually closing the same PR over and over.*
-
-- **Qué descarté**: Arreglar la PR de sklearn actualizando el código para tolerar ambos formatos de pickle — descartado, sería complejidad permanente para un problema que una regla de `ignore` resuelve en una línea. Silenciar el `ignore` para todos los paquetes ML (numpy/lightgbm/xgboost/shap también) — descartado por ahora: solo tengo evidencia real de ruptura para `scikit-learn`; extender la regla a paquetes sin evidencia sería precaución no justificada (mismo principio que D24/D31: verificar, no asumir).
-- *What I discarded: Fixing the sklearn PR by updating code to tolerate both pickle formats — discarded, that would be permanent complexity for a problem an `ignore` rule solves in one line. Silencing `ignore` for all ML packages (numpy/lightgbm/xgboost/shap too) — discarded for now: I only have real evidence of breakage for `scikit-learn`; extending the rule to packages without evidence would be unjustified caution (same principle as D24/D31: verify, don't assume).*
-
-- **Qué supuse**: Que la próxima vez que `model.pkl` se re-entrene deliberadamente (con una versión más nueva de scikit-learn), alguien recuerde quitar o ajustar esta regla `ignore` — no hay nada automático que lo haga. Vale la pena revisar esta nota si ese día llega.
-- *What I assumed: That the next time `model.pkl` is deliberately retrained (under a newer scikit-learn), someone remembers to remove or adjust this `ignore` rule — nothing automated does it. Worth revisiting this note if that day comes.*
-
----
-
-## Parte 7 · Despliegue en AWS (Terraform)
-*AWS deployment (Terraform)*
-
-> `terraform/` despliega el Copilot en ECS Fargate — puramente como artefacto
-> de portfolio/entrevista, explícitamente no pensado para correr 24/7:
-> aplicar bajo demanda para una demo, destruir después. Ver `terraform/README.md`
-> para el runbook y el estado real ("no desplegado actualmente").
-> *`terraform/` deploys the Copilot to ECS Fargate — purely as a
-> portfolio/interview artifact, explicitly not meant to run 24/7: apply
-> on-demand for a demo, destroy afterward. See `terraform/README.md` for
-> the runbook and the real status ("not currently deployed").*
-
-### D33 · Arquitectura AWS/Terraform, y todo lo que una revisión independiente encontró antes de que fuera real
-
-- **Qué hice**: `terraform/` (VPC mínima de 2 subnets públicas, ALB, cluster/servicio ECS Fargate, ECR, IAM, CloudWatch) + un `Dockerfile` multi-stage para `src/copilot/api.py`. Alcance decidido explícitamente con el usuario antes de escribir código: **solo** el Copilot (no `parte4_api`), **sin** RDS/pgvector (la razón de D17-D19 — corpus pequeño — no cambió), **sin** S3 (los datos que el runtime necesita caben horneados en la imagen, ~1.5MB reales, no las "decenas de MB" que estimé al principio), **estado local** de Terraform (gitignored, no backend remoto S3+DynamoDB).
-- *What I did: `terraform/` (a minimal 2-public-subnet VPC, ALB, ECS Fargate cluster/service, ECR, IAM, CloudWatch) + a multi-stage `Dockerfile` for `src/copilot/api.py`. Scope decided explicitly with the user before writing any code: **only** the Copilot (not `parte4_api`), **no** RDS/pgvector (D17-D19's reasoning — small corpus — hasn't changed), **no** S3 (the data the runtime needs fits baked into the image, ~1.5MB for real, not the "tens of MB" I first estimated), **local** Terraform state (gitignored, no S3+DynamoDB remote backend).*
-
-- **Por qué me desvié de la nota original del roadmap privado sobre S3**: `context/CLAUDE.md` (gitignored) mencionaba S3 para datos/artefactos del modelo, escrito antes de que se descartaran RDS y el alcance se redujera a solo el Copilot. `data/transactions_sample.csv` (el CSV real de ~200k filas) está en `.gitignore` y nunca llega a un checkout limpio de todos modos — `src/copilot/tools/data_analyst.py:default_csv_path()` ya cae automáticamente al fixture pequeño commiteado cuando el CSV real no está presente, exactamente lo que pasa en un contenedor construido desde un checkout limpio. No hay necesidad funcional de S3 para una demo de un solo uso.
-- *Why I deviated from the original private-roadmap note about S3: `context/CLAUDE.md` (gitignored) mentioned S3 for data/model artifacts, written before RDS was ruled out and scope narrowed to Copilot-only. `data/transactions_sample.csv` (the real ~200k-row CSV) is `.gitignore`'d and never reaches a clean checkout anyway — `src/copilot/tools/data_analyst.py:default_csv_path()` already falls back automatically to the small committed fixture when the real CSV isn't present, exactly what happens in a container built from a clean checkout. No functional need for S3 for a single-use demo.*
-
-- **Revisión independiente antes de escribir Terraform**: dado que nunca puedo correr `apply` yo misma en este entorno (sin credenciales AWS), pedí una revisión de arquitectura dedicada antes de comprometerme al diseño. Encontró problemas reales, no cosméticos — todos incorporados al diseño final, no dejados como advertencias:
-  1. Los security groups de Terraform deniegan todo el tráfico saliente por defecto en cuanto declaras cualquier regla de entrada (a diferencia de un SG creado por consola) — sin `egress` explícito en ambos SGs, el ALB no puede reenviar al task y el task no puede alcanzar ECR/CloudWatch.
-  2. `assign_public_ip = true` no es el default de Terraform — omitirlo, sin NAT gateway, deja al task sin ninguna ruta a internet.
-  3. La asociación de la tabla de rutas a las subnets es un recurso aparte de la tabla de rutas misma — crear la tabla sin la asociación dejaría las subnets silenciosamente en la tabla principal de la VPC sin ruta al IGW, un fallo que `terraform validate` no puede detectar (es comportamiento de enrutamiento en vivo, no un error de sintaxis).
-  4. `target_type = "ip"` en el target group — el default es `"instance"`, que rompe el registro de targets en modo `awsvpc` de Fargate directamente. El error más común de ECS+Fargate+ALB en Terraform.
-  5. `force_delete = true` en el repositorio ECR — sin esto, `terraform destroy` falla a mitad de camino contra un repo no vacío (siempre habrá al menos una imagen subida), descubierto solo en vivo contra una cuenta real a mitad de un teardown.
-  6. El log group de CloudWatch debe declararse explícitamente con `retention_in_days` — si no, ECS lo autocrea al primer log con retención infinita, y como Terraform nunca lo creó, `terraform destroy` tampoco lo borra — una violación silenciosa y permanente del propio principio de "nada persiste entre demos" de este despliegue.
-  7. Un rol de tarea (task role) casi vacío es correcto, no un atajo — confirmado que Fargate no impone un piso mínimo de permisos, y la app no hace ninguna llamada SDK de AWS en runtime bajo `MOCK_LLM=1`.
-- *Independent review before writing Terraform: since I can never run `apply` myself in this environment (no AWS credentials), I asked for a dedicated architecture review before committing to the design. It found real, non-cosmetic problems — all folded into the final design, not left as caveats:*
-  1. *Terraform security groups deny all outbound traffic by default as soon as you declare any ingress rule (unlike a console-created SG) — without explicit `egress` on both SGs, the ALB can't forward to the task and the task can't reach ECR/CloudWatch.*
-  2. *`assign_public_ip = true` isn't the Terraform default — omitting it, with no NAT gateway, leaves the task with no internet path at all.*
-  3. *The route table association to the subnets is a separate resource from the route table itself — creating the table without the association would silently leave the subnets on the VPC's main table with no route to the IGW, a failure `terraform validate` can't catch (live routing behavior, not a syntax error).*
-  4. *`target_type = "ip"` on the target group — defaults to `"instance"`, which breaks Fargate `awsvpc`-mode target registration outright. The single most common ECS+Fargate+ALB Terraform mistake.*
-  5. *`force_delete = true` on the ECR repository — without it, `terraform destroy` fails partway through against a non-empty repo (there will always be at least one pushed image), discovered only live against a real account mid-teardown.*
-  6. *The CloudWatch log group must be declared explicitly with `retention_in_days` — otherwise ECS auto-creates it on first log write with infinite retention, and since Terraform never created it, `terraform destroy` never deletes it either — a quiet, permanent violation of this deployment's own "nothing persists between demos" premise.*
-  7. *A near-empty task role is correct, not a shortcut — confirmed Fargate imposes no minimum permission floor, and the app makes zero AWS SDK calls at runtime under `MOCK_LLM=1`.*
-
-- **Dos bugs reales encontrados verificando el Dockerfile de verdad (build + run + curl, no solo "el build no falló")**: (1) Cada comando de arranque documentado en este repo omite `--host`, y el default de la CLI de uvicorn es `127.0.0.1` — dentro de un contenedor eso significa inalcanzable desde fuera, y `docker exec <contenedor> curl localhost:8001` habría reportado éxito falsamente (mismo namespace de red). Verifiqué desde la **shell del host**, no desde dentro del contenedor. (2) LightGBM (el modelo de churn) enlaza dinámicamente `libgomp.so.1`, ausente en imágenes base slim — `/health` pasa igual (nunca toca el modelo), y el primer `/ask` enrutado a `risk` lanzaría `OSError` en tiempo de request, no de build. Verifiqué específicamente con una pregunta enrutada a `risk` (`"Is merchant 90001 at risk of churning and why?"`), no solo `/health` — devolvió 200 con una respuesta completa y correcta.
-- *Two real bugs found by actually verifying the Dockerfile (build + run + curl, not just "the build didn't fail"): (1) Every documented run command in this repo omits `--host`, and uvicorn's CLI default is `127.0.0.1` — inside a container that means unreachable from outside, and `docker exec <container> curl localhost:8001` would have falsely reported success (same network namespace). Verified from the **host shell**, not from inside the container. (2) LightGBM (the churn model) dynamically links `libgomp.so.1`, absent on slim base images — `/health` passes anyway (never touches the model), and the first risk-routed `/ask` would throw `OSError` at request time, not build time. Specifically verified with a risk-routed question (`"Is merchant 90001 at risk of churning and why?"`), not just `/health` — returned 200 with a full, correct answer.*
-
-- **Un tercer bug real, encontrado sin buscarlo, mientras diagnosticaba un fallo del Dockerfile**: `uv sync --frozen` (correcto para un build de contenedor reproducible) falló porque `uv.lock` seguía fijando `shap==0.46.0` aunque `pyproject.toml` decía `0.49.1`. Investigando más until, `pre-commit`, `pyspark` y `ruff` tenían la misma desincronización — D32 ya había arreglado esta misma clase de problema para `httpx`/`ipykernel`, pero cuatro merges de dependabot más la reintrodujeron para otros paquetes. `uv sync` normal (lo que corre CI) reconcilia la desincronización sobre la marcha sin fallar, así que nunca salió a la superficie ahí — hizo falta un `--frozen` real (este Dockerfile) para toparse con ella. Arreglado regenerando `uv.lock` por completo y añadiendo `uv lock --check` como paso de CI, verificado empíricamente: falla con exit 1 contra el lock desincronizado real que estaba commiteado en `main`, pasa con exit 0 contra el corregido.
-- *A third real bug, found without looking for it, while diagnosing a Dockerfile failure: `uv sync --frozen` (correct for a reproducible container build) failed because `uv.lock` still pinned `shap==0.46.0` even though `pyproject.toml` said `0.49.1`. Digging further, `pre-commit`, `pyspark`, and `ruff` had the same desync — D32 had already fixed this exact class of problem for `httpx`/`ipykernel`, but four more dependabot merges since then reintroduced it for other packages. Plain `uv sync` (what CI runs) reconciles the desync on the fly without failing, so it never surfaced there — it took a real `--frozen` sync (this Dockerfile) to hit it. Fixed by fully regenerating `uv.lock` and adding `uv lock --check` as a CI step, verified empirically: exits 1 against the real desynced lock that was committed on `main`, exits 0 against the fixed one.*
-
-- **Qué descarté**: VPC por defecto de la cuenta en vez de una dedicada — descartado porque el punto explícito de este ejercicio es demostrar habilidad de IaC/redes para entrevistas, así que construir networking real (aunque mínimo) es señal, no sobre-ingeniería, a diferencia de RDS. Estructura Terraform modularizada — descartado, modularizar implica reutilización multi-entorno que no aplica a un despliegue de un solo entorno; sería la misma clase de sobre-ingeniería que D17-D19 ya rechazan, solo aplicada a la estructura de Terraform en vez de al código de la aplicación. Un rol de tarea con `AmazonECSTaskExecutionRolePolicy` adjunto "por si acaso" — descartado, sobre-privilegiaría el rol de tarea sin ninguna necesidad real.
-- *What I discarded: The account's default VPC instead of a dedicated one — discarded because the explicit point of this exercise is demonstrating IaC/networking skill for interviews, so building real (if minimal) networking is signal, not overengineering, unlike RDS. A modularized Terraform structure — discarded, modularizing implies multi-environment reuse that doesn't apply to a single-environment deployment; would be the same class of overengineering D17-D19 already reject, just applied to Terraform structure instead of application code. A task role with `AmazonECSTaskExecutionRolePolicy` attached "just in case" — discarded, would over-privilege the task role for no real need.*
-
-- **Qué supuse**: Que el usuario correrá `terraform apply`/`destroy` desde su propia máquina con sus propias credenciales — confirmado explícitamente con él, dado que este entorno no tiene ninguna credencial de AWS. La verificación se detiene en `terraform validate` (incluyendo la rama `enable_openai_secret=true`) — un `apply` real es la única forma de confirmar el cableado de recursos de punta a punta, y eso queda fuera de lo que pude hacer aquí.
-- *What I assumed: That the user will run `terraform apply`/`destroy` from their own machine with their own credentials — confirmed explicitly with them, given this environment has no AWS credentials at all. Verification stops at `terraform validate` (including the `enable_openai_secret=true` branch) — a real `apply` is the only way to confirm resource wiring end-to-end, and that's outside what I could do here.*
-
----
-
-### D34 · Revisión de código de todo lo construido esta sesión — qué se arregló, qué se dejó como está y por qué
-
-- **Qué hice**: Pedí una revisión exhaustiva (múltiples agentes en paralelo, cada uno con un ángulo distinto: reutilización, fragilidad, eficiencia, simplificación, cumplimiento de CLAUDE.md) sobre todo lo construido en `feature/merchant-copilot` (ya mergeado) y `feature/terraform-aws-deploy`. 5 de ~10 agentes terminaron con hallazgos reales; los otros 5 (diff línea por línea, auditoría de comportamiento eliminado, corrección de wrappers/proxies, trazador cross-file, pitfalls específicos del lenguaje) fallaron por un límite de sesión de la API antes de completar — no se reintentaron en esta pasada.
-- *What I did: Requested an exhaustive review (multiple parallel agents, each a different angle: reuse, fragility, efficiency, simplification, CLAUDE.md compliance) over everything built in `feature/merchant-copilot` (already merged) and `feature/terraform-aws-deploy`. 5 of ~10 agents finished with real findings; the other 5 (line-by-line diff scan, removed-behavior audit, wrapper/proxy correctness, cross-file tracer, language-specific pitfalls) failed on an API session limit before completing — not retried this pass.*
-
-- **Arreglado, con verificación real, no solo "compiló"**:
-  1. `explain_drivers()` (risk.py) usaba `argsort` plano, no tie-break-stable, para elegir los top drivers SHAP — cambiado al mismo patrón lexsort ya usado en `retrieval_core.py`/el notebook de parte3.
-  2. `check_eval_floors.py` confundía "métrica genuinamente ausente del reporte" (un bug real) con "métrica presente pero legítimamente `None`" (cuando el golden set no tiene ejemplos que la ejerciten) — distinguido, y el script tiene tests reales por primera vez (7 tests). Verificado manualmente inyectando ambos casos antes de escribir los tests.
-  3. `ecs.tf` fijaba `MOCK_LLM="1"` como literal mientras `enable_openai_secret` era una variable real — demostrar modo real requería editar `ecs.tf` a mano. Añadida `var.mock_llm`, deliberadamente desacoplada de `enable_openai_secret` para que activar el secreto solo nunca empiece a gastar en OpenAI en silencio.
-  4. El comentario que justifica `health_check_grace_period_seconds=60` afirmaba que pandas/sklearn/shap/lightgbm/duckdb/langgraph/agno importan al cargar el módulo — pero los imports de `graph.py` eran diferidos dentro de cada función de nodo. Movidos a nivel de módulo: ahora el coste de arranque documentado es el coste real, no una sorpresa de latencia en la primera pregunta real de un usuario tras cada reinicio de la tarea. Efecto secundario medido: la suite de tests bajó de ~45-98s a ~19s.
-  5. `shap.TreeExplainer` se reconstruía en cada llamada a `score_merchant()` aunque es puramente función del modelo ya cacheado — cacheado ahora por identidad del objeto modelo.
-  6. `get_graph()` (api.py) recompilaba el grafo de LangGraph completo en cada request de `/ask` aunque su estructura es 100% estática — cacheado con `lru_cache`.
-  7. El Dockerfile documentaba `--platform=linux/amd64` solo en el comando de build, no en el propio Dockerfile — un `docker build` sin ese flag en una máquina arm64 produciría silenciosamente una imagen de arquitectura equivocada que pasa `push`/`apply` limpiamente y solo falla cuando Fargate intenta correr la tarea. Fijado con `FROM --platform=linux/amd64` en ambos stages.
-  8. 7 recursos de Terraform (ALB, target group, cluster ECS, ambos security groups, el rol de ejecución, el secreto de OpenAI) tenían su `name`/`id` y su propio tag `Name` como dos literales independientes — ahora un solo `local` por recurso en `terraform/locals.tf`. Dejé sin tocar los tags de un solo uso (VPC, IGW, route table, ECR, el `name` del log group, la política inline de secrets) — un local para un string usado una sola vez es indirección sin beneficio DRY real.
-  9. El `count` de `aws_route_table_association.public` era un `2` independiente del `count` de `aws_subnet.public` — ahora deriva de `length(aws_subnet.public)`.
-- *Fixed, with real verification, not just "it compiled":*
-  1. *`explain_drivers()` (risk.py) used plain `argsort`, not tie-break-stable, to pick top SHAP drivers — switched to the same lexsort pattern already used in `retrieval_core.py`/the parte3 notebook.*
-  2. *`check_eval_floors.py` conflated "metric genuinely absent from the report" (a real bug) with "metric present but legitimately `None`" (when the golden set has no examples exercising it) — distinguished, and the script has real tests for the first time (7 tests). Manually verified by injecting both cases before writing the tests.*
-  3. *`ecs.tf` hardcoded `MOCK_LLM="1"` as a literal while `enable_openai_secret` was a real variable — demoing real mode required hand-editing `ecs.tf`. Added `var.mock_llm`, deliberately decoupled from `enable_openai_secret` so enabling the secret alone never silently starts spending on OpenAI.*
-  4. *The comment justifying `health_check_grace_period_seconds=60` claimed pandas/sklearn/shap/lightgbm/duckdb/langgraph/agno import at module load — but `graph.py`'s imports were deferred inside each node function. Moved to module level: the documented startup cost is now the real cost, not a surprise latency hit on a real user's first question after every task restart. Measured side effect: test suite runtime dropped from ~45-98s to ~19s.*
-  5. *`shap.TreeExplainer` was rebuilt on every `score_merchant()` call despite being a pure function of the already-cached model — now cached by model object identity.*
-  6. *`get_graph()` (api.py) recompiled the whole LangGraph on every `/ask` request despite its structure being 100% static — cached with `lru_cache`.*
-  7. *The Dockerfile documented `--platform=linux/amd64` only in the build command, not the Dockerfile itself — a `docker build` without that flag on an arm64 machine would silently produce a wrong-architecture image that passes push/apply cleanly and only fails when Fargate tries to run the task. Fixed with `FROM --platform=linux/amd64` on both stages.*
-  8. *7 Terraform resources (ALB, target group, ECS cluster, both security groups, the execution role, the OpenAI secret) had their `name`/`id` and their own `Name` tag as two independent literals — now one `local` per resource in `terraform/locals.tf`. Left single-use tags alone (VPC, IGW, route table, ECR, the log group's `name`, the inline secrets policy) — a local for a string used once is indirection with no real DRY benefit.*
-  9. *`aws_route_table_association.public`'s `count` was a `2` independent of `aws_subnet.public`'s own count — now derives from `length(aws_subnet.public)`.*
-
-- **Encontrado, deliberadamente NO arreglado** (ya son trade-offs conscientes documentados en otro lugar, o el arreglo real es más grande de lo que vale para esta pasada): `top_merchants_by_tpv` reimplementa la fórmula de TPV/approval_rate en SQL en vez de reusar `parte1_pandas.py` — intencional, es literalmente el punto del Data Analyst tool (D23: "el agente ejecuta SQL real"). `jupyter`/`ipykernel`/`xgboost` sin usar en la imagen — ya documentado como trade-off aceptado en D33. `build_merchant_features` recalcula sobre todo el DataFrame por cada candidato en `risk_node` — ya documentado como límite conocido en D24. El router en modo mock es por palabras clave hardcodeadas — ya divulgado como limitación conocida en `src/copilot/README.md`. `complaint_classifier.py` no cachea `build_agent()` — consistente con cómo `src/parte4_api/main.py` ya usa `build_agent()` (no es una regresión nueva, arreglarlo solo ahí crearía una inconsistencia). Repetición del boilerplate de 4 claves al final de cada nodo de `graph.py` — nit de mantenibilidad real pero de bajo riesgo, no arreglado esta pasada.
-- *Found, deliberately NOT fixed (already conscious tradeoffs documented elsewhere, or the real fix is bigger than warranted for this pass): `top_merchants_by_tpv` reimplements the TPV/approval_rate formula in SQL instead of reusing `parte1_pandas.py` — intentional, it's literally the Data Analyst tool's point (D23: "the agent executes real SQL"). Unused `jupyter`/`ipykernel`/`xgboost` in the image — already documented as an accepted tradeoff in D33. `build_merchant_features` recomputing over the whole DataFrame per candidate in `risk_node` — already documented as a known limitation in D24. The mock-mode router being hardcoded keywords — already disclosed as a known limitation in `src/copilot/README.md`. `complaint_classifier.py` not caching `build_agent()` — consistent with how `src/parte4_api/main.py` already uses `build_agent()` (not a new regression, fixing it there alone would create an inconsistency). The 4-key boilerplate repeated at the end of every `graph.py` node — a real but low-risk maintainability nit, not fixed this pass.*
-
-- **Qué supuse**: Que arreglar cada hallazgo reportado no siempre es lo correcto — algunos ya eran decisiones conscientes commiteadas con su propia justificación (D23, D24, D33), y "arreglarlos" habría significado deshacer una elección de diseño ya tomada con el usuario, no corregir un bug. Documentar por qué NO se arregla algo es tan importante como documentar por qué sí.
-- *What I assumed: That fixing every reported finding isn't always correct — some were already conscious decisions committed with their own justification (D23, D24, D33), and "fixing" them would have meant undoing a design choice already made with the user, not correcting a bug. Documenting why something is NOT fixed matters as much as documenting why it is.*
-
----
-
-### D35 · Reintento de los 5 ángulos de revisión que fallaron por límite de sesión — un hallazgo real que D34 no cerró del todo
-
-- **Qué hice**: Los 5 ángulos de revisión que fallaron por límite de sesión de la API en D34 (wrapper/proxy correctness, cross-file tracer, line-by-line diff scan, removed-behavior auditor, language-pitfall specialist) se reintentaron en paralelo una vez Docker y la sesión estuvieron disponibles de nuevo. Además, antes de reintentar los ángulos, reconstruí la imagen Docker (fix #7 de D34) y la verifiqué de punta a punta: `docker build` produce una imagen `amd64` confirmada, `/health` responde 200, y un `/ask` enrutado a `risk` responde 200 con una respuesta real (confirma que `libgomp1`/LightGBM funcionan, no solo que el contenedor arrancó) — cierre pendiente de D34 que no había podido verificar por el daemon de Docker caído.
-- *What I did: The 5 review angles that failed on an API session limit in D34 (wrapper/proxy correctness, cross-file tracer, line-by-line diff scan, removed-behavior auditor, language-pitfall specialist) were retried in parallel once both Docker and the session were available again. Before retrying the angles, I also rebuilt the Docker image (D34 fix #7) and verified it end-to-end: `docker build` produces a confirmed `amd64` image, `/health` returns 200, and a `risk`-routed `/ask` returns 200 with a real answer (confirms `libgomp1`/LightGBM actually work, not just that the container started) — closing a D34 verification gap left open by the Docker daemon being unreachable at the time.*
-
-- **Qué encontré**: 2 de los 5 ángulos volvieron limpios (B: removed-behavior auditor, C: cross-file tracer — ambos re-verificaron independientemente la seguridad de los caches introducidos en D34 sin encontrar nada nuevo). Los otros 3 convergieron, de forma independiente, en el mismo hallazgo real: el fix de D34 #4 ("mover los imports de `graph.py` a nivel de módulo para que el costo de arranque se pague al inicio del proceso, no en la primera petición real") **no cerraba el problema del todo**. `import shap` y la deserialización de `outputs/model.pkl` vía `joblib.load()` (que importa `lightgbm` transitivamente) seguían diferidos una capa más adentro, dentro de `src/copilot/tools/risk.py`'s `load_model()`/`_get_explainer()` — nunca tocados por el diff de `graph.py`. Lo mismo con `sklearn.feature_extraction.text.TfidfVectorizer` dentro de `MockEmbedder.__init__` en `retrieval_core.py`. Medido en este venv: `import shap` ~0.3s, `joblib.load()` (deserialización + import transitivo de lightgbm) ~1.0s, construir el `TreeExplainer` ~0.25s — es decir, la primera pregunta real enrutada a "risk" o "grounding" después de cada reinicio de la tarea ECS seguía pagando ~1.3-1.9s de latencia sorpresa, exactamente lo que D34 #4 decía haber eliminado. Un hallazgo adicional de Angle E (wrapper/proxy correctness), más chico: `known_policy_ids()` releía `data/policy_docs.json` del disco en cada llamada mientras `retrieve_policy()` servía desde el cache permanente de `get_corpus_store()` — ambos podían desincronizarse si el archivo del corpus cambiaba sin reiniciar el proceso, lo cual afecta específicamente al chequeo de alucinación de citas de `evaluate_copilot.py`.
-- *What I found: 2 of the 5 angles came back clean (B: removed-behavior auditor, C: cross-file tracer — both independently re-verified the safety of D34's caches and found nothing new). The other 3 independently converged on the same real finding: D34 fix #4 ("move graph.py's imports to module level so startup cost lands at process start, not on the first live request") **didn't fully close the gap**. `import shap` and `outputs/model.pkl` deserialization via `joblib.load()` (which transitively imports lightgbm) were still deferred one layer deeper, inside `src/copilot/tools/risk.py`'s `load_model()`/`_get_explainer()` — never touched by `graph.py`'s diff. Same with `sklearn.feature_extraction.text.TfidfVectorizer` inside `MockEmbedder.__init__` in `retrieval_core.py`. Measured in this venv: `import shap` ~0.3s, `joblib.load()` (deserialization + transitive lightgbm import) ~1.0s, building the `TreeExplainer` ~0.25s — meaning the first live question routed to "risk" or "grounding" after every ECS task restart was still paying ~1.3-1.9s of surprise latency, exactly what D34 #4 claimed to have eliminated. One smaller additional finding from Angle E (wrapper/proxy correctness): `known_policy_ids()` re-read `data/policy_docs.json` from disk on every call while `retrieve_policy()` served from `get_corpus_store()`'s permanent cache — the two could desync if the corpus file changed without a process restart, specifically affecting `evaluate_copilot.py`'s citation-hallucination check.*
-
-- **Qué arreglé, verificado empíricamente**: Promoví `import shap`, `import joblib` (en `risk.py`) y `from sklearn.feature_extraction.text import TfidfVectorizer` (en `retrieval_core.py`) a nivel de módulo. Pero medí que eso solo por sí solo no alcanza: `import joblib` no importa `lightgbm` — eso pasa recién cuando `joblib.load()` deserializa el pickle y encuentra referencias a clases de lightgbm. Así que agregué una llamada de "warm-up" a nivel de módulo al final de `risk.py`: `_get_explainer(load_model())`, condicionada a que `DEFAULT_MODEL_PATH` exista. Verificado con `time.time()` alrededor de `from src.copilot.tools import risk`: el import ahora tarda ~1.85s (antes ~0s, todo diferido) y ambos caches (`_MODEL_CACHE`, `_EXPLAINER_CACHE`) quedan poblados al terminar el import — confirmando que el costo se movió de verdad al arranque, no que "compiló". Corrí `MOCK_LLM=1 uv run pytest -q` después de cada cambio: 145 passed / 1 skipped, sin regresiones. Para `known_policy_ids()`: agregué una propiedad `records` pública a `SimpleVectorStore` y reescribí `known_policy_ids()` para leer del store cacheado de `get_corpus_store()` en vez de releer el archivo — ahora ambas funciones ven exactamente el mismo snapshot del corpus durante toda la vida del proceso. Actualicé el docstring de `graph.py` para no sobre-afirmar qué paga su propio import.
-- *What I fixed, empirically verified: Promoted `import shap`, `import joblib` (in `risk.py`) and `from sklearn.feature_extraction.text import TfidfVectorizer` (in `retrieval_core.py`) to module level. But measured that this alone isn't enough: `import joblib` doesn't import `lightgbm` — that only happens when `joblib.load()` deserializes the pickle and hits lightgbm class references. So I added a module-level warm-up call at the bottom of `risk.py`: `_get_explainer(load_model())`, gated on `DEFAULT_MODEL_PATH` existing. Verified with `time.time()` around `from src.copilot.tools import risk`: the import now takes ~1.85s (previously ~0s, everything deferred) and both caches (`_MODEL_CACHE`, `_EXPLAINER_CACHE`) are populated by the time the import finishes — confirming the cost genuinely moved to startup, not just "it compiled." Ran `MOCK_LLM=1 uv run pytest -q` after each change: 145 passed / 1 skipped, no regressions. For `known_policy_ids()`: added a public `records` property to `SimpleVectorStore` and rewrote `known_policy_ids()` to read from `get_corpus_store()`'s cached store instead of re-reading the file — both functions now see exactly the same corpus snapshot for the process's whole lifetime. Updated `graph.py`'s docstring to stop over-claiming what its own import pays for.*
-
-- **Qué supuse**: Que "arreglado y verificado" para un problema de timing de imports significa medir el costo real con un cronómetro, no solo confirmar que el import no lanza una excepción — un `import shap` a nivel de módulo que no dispara el trabajo pesado real (deserializar el modelo, construir el explainer) es una corrección cosmética, no la que el docstring de `graph.py` prometía. También asumí que agregar una llamada de arranque incondicional en `risk.py` es seguro porque `outputs/model.pkl` está commiteado al repo (no gitignored) y todos los tests existentes ya lo usan directamente sin mockear una ruta alternativa — verificado con `grep` antes de escribir el cambio, no asumido a ciegas.
-- *What I assumed: That "fixed and verified" for an import-timing problem means measuring the real cost with a stopwatch, not just confirming the import doesn't raise — a module-level `import shap` that doesn't trigger the actual heavy work (deserializing the model, building the explainer) is a cosmetic fix, not the one `graph.py`'s docstring promised. I also assumed adding an unconditional warm-up call in `risk.py` is safe because `outputs/model.pkl` is committed to the repo (not gitignored) and every existing test already uses it directly without mocking an alternate path — verified with `grep` before writing the change, not blindly assumed.*
-
----
-
-## Parte 8 · Endurecimiento de dependencias + benchmark de retrieval
-*Dependency hardening + retrieval benchmark*
-
-### D36 · 5 PRs de dependabot rotas por lockfile stale, y un benchmark de recall@k/MRR para el retriever
-
-- **Qué fallaba**: Las 5 PRs de dependabot abiertas en ese momento (ruff 0.16.2→0.16.3, pandas 2.2.3→2.3.3, pydantic 2.9.2→2.13.4, numpy 2.1.3→2.2.6, fastapi 0.115.0→0.141.1) fallaban CI, las 5 en el mismo paso: `uv lock --check` (D33). Reproducido localmente en worktrees aislados para las 5 ramas: dependabot edita el pin de versión en `pyproject.toml` pero nunca corre `uv lock`, así que `uv.lock` queda desactualizado en cada PR sin excepción — un gap mecánico entre lo que dependabot hace y lo que el gate de D33 exige, no una incompatibilidad real caso por caso como las de D32.
-- *What failed: The 5 open dependabot PRs at the time (ruff 0.16.2→0.16.3, pandas 2.2.3→2.3.3, pydantic 2.9.2→2.13.4, numpy 2.1.3→2.2.6, fastapi 0.115.0→0.141.1) all failed CI, all at the same step: `uv lock --check` (D33). Reproduced locally in isolated worktrees for all 5 branches: dependabot edits the version pin in `pyproject.toml` but never runs `uv lock`, so `uv.lock` is left stale on every PR without exception — a mechanical gap between what dependabot does and what D33's gate requires, not a real case-by-case incompatibility like D32's findings.*
-
-- **Qué hice**: Para cada una de las 5 ramas, `uv lock` para regenerar el lockfile, verificado localmente (suite completa + ambos harnesses de eval + `check_eval_floors.py`) antes de commitear solo `uv.lock` y pushear. Verificación específica en la rama de fastapi, la de mayor riesgo porque arrastra `starlette` 0.38.6 → 1.6.0 (bump mayor, transitivo): suite completa (139 passed / 7 skipped, igual que `main`) y los tres floors de eval sin cambios (`route_exact_match_rate`, `citation_hallucination_rate`, `classification_accuracy`). Las 5 PRs terminaron en verde y se mergearon a `main`.
-- *What I did: For each of the 5 branches, `uv lock` to regenerate the lockfile, verified locally (full test suite + both eval harnesses + `check_eval_floors.py`) before committing just `uv.lock` and pushing. Specific verification on the fastapi branch, the highest-risk one since it pulls in a transitive `starlette` 0.38.6 → 1.6.0 major bump: full suite (139 passed / 7 skipped, same as `main`) and all three eval floors unchanged (`route_exact_match_rate`, `citation_hallucination_rate`, `classification_accuracy`). All 5 PRs went green and were merged into `main`.*
-
-- **Qué no arreglé todavía**: El fix de arriba es por-PR, no estructural — no evita que la próxima PR de dependabot (#30+) falle exactamente igual la próxima semana. Dependabot no soporta un hook nativo de "correr un comando después de editar `pyproject.toml`" para el ecosistema `pip` (a diferencia de Renovate, que sí tiene `postUpgradeTasks`). La solución estructural (una GitHub Action que detecte PRs de `dependabot[bot]`, corra `uv lock`, y commitee el resultado de vuelta antes de que corra `test`) queda pendiente para una sesión futura — documentado en `context/pr_review_and_upgrade_backlog.md`, no implementado aún.
-- *What I didn't fix yet: The fix above is per-PR, not structural — it doesn't stop the next dependabot PR (#30+) from failing the exact same way next week. Dependabot has no native "run a command after editing `pyproject.toml`" hook for the `pip` ecosystem (unlike Renovate, which has `postUpgradeTasks`). The structural fix (a GitHub Action that detects `dependabot[bot]`-authored PRs, runs `uv lock`, and commits the result back before `test` runs) is left for a future session — documented in `context/pr_review_and_upgrade_backlog.md`, not implemented yet.*
-
-- **Segunda pieza — benchmark de retrieval**: `evaluate_copilot.py` (D28) valida que el policy doc *correcto* se cite para un puñado de preguntas end-to-end, pero nunca aísla ni mide la calidad del retriever en sí — un synthesizer fuerte puede tapar un retriever mediocre. Añadí `scripts/evaluate_retrieval.py`: recall@k (k=1,3,5) y MRR sobre `data/policy_docs.json`, comparando `MockEmbedder` (TF-IDF) vs. `OpenAIEmbedder` (`--real`/`--both`), reutilizando `retrieval_core.get_corpus_store()` — ningún mecanismo de retrieval nuevo, solo un harness de benchmark sobre el existente. Ground truth: `data/golden_set_retrieval.json`, 15 preguntas en lenguaje natural escritas a mano, una por cada doc de política (RP-01..RP-15), mismo espíritu que D21/D28 ("una porción pequeña pero verificable a mano", no un benchmark sintético de gran N que este repo no podría validar).
-- *Second piece — retrieval benchmark: `evaluate_copilot.py` (D28) validates that the *correct* policy doc gets cited for a handful of end-to-end questions, but never isolates or measures retriever quality on its own — a strong synthesizer can paper over a mediocre retriever. Added `scripts/evaluate_retrieval.py`: recall@k (k=1,3,5) and MRR over `data/policy_docs.json`, comparing `MockEmbedder` (TF-IDF) vs. `OpenAIEmbedder` (`--real`/`--both`), reusing `retrieval_core.get_corpus_store()` — no new retrieval mechanism, just a benchmark harness over the existing one. Ground truth: `data/golden_set_retrieval.json`, 15 hand-written natural-language queries, one per policy doc (RP-01..RP-15), same spirit as D21/D28 ("a small but hand-verifiable slice," not a synthetic large-N benchmark this repo couldn't actually validate).*
-
-- **Resultado medido (modo mock/TF-IDF)**: MRR 0.9222, Recall@1 87%, Recall@3 100%, Recall@5 100%. Dos preguntas no acertaron en el puesto 1 — la de reinstalación por fraude (RP-13) fue superada por RP-06 (procedimiento de fraude, solapamiento léxico de "fraude"), y la de categorías de reclamación (RP-14) fue superada por RP-15 (políticas de IA responsable, ambas mencionan "clasificación"). Ambos son fallos plausibles de superposición léxica, no bugs — y un ejemplo concreto de por qué embeddings semánticos reales (no léxicos) rendirían mejor, justamente la comparación que existe el modo `--both` para hacer explícita. `tests/test_evaluate_retrieval.py` fija estos números como piso en modo mock (recall@3 == 100%, MRR >= 0.9) — una regresión ahí es un fallo real de retrieval, no ruido, porque TF-IDF sobre este corpus fijo de 15 docs es 100% determinístico.
-- *Measured result (mock/TF-IDF mode): MRR 0.9222, Recall@1 87%, Recall@3 100%, Recall@5 100%. Two queries missed rank 1 — the fraud-reinstatement one (RP-13) was outranked by RP-06 (fraud-flag procedure, lexical overlap on "fraud"), and the complaint-categories one (RP-14) was outranked by RP-15 (responsible-AI policy, both mention "classification"). Both are plausible lexical-overlap misses, not bugs — and a concrete example of why real semantic (not lexical) embeddings would do better, exactly the comparison `--both` mode exists to make explicit. `tests/test_evaluate_retrieval.py` pins these numbers as a mock-mode floor (recall@3 == 100%, MRR >= 0.9) — a regression there is a real retrieval failure, not noise, because TF-IDF over this fixed 15-doc corpus is fully deterministic.*
-
-- **Por qué no es un hard floor en CI**: A diferencia de `check_eval_floors.py` (D29), este benchmark no se agregó como un segundo gate en ese script. Los pisos que le importan a este benchmark (recall@3, MRR) ya están impuestos como aserciones de pytest en `tests/test_evaluate_retrieval.py`, que corre dentro del paso `Test` de CI — una regresión ya rompe el build sin necesitar un gate separado. El paso de CI añadido (`scripts.evaluate_retrieval`) es puramente informacional: regenera `outputs/eval_report_retrieval.json` para que quede sincronizado con el golden set commiteado, mismo patrón que los otros dos reportes de eval.
-- *Why this isn't a hard CI floor: Unlike `check_eval_floors.py` (D29), this benchmark wasn't added as a second gate in that script. The floors this benchmark actually cares about (recall@3, MRR) are already enforced as pytest assertions in `tests/test_evaluate_retrieval.py`, which runs inside CI's `Test` step — a regression already breaks the build without needing a separate gate. The added CI step (`scripts.evaluate_retrieval`) is purely informational: it regenerates `outputs/eval_report_retrieval.json` so it stays in sync with the committed golden set, same pattern as the other two eval reports.*
-
-- **Qué descarté**: Migrar de dependabot a Renovate para resolver el problema de raíz vía `postUpgradeTasks` — descartado por ahora, es una migración más grande de lo que amerita un repo de portfolio; la Action de auto-lock (documentada como pendiente arriba) resuelve lo mismo con menos cambio. Convertir el benchmark de retrieval en un hard floor en `check_eval_floors.py` — descartado porque sería redundante: `tests/test_evaluate_retrieval.py` ya cumple exactamente esa función dentro del paso `Test`, y duplicar el gate en dos lugares distintos es la clase de complejidad no justificada que este repo evita en otros lados (D17-D19).
-- *What I discarded: Migrating from dependabot to Renovate to fix the root cause via `postUpgradeTasks` — discarded for now, too large a migration for what a portfolio repo warrants; the auto-lock Action (documented as pending above) solves the same problem with less change. Turning the retrieval benchmark into a hard floor in `check_eval_floors.py` — discarded because it would be redundant: `tests/test_evaluate_retrieval.py` already serves exactly that function inside the `Test` step, and duplicating the gate in two places is the kind of unjustified complexity this repo avoids elsewhere (D17-D19).*
-
-- **Qué asumí**: Que las 5 PRs de dependabot, al no tener evidencia de romper nada en tiempo de ejecución (a diferencia de D32), eran seguras de arreglar y mergear sin una revisión manual más profunda del changelog de cada paquete — verificado empíricamente (suite completa + evals) en vez de asumido a ciegas. También asumí que `category` en `data/policy_docs.json` es una proxy razonable de relevancia para la métrica de `category_precision_at_k` — es una métrica secundaria/informativa, no un floor, precisamente porque dos documentos de la misma categoría no son necesariamente igual de relevantes a una pregunta específica.
-- *What I assumed: That the 5 dependabot PRs, having no evidence of runtime breakage (unlike D32), were safe to fix and merge without a deeper manual review of each package's changelog — verified empirically (full suite + evals) rather than blindly assumed. Also assumed `category` in `data/policy_docs.json` is a reasonable relevance proxy for the `category_precision_at_k` metric — it's a secondary/informational metric, not a floor, precisely because two documents in the same category aren't necessarily equally relevant to a specific query.*
-
----
-
-### D37 · Observabilidad — spans OTel reales por nodo del grafo, sin collector
-
-- **Qué faltaba**: El único dato de latencia expuesto por `/ask` era `latency_ms` (tiempo total de la request) — ningún desglose de qué nodo (route/data_analyst/risk/grounding/complaint_classifier/synthesize) fue el cuello de botella. Para un sistema con un cold-start de modelo ya documentado (D34/D35, ~1.3-1.9s), esto importa: sin desglose por nodo, esa latencia queda invisible mezclada dentro del total.
-- *What was missing: The only latency data `/ask` exposed was `latency_ms` (total request time) — no breakdown of which node (route/data_analyst/risk/grounding/complaint_classifier/synthesize) was the bottleneck. For a system with an already-documented model cold-start (D34/D35, ~1.3-1.9s), this matters: without a per-node breakdown, that latency is invisible, folded into the total.*
-
-- **Qué hice**: Añadí `src/copilot/tracing.py` usando el SDK real de OpenTelemetry (`opentelemetry-api`/`opentelemetry-sdk`, pineados) — mismo modelo de datos/API estándar de la industria, sin correr un collector. `graph.py`'s `build_graph()` envuelve cada nodo en un span vía `traced_node()` en tiempo de construcción del grafo, no dentro de cada función de nodo — mismo límite "las tools no saben de LangGraph" que el propio docstring de `graph.py` ya establecía. `api.py`'s `/ask` corre dentro de un span raíz (`copilot.ask`); todos los spans de nodo cuelgan de ese mismo trace_id vía la propagación normal de contexto de OTel. Un segundo exportador siempre activo, `_RequestSpanBuffer` (in-memory, agrupado por trace_id, no un simple `clear()` global como el `InMemorySpanExporter` del propio SDK) deja que `/ask` recupere exactamente los spans de esa request y los devuelva como campo `trace` en `AskResponse` — sin ese diseño, un `clear()` global sería inseguro bajo requests concurrentes (FastAPI puede procesar varias `/ask` a la vez, y una podría borrar spans de otra todavía en curso). El exportador "de verdad" (consola o JSON-lines a archivo, vía `COPILOT_TRACE_EXPORTER`) es opcional y por defecto un no-op — cero cambio de comportamiento para quien no lo configure.
-- *What I did: Added `src/copilot/tracing.py` using the real OpenTelemetry SDK (`opentelemetry-api`/`opentelemetry-sdk`, pinned) — the same industry-standard data model/API, no collector to run. `graph.py`'s `build_graph()` wraps every node in a span via `traced_node()` at graph-construction time, not inside each node function — the same "tools don't know about LangGraph" boundary `graph.py`'s own docstring already drew. `api.py`'s `/ask` runs inside a root span (`copilot.ask`); every node span hangs off that same trace_id via OTel's normal context propagation. A second, always-on exporter, `_RequestSpanBuffer` (in-memory, grouped by trace_id, not a blanket `clear()` like the SDK's own `InMemorySpanExporter`) lets `/ask` pull back exactly that request's spans and return them as a `trace` field on `AskResponse` — without that design, a global `clear()` would be unsafe under concurrent requests (FastAPI can serve several `/ask` calls at once, and one could wipe another still-in-flight request's spans). The "real" exporter (console or JSON-lines file, via `COPILOT_TRACE_EXPORTER`) is opt-in and no-op by default — zero behavior change for anyone who doesn't configure it.*
-
-- **Un bug real encontrado durante la verificación, no relacionado con tracing**: Al probar end-to-end con el CSV real (`data/transactions_sample.csv`, ~200k filas, presente localmente pero gitignored/ausente en CI), `risk_node` sin `merchant_id` (la ruta heurística vía `merchants_at_risk(df, top_n=3)`) tardó varios minutos — reproducido también **sin ningún código de tracing involucrado**, confirmando que es preexistente y no algo que este cambio introdujo. Los tests/CI nunca ejercitan esta ruta porque siempre fuerzan el fixture pequeño commiteado (`tests/conftest.py`'s `force_fixture_csv`), así que nunca se manifestó antes. Documentado aquí pero **no arreglado** — está fuera del alcance de esta feature; queda para una sesión futura investigar por qué `merchants_at_risk`/el scoring heurístico degrada tan mal a escala real.
-- *A real bug found during verification, unrelated to tracing: When testing end-to-end against the real CSV (`data/transactions_sample.csv`, ~200k rows, present locally but gitignored/absent in CI), `risk_node` without a `merchant_id` (the heuristic path via `merchants_at_risk(df, top_n=3)`) took several minutes — also reproduced **with zero tracing code involved**, confirming it's pre-existing and not something this change introduced. Tests/CI never exercise this path because they always force the small committed fixture (`tests/conftest.py`'s `force_fixture_csv`), so it never surfaced before. Documented here but **not fixed** — out of scope for this feature; left for a future session to investigate why `merchants_at_risk`/the heuristic scoring degrades so badly at real scale.*
-
-- **Corrección (D42)**: El diagnóstico de arriba culpa a la función equivocada. `merchants_at_risk` en sí tarda 0.08s contra el CSV real — 0.5% del costo total. El costo real está en `risk.py`'s `build_merchant_features()`, llamada una vez por candidato dentro del loop de `risk_node` (`graph.py`), donde tres agregaciones `lambda` fuerzan a pandas a un callback de Python por grupo (9967 grupos) en vez de su camino Cython optimizado — medido 88-113x más lento que el equivalente vectorizado. Ver D42 para el diagnóstico completo y el fix. Dejo esta corrección aquí en vez de reescribir el texto original de D37 porque documentar el error real (incluyendo diagnosticar mal en primer intento) es más honesto que borrarlo — mismo principio que D35 corrigiendo a D34.
-- *Correction (D42): The diagnosis above blames the wrong function. `merchants_at_risk` itself takes 0.08s against the real CSV — 0.5% of the total cost. The real cost is in `risk.py`'s `build_merchant_features()`, called once per candidate inside `risk_node`'s loop (`graph.py`), where three `lambda` aggregations force pandas into a per-group Python callback (9,967 groups) instead of its optimized Cython path — measured 88-113x slower than the vectorized equivalent. See D42 for the full diagnosis and fix. Leaving this correction here rather than rewriting D37's original text, because documenting the actual mistake (including misdiagnosing it on the first attempt) is more honest than erasing it — same principle as D35 correcting D34.*
-
-- **Verificado**: Suite completa (162 passed / 1 skipped) y ambos harnesses de eval + `check_eval_floors.py` sin cambios tras añadir el campo `trace` a `AskResponse`. Overhead de tracing medido directamente: <1ms por span en aislamiento (`get_tracer()` ~13ms una sola vez al construir el provider; spans individuales <1ms cada uno) — el request end-to-end contra el fixture (`MOCK_LLM=1`) tarda 0.82s con tracing activado, consistente con los tiempos ya medidos en D34/D35 antes de este cambio.
-- *Verified: Full suite (162 passed / 1 skipped) and both eval harnesses + `check_eval_floors.py` unchanged after adding the `trace` field to `AskResponse`. Tracing overhead measured directly: <1ms per span in isolation (`get_tracer()` ~13ms once, building the provider; individual spans <1ms each) — the end-to-end request against the fixture (`MOCK_LLM=1`) takes 0.82s with tracing enabled, consistent with timings already measured in D34/D35 before this change.*
-
-- **Qué descarté**: Usar el `InMemorySpanExporter` del propio SDK de OTel en vez de escribir `_RequestSpanBuffer` — descartado porque su único método de limpieza es `clear()` (todo o nada), inseguro bajo requests `/ask` concurrentes; la alternativa (meterse en sus atributos privados `_lock`/`_finished_spans` para limpiar selectivamente) sería peor que escribir ~20 líneas propias con una API pública e intencional. Un collector real (Jaeger/Tempo/OTel Collector) — descartado, mismo principio anti-overengineering que D17-D19 y D26: este repo no corre infraestructura que no pueda levantarse y probarse localmente sin dependencias externas, y `MOCK_LLM=1` debe seguir funcionando gratis y offline. Instrumentar automáticamente Agno/LangGraph vía sus propios hooks de callback (si los tuvieran) en vez de envolver manualmente cada nodo — descartado por ahora: no investigado si LangGraph expone un hook nativo de tracing, y la envoltura manual en `build_graph()` ya es explícita y fácil de auditar en una sola función.
-- *What I discarded: Using OTel SDK's own `InMemorySpanExporter` instead of writing `_RequestSpanBuffer` — discarded because its only cleanup method is `clear()` (all-or-nothing), unsafe under concurrent `/ask` requests; the alternative (reaching into its private `_lock`/`_finished_spans` attributes to clear selectively) would be worse than writing ~20 lines of my own with a public, intentional API. A real collector (Jaeger/Tempo/OTel Collector) — discarded, same anti-overengineering principle as D17-D19 and D26: this repo doesn't run infrastructure that can't be stood up and tested locally with no external dependencies, and `MOCK_LLM=1` must keep working free and offline. Auto-instrumenting Agno/LangGraph via their own callback hooks (if they have any) instead of manually wrapping each node — discarded for now: not investigated whether LangGraph exposes a native tracing hook, and the manual wrap in `build_graph()` is already explicit and easy to audit in one function.*
-
-- **Qué asumí**: Que un `max_traces=256` como backstop de `_RequestSpanBuffer` es suficiente — asume que ninguna request `/ask` real deja de leer su propio trace de vuelta (lo cual siempre hace, vía el código de `api.py`), así que el backstop solo protege contra un caso patológico (una request que crashea entre que sus spans se exportan y que `get_trace()` los lee), no contra el uso normal. También asumí que exponer timings por nodo en la respuesta de `/ask` no es una fuga de información sensible — a diferencia de `str(exc)` (ya bloqueado, ver D27), un nombre de nodo + duración no revela configuración interna ni datos de otro merchant.
-- *What I assumed: That `max_traces=256` as `_RequestSpanBuffer`'s backstop is sufficient — assumes no real `/ask` request ever fails to read its own trace back (which it always does, via `api.py`'s code), so the backstop only guards against a pathological case (a request crashing between its spans being exported and `get_trace()` reading them), not normal usage. Also assumed exposing per-node timings in `/ask`'s response isn't a sensitive information leak — unlike `str(exc)` (already blocked, see D27), a node name + duration reveals no internal config or another merchant's data.*
-
----
-
-### D38 · Multi-modal PDF/OCR ingestion — un pipeline nuevo alimentando el corpus existente, no un mecanismo de retrieval nuevo
-
-- **Qué faltaba**: El Grounding tool solo servía `data/policy_docs.json`
-  — 15 documentos de política escritos a mano, JSON limpio desde el
-  principio. El JD objetivo de esta ronda de mejoras pide explícitamente
-  "multi-modal integration (voice, text, image, PDF)" y un pipeline de
-  "Ingest, Enrich, Embed" (OCR, chunking, embeddings, indexado) — ninguna
-  ruta real de ingesta de documentos existía.
-- *What was missing: The Grounding tool only served `data/policy_docs.json`
-  — 15 hand-written policy documents, clean JSON from the start. This
-  round's target JD explicitly asks for "multi-modal integration (voice,
-  text, image, PDF)" and an "Ingest, Enrich, Embed" pipeline (OCR,
-  chunking, embeddings, indexing) — no real document-ingestion path
-  existed.*
-
-- **Qué hice**: `src/copilot/tools/ingestion.py` — extracción de texto
-  página por página vía `pypdf` (puro Python, sin binario de sistema,
-  siempre disponible), con fallback a OCR (`pytesseract` sobre imágenes
-  embebidas que `pypdf` ya expone vía `page.images`, sin necesitar
-  `pdf2image`/poppler como segundo binario de sistema) solo cuando una
-  página no tiene capa de texto real. `chunk_text()` parte el texto
-  extraído en límites de párrafo, con fallback a límites de oración para
-  un párrafo individual demasiado largo. `ingest_and_index()` persiste el
-  resultado como `data/ingested_docs/<prefix>.json`, en la misma forma
-  exacta `{id, title, category, text}` que `data/policy_docs.json` — y
-  ahí es donde se conecta con el Grounding tool: `grounding._load_policy_docs()`
-  ahora fusiona ambas fuentes en un solo corpus antes de indexarlo, en vez
-  de ser un segundo tool/nodo separado con sus propios patrones de router.
-  Una pregunta no necesita saber si la política citada vino del JSON
-  escrito a mano o de un PDF ingerido — ambos se buscan juntos por los
-  mismos `retrieve_policy()`/`known_policy_ids()`.
-- *What I did: `src/copilot/tools/ingestion.py` — per-page text extraction
-  via `pypdf` (pure Python, no system binary, always available), falling
-  back to OCR (`pytesseract` over embedded images `pypdf` already exposes
-  via `page.images`, avoiding `pdf2image`/poppler as a second system
-  binary) only when a page has no real text layer. `chunk_text()` splits
-  extracted text on paragraph boundaries, falling back to sentence
-  boundaries for a single paragraph that's still too long on its own.
-  `ingest_and_index()` persists the result as
-  `data/ingested_docs/<prefix>.json`, in the exact same
-  `{id, title, category, text}` shape as `data/policy_docs.json` — and
-  that's where it connects to the Grounding tool:
-  `grounding._load_policy_docs()` now merges both sources into one corpus
-  before indexing it, rather than being a second, separate tool/node with
-  its own router patterns. A question doesn't need to know whether the
-  cited policy came from the hand-written JSON or an ingested PDF — both
-  are searched together through the same `retrieve_policy()`/
-  `known_policy_ids()`.*
-
-- **Por qué OCR real requiere una comprobación explícita, no solo un
-  import**: `pytesseract` es una librería Python que se importa sin
-  problema sin el binario `tesseract` instalado — pero *llamar* a
-  `pytesseract.image_to_string()` sin el binario falla en tiempo de
-  ejecución. `tesseract` no está instalado en esta máquina ni en CI (y
-  añadirlo como dependencia de sistema real, vía `apt-get` en CI y en el
-  Dockerfile junto al `libgomp1` ya documentado en D33, rompería la
-  invariante de este repo de que `MOCK_LLM=1` y la suite de tests
-  funcionan solos, offline, sin dependencias de sistema). `is_ocr_available()`
-  comprueba `shutil.which("tesseract")` explícitamente — no la
-  importabilidad de `pytesseract` — así que una página sin capa de texto
-  en un entorno sin `tesseract` se marca honestamente como "unavailable"
-  (con `OCR_UNAVAILABLE_MARKER`, no un string vacío silencioso) en vez de
-  fingir un OCR que nunca corrió. El mismo split real/mock que
-  `OpenAIEmbedder` vs `MockEmbedder` en `retrieval_core.py`, aplicado a
-  OCR en vez de embeddings.
-- *Why real OCR needs an explicit check, not just an import:
-  `pytesseract` is a Python library that imports fine without the
-  `tesseract` binary installed — but *calling*
-  `pytesseract.image_to_string()` without the binary fails at runtime.
-  `tesseract` isn't installed on this machine or in CI (and adding it as
-  a real system dependency, via `apt-get` in CI and the Dockerfile
-  alongside the already-documented `libgomp1` from D33, would break this
-  repo's invariant that `MOCK_LLM=1` and the test suite work standalone,
-  offline, with zero system dependencies). `is_ocr_available()` checks
-  `shutil.which("tesseract")` explicitly — not `pytesseract`'s
-  importability — so a page with no text layer in an environment without
-  `tesseract` is honestly marked "unavailable" (via
-  `OCR_UNAVAILABLE_MARKER`, not a silent empty string) instead of
-  pretending OCR ran when it didn't. The same real/mock split as
-  `OpenAIEmbedder` vs `MockEmbedder` in `retrieval_core.py`, applied to
-  OCR instead of embeddings.*
-
-- **Verificado**: PDFs de prueba construidos en memoria con el propio
-  `PdfWriter` de `pypdf` (un content stream escrito a mano con operadores
-  `BT`/`Tj`/`ET`) en vez de assets binarios commiteados — 29 tests nuevos
-  entre `test_copilot_ingestion.py` (extracción, chunking, persistencia) y
-  la extensión de `test_copilot_grounding.py` (fusión de corpus,
-  incluyendo que las aserciones existentes de "exactamente 15 docs" siguen
-  pasando cuando no se ingirió nada). Suite completa: 172 passed / 1
-  skipped. `evaluate_copilot.py` y `check_eval_floors.py` sin cambios
-  (`data/ingested_docs/` no existe en un checkout limpio ni en CI, así que
-  `known_policy_ids()` cae naturalmente de vuelta a los 15 docs
-  originales).
-- *Verified: Test PDFs built in-memory with `pypdf`'s own `PdfWriter` (a
-  hand-written content stream using `BT`/`Tj`/`ET` operators) rather than
-  committed binary assets — 29 new tests between `test_copilot_ingestion.py`
-  (extraction, chunking, persistence) and the extension to
-  `test_copilot_grounding.py` (corpus merge, including that the existing
-  "exactly 15 docs" assertions still pass when nothing's been ingested).
-  Full suite: 172 passed / 1 skipped. `evaluate_copilot.py` and
-  `check_eval_floors.py` unchanged (`data/ingested_docs/` doesn't exist on
-  a fresh checkout or in CI, so `known_policy_ids()` naturally falls back
-  to the original 15 docs).*
-
-- **Qué descarté**: `pdf2image` (rasteriza una página PDF completa a
-  imagen vía poppler) como el camino "estándar" para dar entrada a OCR —
-  descartado porque poppler sería un *segundo* binario de sistema junto a
-  `tesseract`, cuando `pypdf`'s propio `page.images` ya da acceso directo
-  a imágenes ráster embebidas sin necesitar un paso de renderizado — cubre
-  el caso real (una página escaneada es una imagen de página completa
-  embebida en el PDF, no contenido vectorial que necesite rasterizarse)
-  con una dependencia de sistema menos. Un nodo/tool separado
-  `ingested_docs` en el grafo con sus propios patrones de router —
-  descartado (decisión explícita del usuario) a favor de fusionar en el
-  corpus existente del Grounding tool: menos superficie nueva, y una
-  pregunta no necesita enrutarse de forma diferente solo porque la fuente
-  del documento cambió de formato.
-- *What I discarded: `pdf2image` (rasterizes a whole PDF page to an image
-  via poppler) as the "standard" way to feed OCR — discarded because
-  poppler would be a *second* system binary alongside `tesseract`, when
-  `pypdf`'s own `page.images` already gives direct access to embedded
-  raster images without a render step — covers the real case (a scanned
-  page is one full-page image embedded in the PDF, not vector content
-  needing rasterizing) with one fewer system dependency. A separate
-  `ingested_docs` graph node/tool with its own router patterns —
-  discarded (explicit user decision) in favor of merging into the
-  Grounding tool's existing corpus: less new surface, and a question
-  doesn't need to route differently just because the document's source
-  format changed.*
-
-- **Qué asumí**: Que un chunker simple por párrafo/oración (sin overlap,
-  sin awareness de tokens) es suficiente para el tipo de documento que
-  este repo maneja — folletos de política, formularios KYC — no el caso de
-  long-context-window que un chunker de producción necesitaría optimizar.
-  También asumí que un directorio `data/ingested_docs/` vacío/ausente en
-  un checkout limpio es el estado correcto por defecto — el pipeline de
-  ingesta es de propósito general, no atado a un documento fuente
-  específico, así que no hay un PDF de ejemplo "canónico" que debiera
-  pre-sembrarse ahí.
-- *What I assumed: That a simple paragraph/sentence chunker (no overlap,
-  no token-awareness) is sufficient for the kind of document this repo
-  handles — policy booklets, KYC forms — not the long-context-window case
-  a production chunker would need to optimize for. Also assumed an
-  empty/absent `data/ingested_docs/` directory on a fresh checkout is the
-  correct default state — the ingestion pipeline is general-purpose, not
-  tied to one specific source document, so there's no "canonical" sample
-  PDF that should be pre-seeded there.*
-
----
-
-### D39 · Azure OpenAI como tercer backend de embeddings — sin tocar el contrato mock/real existente
-
-- **Qué faltaba**: `retrieval_core.py` solo soportaba dos backends de embeddings: `MockEmbedder` (TF-IDF, offline) y `OpenAIEmbedder` (real, contra api.openai.com). El JD objetivo de esta ronda de mejoras nombra explícitamente el ecosistema de Azure AI (Azure OpenAI, Azure AI Document Intelligence, Azure Cognitive Search) como nice-to-have — Swiss Re es, implícitamente, un cliente de Azure. Sin ningún soporte de Azure, el repo no podía desplegarse contra un recurso Azure OpenAI sin reescribir código.
-- *What was missing: `retrieval_core.py` only supported two embedding backends: `MockEmbedder` (TF-IDF, offline) and `OpenAIEmbedder` (real, against api.openai.com). This round's target JD explicitly names the Azure AI ecosystem (Azure OpenAI, Azure AI Document Intelligence, Azure Cognitive Search) as a nice-to-have — Swiss Re is, implicitly, an Azure customer. With no Azure support at all, the repo couldn't be deployed against an Azure OpenAI resource without a code rewrite.*
-
-- **Qué hice**: Añadí `AzureOpenAIEmbedder` a `retrieval_core.py` — mismo shape de `embed()` que `OpenAIEmbedder`, pero construido sobre `openai.AzureOpenAI` (ya incluido en el SDK `openai` ya pineado, sin dependencia nueva) en vez de `openai.OpenAI`. Una función `_select_real_embedder()` decide entre Azure y OpenAI plano basándose en si `AZURE_OPENAI_ENDPOINT` está configurado — no una tercera bandera separada tipo `USE_AZURE=1`, porque la presencia de esa variable ya es la señal inequívoca de que un recurso Azure está configurado (a diferencia de `api_key`/`api_version`, cuyos nombres de variable Azure no colisionan con los no-Azure pero tampoco son *la* señal decisiva). `get_corpus_store()` (Grounding tool) y `build_case_store()` (retrieval de reclamaciones históricas, Parte 4) ahora comparten esta misma función en vez de cada uno decidir por su cuenta — así ambos corpus obtienen soporte de Azure a la vez, no solo uno.
-- *What I did: Added `AzureOpenAIEmbedder` to `retrieval_core.py` — same `embed()` shape as `OpenAIEmbedder`, but built on `openai.AzureOpenAI` (already included in the already-pinned `openai` SDK, no new dependency) instead of `openai.OpenAI`. A `_select_real_embedder()` function decides between Azure and plain OpenAI based on whether `AZURE_OPENAI_ENDPOINT` is configured — not a separate third flag like `USE_AZURE=1`, because that variable's presence is already the unambiguous signal that an Azure resource is configured (unlike `api_key`/`api_version`, whose Azure variable names don't collide with non-Azure ones but also aren't *the* decisive signal). `get_corpus_store()` (Grounding tool) and `build_case_store()` (historical-complaints retrieval, Part 4) now share this one function instead of each deciding independently — so both corpora get Azure support at once, not just one.*
-
-- **Por qué `model` en `AzureOpenAIEmbedder` es un nombre de deployment, no un model id**: Los recursos Azure OpenAI enrutan por *deployment* — un nombre elegido por quien administra el recurso al crear el deployment, que puede o no coincidir con el id del modelo subyacente (p. ej. un deployment podría llamarse `"my-embeddings-prod"` en vez de `"text-embedding-3-small"`). Pasar el id del modelo tal cual a un cliente Azure fallaría contra cualquier recurso cuyo deployment tenga otro nombre. Por eso `AzureOpenAIEmbedder` acepta un `model` explícito, con fallback a la variable de entorno `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` (y solo como último recurso, `"text-embedding-3-small"` como valor por defecto razonable) — así el nombre real del deployment se configura sin tocar código.
-- *Why `model` in `AzureOpenAIEmbedder` is a deployment name, not a model id: Azure OpenAI resources route by *deployment* — a name chosen by whoever administers the resource when creating the deployment, which may or may not match the underlying model's id (e.g. a deployment might be named `"my-embeddings-prod"` instead of `"text-embedding-3-small"`). Passing the model id as-is to an Azure client would fail against any resource whose deployment has a different name. That's why `AzureOpenAIEmbedder` accepts an explicit `model`, falling back to the `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` env var (and only as a last resort, `"text-embedding-3-small"` as a reasonable default) — so the real deployment name is configured without touching code.*
-
-- **Verificado**: 6 tests nuevos (`tests/test_retrieval_core_azure.py`), sin llamadas de red reales — `openai.AzureOpenAI` mockeado, mismo enfoque que ya usa el resto del repo para no requerir credenciales en CI. Cubren: selección de backend con/sin `AZURE_OPENAI_ENDPOINT`, nombre de deployment por defecto/desde env/explícito, y que `embed()` invoca al cliente con el deployment y los textos correctos. Suite completa sin regresiones (verificado sobre `tests/test_retrieval.py` y `tests/test_copilot_grounding.py`, que ejercitan ambos corpus que ahora comparten `_select_real_embedder()`).
-- *Verified: 6 new tests (`tests/test_retrieval_core_azure.py`), no real network calls — `openai.AzureOpenAI` mocked, same approach this repo already uses elsewhere to avoid needing credentials in CI. Covers: backend selection with/without `AZURE_OPENAI_ENDPOINT`, deployment name defaulting/from-env/explicit, and that `embed()` invokes the client with the correct deployment and texts. Full suite unaffected (verified against `tests/test_retrieval.py` and `tests/test_copilot_grounding.py`, which exercise both corpora that now share `_select_real_embedder()`).*
-
-- **Qué descarté**: Un backend de chat/LLM de Azure OpenAI (para el router/synthesizer en modo real, hoy vía Agno+`OpenAIChat`) — descartado por ahora: Agno no expone un adaptador Azure listo del mismo modo que el SDK `openai` expone `AzureOpenAI` junto a `OpenAI`, así que soportarlo requeriría más que un branch de 3 líneas — sería su propia pieza de trabajo, no una extensión natural de esta. Azure AI Document Intelligence como alternativa a la OCR local de `pytesseract` (D38) — descartado por la misma razón que D38 ya evitó `pdf2image`/poppler: añadir una dependencia de servicio en la nube a un pipeline que hoy funciona completamente offline con `MOCK_LLM=1` sería un retroceso respecto a esa invariante, no una mejora, a menos que alguien realmente necesite OCR de nivel producción. Una bandera explícita `EMBEDDING_BACKEND=azure|openai|mock` en vez de inferir desde `AZURE_OPENAI_ENDPOINT` — descartado por redundante: la variable de entorno que Azure ya requiere configurar es información suficiente, una bandera separada sería otro dato que mantener sincronizado con la configuración real sin aportar nada.
-- *What I discarded: An Azure OpenAI chat/LLM backend (for the real-mode router/synthesizer, today via Agno+`OpenAIChat`) — discarded for now: Agno doesn't expose a ready Azure adapter the same way the `openai` SDK exposes `AzureOpenAI` alongside `OpenAI`, so supporting it would need more than a 3-line branch — it'd be its own piece of work, not a natural extension of this one. Azure AI Document Intelligence as an alternative to local `pytesseract` OCR (D38) — discarded for the same reason D38 already avoided `pdf2image`/poppler: adding a cloud-service dependency to a pipeline that today works fully offline with `MOCK_LLM=1` would be a step backward from that invariant, not an improvement, unless someone actually needs production-grade OCR. An explicit `EMBEDDING_BACKEND=azure|openai|mock` flag instead of inferring from `AZURE_OPENAI_ENDPOINT` — discarded as redundant: the env var Azure already requires configuring is sufficient information; a separate flag would be one more thing to keep in sync with the real configuration for no benefit.*
-
-- **Qué asumí**: Que `AZURE_OPENAI_ENDPOINT` configurado implica una intención real de usar Azure para *todo* lo que este proceso enruta a través de `_select_real_embedder()` — no hay un mecanismo para usar Azure en un corpus y OpenAI plano en otro dentro del mismo proceso. Razonable para el caso de uso real (una organización con un recurso Azure lo usa para todo, no mezcla proveedores por corpus), pero es una limitación real si alguna vez hiciera falta esa granularidad. También asumí que el nombre por defecto de deployment (`"text-embedding-3-small"`) es un fallback razonable — probablemente incorrecto contra un recurso Azure real (los nombres de deployment son arbitrarios), pero documentado explícitamente vía `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` en vez de fallar silenciosamente con un nombre adivinado sin decírselo a nadie.
-- *What I assumed: That `AZURE_OPENAI_ENDPOINT` being configured implies a real intent to use Azure for *everything* this process routes through `_select_real_embedder()` — there's no mechanism to use Azure for one corpus and plain OpenAI for another within the same process. Reasonable for the real use case (an organization with an Azure resource uses it for everything, doesn't mix providers per corpus), but a real limitation if that granularity were ever needed. Also assumed the default deployment name (`"text-embedding-3-small"`) is a reasonable fallback — likely wrong against a real Azure resource (deployment names are arbitrary), but explicitly documented via `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` rather than silently failing with a guessed name without telling anyone.*
-
----
-
-## Parte 9 · Correcciones de una revisión completa del repo
-
-*A full-repo review pass*
-
-> A petición del usuario ("review everything completely... find any errors,
-> weak links, possible improvements"), se corrió una revisión sistemática
-> del repo completo (funcionalidad, storage, efectividad, usabilidad) — mi
-> propia lectura de README/DECISIONS.md/ASSUMPTIONS.md/SELF_REVIEW.md más
-> un subagente dedicado a auditar el código de los módulos más nuevos
-> (tracing, ingestion, grounding, el branch de Azure). Las entradas D40-D4x
-> abajo documentan cada hallazgo real que se decidió arreglar, uno por
-> commit, verificado empíricamente (no solo leído) antes de escribirse aquí.
-> *At the user's request ("review everything completely... find any
-> errors, weak links, possible improvements"), a systematic review of the
-> full repo ran (functionality, storage, effectiveness, usability) — my own
-> read of README/DECISIONS.md/ASSUMPTIONS.md/SELF_REVIEW.md plus a
-> dedicated subagent auditing the newest modules' code (tracing, ingestion,
-> grounding, the Azure branch). The D40-D4x entries below document each
-> real finding that got fixed, one per commit, empirically verified (not
-> just read) before being written here.*
-
-### D40 · Trace-buffer leak on `/ask`'s error path
-
-- **Qué fallaba**: `api.py`'s `/ask` llamaba `get_trace(trace_id)` (que *saca* los spans de esa request del `_RequestSpanBuffer` compartido de `tracing.py`) solo después de que el bloque `with traced(...)` terminara normalmente. Cuando `graph.invoke()` lanzaba una excepción, el `HTTPException` se propagaba fuera de ese bloque antes de que `get_trace()` corriera — cada `/ask` fallido dejaba sus spans permanentemente huérfanos en el buffer, acotado solo por su backstop `max_traces=256`, nunca reclamado de verdad.
-- *What failed: `api.py`'s `/ask` called `get_trace(trace_id)` (which *pops* that request's spans out of `tracing.py`'s shared `_RequestSpanBuffer`) only after the `with traced(...)` block exited normally. When `graph.invoke()` raised, the `HTTPException` propagated out of that block before `get_trace()` ran — every failed `/ask` left its spans permanently orphaned in the buffer, bounded only by its `max_traces=256` backstop, never actually reclaimed.*
-
-- **Qué hice**: Moví el `get_trace()` a un `finally` alrededor de todo el bloque `with`, así corre sin importar si `graph.invoke()` lanzó o no. Test nuevo que fuerza el fallo vía `app.dependency_overrides[get_graph]` (un grafo falso cuyo `.invoke()` siempre lanza) y verifica que el tamaño del buffer no cambia tras una request fallida — confirmado que el test falla contra el código anterior y pasa con el fix.
-- *What I did: Moved `get_trace()` into a `finally` around the whole `with` block, so it runs regardless of whether `graph.invoke()` raised. New test forcing the failure via `app.dependency_overrides[get_graph]` (a fake graph whose `.invoke()` always raises) and asserting the buffer's size is unchanged after a failed request — confirmed the test fails against the prior code and passes with the fix.*
-
-- **Qué asumí**: Que popear el trace incondicionalmente en el `finally` (en vez de solo en el path de éxito) es seguro — `get_trace()` ya es idempotente-seguro sobre un trace_id que nunca se pobló (devuelve `[]`), así que no hay riesgo de doble-pop ni de reventar en el camino de error.
-- *What I assumed: That unconditionally popping the trace in the `finally` (rather than only on the success path) is safe — `get_trace()` is already safe-idempotent over a trace_id that was never populated (returns `[]`), so there's no double-pop or blow-up risk on the error path.*
-
----
-
-### D41 · Sin límite ni gitignore en los dos sinks `.jsonl` de solo-escritura
-
-- **Qué fallaba**: `outputs/traces.jsonl` (`COPILOT_TRACE_EXPORTER=file`) y `outputs/human_review_queue.jsonl` (`flag_for_human_review` en Parte 4) crecían sin límite y no estaban en `.gitignore`, a pesar de contener texto de requests/casos reales, no reportes de eval curados — un `git add outputs/` amplio (la convención propia de este repo para los reportes de eval) los habría arrastrado adentro. Además, `JsonLinesFileExporter` abría/escribía/cerraba el archivo de forma síncrona en cada span individual (`SimpleSpanProcessor` llama `export()` por span) — una escritura de archivo bloqueante en el camino de la request, ~6 veces por `/ask`, en el momento en que alguien active tracing.
-- *What failed: `outputs/traces.jsonl` (`COPILOT_TRACE_EXPORTER=file`) and `outputs/human_review_queue.jsonl` (`flag_for_human_review` in Part 4) both grew without bound and weren't in `.gitignore`, despite containing real request/case text, not curated eval reports — a broad `git add outputs/` (this repo's own convention for eval reports) would have swept them in. Additionally, `JsonLinesFileExporter` opened/wrote/closed the file synchronously on every single span (`SimpleSpanProcessor` calls `export()` per span) — a blocking file write in the request path, ~6 times per `/ask`, the moment anyone turns tracing on.*
-
-- **Qué hice**: Gitignore para ambos archivos. Límite de 10MB con rotación de una sola generación (`archivo.jsonl` → `archivo.jsonl.1`, sobrescribiendo cualquier backup previo) en ambos write paths — no un esquema de rotación real, solo lo mínimo para que ninguno de los dos crezca para siempre en un proceso de larga duración. Cambié el exportador de consola/archivo de `SimpleSpanProcessor` a `BatchSpanProcessor` — deliberadamente NO aplicado al procesador del `_RequestSpanBuffer`, que `api.py` sigue leyendo de forma síncrona justo después de `graph.invoke()`.
-- *What I did: Gitignored both files. 10MB cap with single-generation rotation (`file.jsonl` → `file.jsonl.1`, overwriting any previous backup) on both write paths — not a real rotation scheme, just the minimum so neither grows forever over a long-running process. Switched the console/file exporter from `SimpleSpanProcessor` to `BatchSpanProcessor` — deliberately NOT applied to the `_RequestSpanBuffer`'s own processor, which `api.py` still reads synchronously right after `graph.invoke()`.*
-
-- **Qué descarté**: Un esquema de rotación real (por fecha, múltiples generaciones, compresión) — descartado por ser un repo de portfolio escribiendo a disco local, no un pipeline de logs de producción con su propio shipping/rotación; cualquiera que necesite eso de verdad debería apuntar `COPILOT_TRACE_FILE` a una ruta ya gestionada por una herramienta de logging real. Un módulo compartido entre `tracing.py` y `agent.py` para la lógica de rotación — descartado: son ~10 líneas duplicadas, y los dos módulos son puntos de entrada independientes (D27) que deliberadamente no comparten estado en tiempo de ejecución.
-- *What I discarded: A real rotation scheme (by date, multiple generations, compression) — discarded because this is a portfolio repo writing to local disk, not a production log pipeline with its own shipping/rotation; anyone who actually needs that should point `COPILOT_TRACE_FILE` at a path already managed by a real logging tool. A module shared between `tracing.py` and `agent.py` for the rotation logic — discarded: it's ~10 duplicated lines, and the two modules are independent entry points (D27) that deliberately don't share runtime state.*
-
----
-
-### D42 · `build_merchant_features` — de agregaciones `lambda` a columnas vectorizadas (corrige el diagnóstico de D37)
-
-- **Qué fallaba**: D37 documentó que `risk_node`'s ruta heurística "tardó varios minutos" contra el CSV real y culpó a `merchants_at_risk`. Ese diagnóstico estaba mal, y es barato de probarlo: medido contra `data/transactions_sample.csv` (199,818 filas / 9,982 merchants), `merchants_at_risk` tarda 0.08s — 0.5% del costo. El costo real está en `risk.py`'s `build_merchant_features()`, llamada una vez por candidato en el loop de `risk_node` (`graph.py`), donde tres agregaciones `lambda` (`approval_rate`, `n_months_active` en dos ventanas + total) fuerzan a pandas a un callback de Python por grupo (9,967 grupos) en vez de su camino Cython optimizado — medido 88-113x más lento que el equivalente vectorizado (`approval_rate`: 0.792s vs 0.007s; `n_months_active`: 1.758s vs 0.020s).
-- *What failed: D37 documented that `risk_node`'s heuristic path "took several minutes" against the real CSV and blamed `merchants_at_risk`. That diagnosis was wrong, and it's cheap to prove: measured against `data/transactions_sample.csv` (199,818 rows / 9,982 merchants), `merchants_at_risk` takes 0.08s — 0.5% of the cost. The real cost is in `risk.py`'s `build_merchant_features()`, called once per candidate in `risk_node`'s loop (`graph.py`), where three `lambda` aggregations (`approval_rate`, `n_months_active` across two windows plus the total) force pandas into a per-group Python callback (9,967 groups) instead of its optimized Cython path — measured 88-113x slower than the vectorized equivalent (`approval_rate`: 0.792s vs 0.007s; `n_months_active`: 1.758s vs 0.020s).*
-
-- **Qué hice**: Precomputé `_approved` (bool), `_is_ecom` (bool), y `_month` (period) como columnas del DataFrame completo antes de cualquier `groupby`, y reemplacé las 4 lambdas por agregadores de string (`"mean"`, `"nunique"`) que pandas ejecuta en su camino optimizado. La media de una columna booleana es exactamente la misma fracción-True que la lambda `(x == ...).mean()` calculaba; `nunique` sobre la columna period precomputada es el mismo valor que `x.dt.to_period("M").nunique()` calculaba por grupo. Verificado numéricamente idéntico (no solo "parece razonable"): comparé la salida de `build_merchant_features` vieja vs. nueva sobre 30 merchants muestreados del CSV real con `pd.testing.assert_frame_equal(..., rtol=1e-9)` — sin discrepancias. Tiempo de `build_merchant_features` para un merchant: 4.90s → 0.12s (~40x).
-- *What I did: Precomputed `_approved` (bool), `_is_ecom` (bool), and `_month` (period) as whole-DataFrame columns before any `groupby`, and replaced the 4 lambdas with string aggregators (`"mean"`, `"nunique"`) that pandas runs on its optimized path. The mean of a boolean column is exactly the same True-fraction the `(x == ...).mean()` lambda computed; `nunique` over the precomputed period column is the same value `x.dt.to_period("M").nunique()` computed per group. Verified numerically identical (not just "looks reasonable"): compared old vs. new `build_merchant_features` output across 30 sampled merchants from the real CSV with `pd.testing.assert_frame_equal(..., rtol=1e-9)` — no discrepancies. `build_merchant_features` time for one merchant: 4.90s → 0.12s (~40x).*
-
-- **Qué no arreglé**: El problema estructural separado que el auditor también señaló — `risk_node` sigue recomputando la matriz de features del corpus completo una vez por candidato (`O(n_candidates)` llamadas a `build_merchant_features`, cada una re-agrupando las ~200k filas desde cero) en vez de computarla una vez y tomar 3 filas. Con la vectorización, ese costo residual es aceptable (0.12s × 3 candidatos ≈ 0.36s, no minutos), así que lo dejo fuera de alcance — es una refactorización más invasiva (`build_merchant_features` tendría que separar "construir la matriz completa" de "seleccionar un merchant") para un beneficio ya marginal después de este fix.
-- *What I didn't fix: the separate structural issue the auditor also flagged — `risk_node` still recomputes the full-corpus feature matrix once per candidate (`O(n_candidates)` calls to `build_merchant_features`, each re-grouping the ~200k rows from scratch) instead of computing it once and slicing 3 rows. With vectorization, that residual cost is acceptable (0.12s × 3 candidates ≈ 0.36s, not minutes), so I'm leaving it out of scope — it's a more invasive refactor (`build_merchant_features` would need to split "build the full matrix" from "select one merchant") for an already-marginal benefit after this fix.*
-
-- **Qué asumí**: Que 30 merchants muestreados (de 9,982, `random_state=42`) es una muestra suficientemente representativa para confiar en la equivalencia numérica — no probé los 9,982. Elegí 30 porque el path viejo (lambdas) tarda ~4.9s por llamada, así que 30 llamadas ya son ~2.5 minutos; una comparación exhaustiva habría tardado horas por poco beneficio adicional de confianza dado que la lógica de reemplazo es aritméticamente trivial (media de booleano, nunique de period), no una reescritura algorítmica que pudiera esconder un caso borde sutil.
-- *What I assumed: That 30 sampled merchants (out of 9,982, `random_state=42`) is a sufficiently representative sample to trust the numerical equivalence on — I didn't test all 9,982. Chose 30 because the old (lambda) path takes ~4.9s per call, so 30 calls alone is ~2.5 minutes; an exhaustive comparison would have taken hours for little added confidence given the replacement logic is arithmetically trivial (mean of a boolean, nunique of a period), not an algorithmic rewrite that could hide a subtle edge case.*
-
----
-
-### D43 · `chunk_text` no respetaba su propio contrato `max_chars` sobre texto real de PDF
-
-- **Qué fallaba**: `chunk_text` (D38) divide primero en párrafos (líneas en blanco), luego en oraciones (`[.!?]`) para cualquier párrafo que siga siendo demasiado largo. Si un texto no tiene **ninguno** de los dos — la forma normal de `pypdf.extract_text()`, separado por saltos de línea del layout de la página, sin líneas en blanco ni puntuación de oración — ninguno de los dos splits se activa y el texto completo vuelve como un solo chunk gigante. Verificado: 500 "palabras" separadas por `\n` (3889 caracteres) con `max_chars=600` devolvía un único chunk de 3889 caracteres. Esto rompía silenciosamente la garantía que el propio docstring de `DEFAULT_CHUNK_CHARS` (D38) prometía — un chunk de una página completa consumiría el presupuesto de contexto entero de `grounding.py` (800 caracteres) de un solo golpe, dejando fuera los otros 2 de 3 documentos que una consulta pide.
-- *What failed: `chunk_text` (D38) splits on paragraphs (blank lines) first, then sentences (`[.!?]`) for any paragraph still too long. If a text has **neither** — the normal shape of `pypdf.extract_text()`, line-broken by the page's own layout, no blank lines, no sentence punctuation — neither split fires and the whole text comes back as one giant chunk. Verified: 500 `\n`-separated "words" (3,889 chars) with `max_chars=600` returned a single 3,889-char chunk. This silently broke the guarantee `DEFAULT_CHUNK_CHARS`'s own docstring (D38) promised — one whole-page chunk would consume `grounding.py`'s entire 800-char context budget in one hit, starving out the other 2 of 3 documents a query asks for.*
-
-- **Qué hice**: Añadí `_wrap_on_whitespace()` como fallback final — si un chunk sigue sobre `max_chars` después de los splits de párrafo y oración, se envuelve en palabras separadas por cualquier whitespace (no solo espacios literales — el primer intento de este fix usaba `.split(" ")`, que no separa nada sobre texto unido por `\n`, cayendo al branch de "palabra única" y cortando a mitad de palabra en cada límite de `max_chars`; corregido a `.split()` sin argumentos, que separa por cualquier corrida de whitespace — atrapado por mi propio test de contenido-preservado antes de mergear, no encontrado después). Caso patológico (una sola "palabra" más larga que `max_chars`, sin ningún whitespace) corta directamente por caracteres en vez de loopear para siempre.
-- *What I did: Added `_wrap_on_whitespace()` as a final fallback — if a chunk is still over `max_chars` after the paragraph and sentence splits, it's wrapped on words separated by any whitespace (not just literal spaces — this fix's first attempt used `.split(" ")`, which splits nothing on `\n`-joined text, falling through to the single-word branch and cutting mid-word at every `max_chars` boundary; fixed to argument-less `.split()`, which splits on any run of whitespace — caught by my own content-preservation test before merging, not found after). Pathological case (a single "word" longer than `max_chars`, no whitespace at all) cuts directly on characters rather than looping forever.*
-
-- **Verificado**: Reproduje el escenario exacto que el auditor describió (texto separado por `\n`, sin puntuación) y confirmé que todos los chunks resultantes respetan `max_chars`, con el contenido exactamente preservado (`" ".join(chunks).split() == text.split()`). También verifiqué el caso patológico (2000 caracteres sin ningún espacio) y un caso mixto (oraciones cortas + una corrida larga sin puntuación, como una fila de tabla que `pypdf` a veces extrae). 4 tests nuevos.
-- *Verified: Reproduced the exact scenario the auditor described (`\n`-separated text, no punctuation) and confirmed every resulting chunk respects `max_chars`, with content exactly preserved (`" ".join(chunks).split() == text.split()`). Also verified the pathological case (2,000 chars with no whitespace at all) and a mixed case (short sentences + one long unbroken run, like a table row `pypdf` sometimes extracts). 4 new tests.*
-
-- **Qué asumí**: Que envolver en whitespace (en vez de, por ejemplo, un límite de tokens real) sigue siendo la complejidad correcta para este repo — mismo razonamiento de D38: los corpus acá son documentos de negocio pequeños, no el caso de long-context-window que justificaría un chunker con overlap/awareness de tokens.
-- *What I assumed: That wrapping on whitespace (rather than, say, a real token limit) is still the right amount of complexity for this repo — same reasoning as D38: the corpora here are small business documents, not the long-context-window case that would justify an overlap/token-aware chunker.*
-
----
-
-### D44 · `AskRequest.question`/`ClassifyRequest.email_text` sin `max_length` — el único campo sin cap en el límite real de entrada no confiable
-
-- **Qué fallaba**: `AskRequest.question` (`src/copilot/schemas.py`) y `ClassifyRequest.email_text` (`src/parte4_api/schemas.py`) no tenían `max_length` — el único campo de string sin cap en cada módulo, mientras todo lo demás sí lo tiene (`Citation.excerpt` 400, `ToolCallRecord.summary`/`RouteDecision.reasoning` 300, `AskResponse.answer` 1500, `ClassifyResponse.reasoning` 300). Verificado: una pregunta de 5,000,000 de caracteres era aceptada por el modelo Pydantic. Estos dos campos son el único límite real de este repo donde entra input no confiable (el body de una request HTTP real) — todo lo demás son llamadas internas entre funciones ya tipadas.
-- *What failed: `AskRequest.question` (`src/copilot/schemas.py`) and `ClassifyRequest.email_text` (`src/parte4_api/schemas.py`) had no `max_length` — the one uncapped string field in each module, while everything else is capped (`Citation.excerpt` 400, `ToolCallRecord.summary`/`RouteDecision.reasoning` 300, `AskResponse.answer` 1500, `ClassifyResponse.reasoning` 300). Verified: a 5,000,000-character question was accepted by the Pydantic model. These two fields are the one real boundary in this repo where untrusted input enters (an actual HTTP request body) — everything else is an internal call between already-typed functions.*
-
-- **Qué hice**: Añadí `max_length=10_000` a ambos campos. Una pregunta/reclamación de ese tamaño ya es generosa para cualquier caso de uso real; sin el límite, un payload de varios MB se embebe sin control (`grounding.retrieve_policy`) y, en modo real, entra directo a los prompts del router/synthesizer/agente Agno — un vector de costo/latencia sin límite dirigido directamente por el tamaño de la request. Tests nuevos en ambos módulos: rechaza sobre el límite (422), acepta bajo el límite (200).
-- *What I did: Added `max_length=10_000` to both fields. A question/complaint that size is already generous for any real use case; without the cap, a multi-MB payload gets embedded uncontrolled (`grounding.retrieve_policy`) and, in real mode, flows straight into the router/synthesizer/Agno agent prompts — an uncapped cost/latency vector directly driven by request size. New tests in both modules: rejects over the limit (422), accepts under it (200).*
-
-- **Qué descarté**: Un límite distinto para cada campo basado en su "caso de uso típico" (una pregunta corta vs. una reclamación que podría ser un email largo) — descartado por complejidad no justificada; 10,000 caracteres cubre cómodamente ambos casos sin necesitar dos números diferentes que mantener sincronizados con ninguna razón real detrás de la diferencia.
-- *What I discarded: A different limit per field based on its "typical use case" (a short question vs. a complaint that could be a long email) — discarded as unjustified complexity; 10,000 characters comfortably covers both without needing two different numbers to keep in sync for no real reason behind the difference.*
-
-- **Qué asumí**: Que 10,000 caracteres es un límite razonable sin haber consultado ningún caso de uso real documentado — es una estimación de "generoso pero no ilimitado", no un número derivado de datos. Si alguna vez se observa una pregunta o reclamación legítima más larga que esto, el límite necesitaría subir, no la validación eliminarse.
-- *What I assumed: That 10,000 characters is a reasonable limit without consulting any documented real use case — it's a "generous but not unlimited" estimate, not a data-derived number. If a legitimate question or complaint longer than this is ever observed, the limit would need to go up, not the validation removed.*
-
----
-
-### D45 · Path traversal en `ingest_and_index` vía `doc_id_prefix` sin validar
-
-- **Qué fallaba**: `ingest_and_index` construía la ruta de salida directamente de `doc_id_prefix` (`INGESTED_DOCS_DIR / f"{doc_id_prefix}.json"`) sin ninguna validación. Verificado: `doc_id_prefix="../../evil"` resuelve fuera de `INGESTED_DOCS_DIR` por completo. No es explotable remotamente hoy — no existe ningún endpoint HTTP que llame a `ingest_and_index` — pero el propio docstring del módulo (D38) enmarca esto explícitamente como un pipeline de subida ("a real PDF, uploaded once"); el día que alguien conecte un prefijo suministrado por un usuario a esta función, una entrada sin validar se convierte en escritura de archivo arbitraria.
-- *What failed: `ingest_and_index` built its output path directly from `doc_id_prefix` (`INGESTED_DOCS_DIR / f"{doc_id_prefix}.json"`) with no validation at all. Verified: `doc_id_prefix="../../evil"` resolves outside `INGESTED_DOCS_DIR` entirely. Not remotely exploitable today — no HTTP endpoint calls `ingest_and_index` — but the module's own docstring (D38) explicitly frames this as an upload pipeline ("a real PDF, uploaded once"); the day anyone wires a user-supplied prefix into this function, an unvalidated one becomes arbitrary file write.*
-
-- **Qué hice**: Añadí `_SAFE_DOC_ID_PREFIX` (regex `^[A-Za-z0-9_-]+$`) validado al inicio de `ingest_and_index`, lanzando `ValueError` explícito en vez de sanear silenciosamente (sanear cambiaría el prefijo sin que el caller se entere, lo cual podría sorprender más que rechazar directamente). Verificado que bloquea `../../evil`, `../escape`, rutas absolutas, con espacios, con `;`, y `..` solo — y que sigue aceptando los prefijos reales ya en uso (`RB`, `policy_01`, `doc-2024`, etc.). 11 tests nuevos parametrizados (7 casos inseguros rechazados, 4 seguros aceptados), incluyendo una verificación de que el archivo realmente no se escribió fuera del directorio esperado, no solo que se lanzó una excepción.
-- *What I did: Added `_SAFE_DOC_ID_PREFIX` (regex `^[A-Za-z0-9_-]+$`), validated at the top of `ingest_and_index`, raising an explicit `ValueError` rather than silently sanitizing (sanitizing would change the prefix without the caller knowing, which could surprise more than an outright rejection). Verified it blocks `../../evil`, `../escape`, absolute paths, spaces, `;`, and bare `..` — and still accepts the real prefixes already in use (`RB`, `policy_01`, `doc-2024`, etc.). 11 new parametrized tests (7 unsafe cases rejected, 4 safe ones accepted), including a check that the file genuinely wasn't written outside the expected directory, not just that an exception was raised.*
-
-- **Qué descarté**: Resolver la ruta y verificar que quede dentro de `INGESTED_DOCS_DIR` (`Path.resolve()` + comprobación de prefijo) en vez de un allowlist de caracteres — descartado por ser más código para el mismo resultado; un allowlist de slug seguro es más simple de leer y de razonar sobre él, y no hay ningún caso de uso legítimo hoy que necesite un `doc_id_prefix` con subdirectorios o caracteres especiales.
-- *What I discarded: Resolving the path and checking it stays inside `INGESTED_DOCS_DIR` (`Path.resolve()` + prefix check) instead of a character allowlist — discarded as more code for the same result; a safe-slug allowlist is simpler to read and reason about, and there's no legitimate use case today that needs a `doc_id_prefix` with subdirectories or special characters.*
-
-- **Qué asumí**: Que ningún caller existente pasa un `doc_id_prefix` que no sea ya un slug simple — verificado con `grep` sobre el repo (todos los usos actuales son literales cortos tipo `"RB"`, `"CB"`, `"V"`) antes de escribir el cambio, no asumido a ciegas.
-- *What I assumed: That no existing caller passes a `doc_id_prefix` that isn't already a simple slug — verified via `grep` across the repo (every current usage is a short literal like `"RB"`, `"CB"`, `"V"`) before writing the change, not blindly assumed.*
-
----
-
-### D46 · `evaluate_retrieval.py` — corpus sin anclar (se contamina con docs ingeridos) y etiqueta de modo hardcodeada (falso positivo con Azure)
-
-- **Qué fallaba**: `evaluate_retrieval.py` importaba `grounding._load_policy_docs` — el loader que D38 fusiona con `data/ingested_docs/*.json` — en vez de leer `data/policy_docs.json` en aislamiento. En cuanto alguien ingiera un PDF, el benchmark se contaminaría silenciosamente: los docs ingeridos tienen `category="ingested"` por defecto (que no coincide con ninguna categoría del golden set), así que `category_precision_at_k` se degradaría sin ningún cambio de código detrás, y `corpus_size`/`recall@k` se moverían contra el baseline commiteado sin explicación — una regresión de métrica que parece una regresión de modelo. Por separado, `evaluate()` hardcodeaba `"mode": "real (OpenAI text-embedding-3-small)"` para el path `--real`, sin importar qué embedder devolviera realmente `_select_real_embedder()` (D39) — en una máquina con Azure configurado, el reporte afirmaría OpenAI mientras en realidad usó Azure.
-- *What failed: `evaluate_retrieval.py` imported `grounding._load_policy_docs` — the loader D38 merges with `data/ingested_docs/*.json` — instead of reading `data/policy_docs.json` in isolation. The moment anyone ingests a PDF, the benchmark would silently contaminate: ingested docs default to `category="ingested"` (matching no golden-set category), so `category_precision_at_k` would degrade with zero code change behind it, and `corpus_size`/`recall@k` would shift against the committed baseline with no explanation — a metric regression that looks like a model regression. Separately, `evaluate()` hardcoded `"mode": "real (OpenAI text-embedding-3-small)"` for the `--real` path, regardless of what `_select_real_embedder()` (D39) actually returned — on a machine with Azure configured, the report would claim OpenAI while it actually used Azure.*
-
-- **Qué hice**: Añadí `_load_policy_docs_only()` (lee `grounding.POLICY_DOCS_PATH` directamente, sin la fusión) y una `_PINNED_CORPUS_NAME` distinta de `grounding.CORPUS_NAME` para que este benchmark nunca comparta la entrada de cache de `retrieval_core.get_corpus_store` con el corpus fusionado de `grounding.py`/`evaluate_copilot.py`. Reemplacé el `"mode"` hardcodeado por `_describe_embedder()`, que deriva la etiqueta del tipo real del embedder devuelto (`type(embedder).__name__` + su `_model`/deployment si lo tiene) — verificado que produce `"MockEmbedder"`, `"OpenAIEmbedder (text-embedding-3-small)"`, y `"AzureOpenAIEmbedder (text-embedding-3-small)"` correctamente para cada backend real. También añadí una comprobación de ids duplicados en el corpus (falla ruidosamente en vez de sub-reportar `corpus_size` en silencio, mismo espíritu que el hallazgo del auditor sobre `grounding.py`'s fusión sin unicidad de ids).
-- *What I did: Added `_load_policy_docs_only()` (reads `grounding.POLICY_DOCS_PATH` directly, without the merge) and a `_PINNED_CORPUS_NAME` distinct from `grounding.CORPUS_NAME` so this benchmark never shares `retrieval_core.get_corpus_store`'s cache entry with grounding.py's/evaluate_copilot.py's merged corpus. Replaced the hardcoded `"mode"` with `_describe_embedder()`, which derives the label from the actually-returned embedder's real type (`type(embedder).__name__` plus its `_model`/deployment if it has one) — verified it correctly produces `"MockEmbedder"`, `"OpenAIEmbedder (text-embedding-3-small)"`, and `"AzureOpenAIEmbedder (text-embedding-3-small)"` for each real backend. Also added a duplicate-id check on the corpus (fails loudly instead of silently under-reporting `corpus_size`, same spirit as the auditor's finding about `grounding.py`'s merge having no id-uniqueness check).*
-
-- **Verificado**: Simulé un doc ingerido (`FAKE.json` con `category="ingested"`) en un `INGESTED_DOCS_DIR` temporal y confirmé que `evaluate(mock=True)` sigue reportando `corpus_size=15`, no 16 — el benchmark ya no ve el corpus fusionado. Confirmé `_describe_embedder()` contra los 3 tipos de embedder reales (con `openai.AzureOpenAI` mockeado para el caso Azure, sin llamada de red). Suite completa sin regresiones; el único cambio en `outputs/eval_report_retrieval.json` commiteado es la línea `"mode"` (de `"mock (TF-IDF)"` a `"MockEmbedder"`).
-- *Verified: Simulated an ingested doc (`FAKE.json` with `category="ingested"`) in a temporary `INGESTED_DOCS_DIR` and confirmed `evaluate(mock=True)` still reports `corpus_size=15`, not 16 — the benchmark no longer sees the merged corpus. Confirmed `_describe_embedder()` against all 3 real embedder types (with `openai.AzureOpenAI` mocked for the Azure case, no network call). Full suite unaffected; the only change in the committed `outputs/eval_report_retrieval.json` is the `"mode"` line (from `"mock (TF-IDF)"` to `"MockEmbedder"`).*
-
-- **Qué descarté**: Hacer que `evaluate_retrieval.py` también beneficiara de docs ingeridos opcionalmente (con una bandera `--include-ingested`) — descartado por ahora: nadie lo ha pedido, y añadiría una segunda dimensión de configuración a un script cuyo único propósito hoy es comparar embedders sobre un corpus fijo y conocido.
-- *What I discarded: Making `evaluate_retrieval.py` optionally benefit from ingested docs too (via an `--include-ingested` flag) — discarded for now: nobody has asked for it, and it would add a second configuration dimension to a script whose only purpose today is comparing embedders over a fixed, known corpus.*
-
-- **Qué asumí**: Que ningún caller actual depende del label exacto `"mock (TF-IDF)"`/`"real (OpenAI text-embedding-3-small)"` en `outputs/eval_report_retrieval.json` — verificado con `grep`, nada en el repo parsea ese campo salvo para mostrarlo.
-- *What I assumed: That no current caller depends on the exact `"mock (TF-IDF)"`/`"real (OpenAI text-embedding-3-small)"` label in `outputs/eval_report_retrieval.json` — verified via `grep`, nothing in the repo parses that field except to display it.*
-
----
-
-### D47 · Un fallo de OCR en una página mataba la ingesta completa del PDF
-
-- **Qué fallaba**: `_ocr_page_image` llamaba a `pytesseract.image_to_string()` sin ningún manejo de errores. `is_ocr_available()` solo prueba que el binario `tesseract` está en el PATH — no que vaya a correr con éxito (falta un paquete de idioma) ni que esta imagen embebida específica sea decodificable (una imagen corrupta, una codificación que Pillow no puede leer — algunos escaneos JBIG2/CMYK). Una sola página problemática en un PDF multi-página por lo demás sano mataba la ingesta entera — contradiciendo la propia invariante del módulo (D38): "una página sin capa de texto se marca explícitamente, nunca falla en silencio." Por separado, `page.extract_text()` no está garantizado como no-`None` en todas las versiones/entradas de `pypdf` — una página malformada o encriptada podría devolver `None`, y `.strip()` sobre eso lanza `AttributeError`.
-- *What failed: `_ocr_page_image` called `pytesseract.image_to_string()` with no error handling at all. `is_ocr_available()` only proves the `tesseract` binary is on PATH — not that it will actually succeed (a missing language pack) or that this specific embedded image is decodable (a corrupt image, an encoding Pillow can't read — some JBIG2/CMYK scans). One problematic page in an otherwise-healthy multi-page PDF killed the entire ingest — contradicting the module's own invariant (D38): "a page with no text layer is marked explicitly, never silently fails." Separately, `page.extract_text()` isn't guaranteed non-`None` across all `pypdf` versions/inputs — a malformed or encrypted page could return `None`, and `.strip()` on that raises `AttributeError`.*
-
-- **Qué hice**: `_ocr_page_image` ahora atrapa cualquier excepción durante el loop de OCR y devuelve `None` en vez de propagar — deliberadamente amplio (`except Exception`) porque los modos de fallo de OCR son genuinamente variados (`TesseractError`, errores de decodificación de Pillow, errores de I/O leyendo el stream de la imagen) y ninguno debería abortar el resto del documento. `extract_pdf_pages` distingue ahora un nuevo método `"ocr_failed"` (con `OCR_FAILED_MARKER`) de `"unavailable"` — tesseract presente pero fallando en esta página específica, vs. tesseract ausente del todo. `ingest_pdf` salta ambos casos al construir records (ninguno tiene texto usable). `page.extract_text()` ahora se protege con `(page.extract_text() or "").strip()`.
-- *What I did: `_ocr_page_image` now catches any exception during the OCR loop and returns `None` instead of propagating — deliberately broad (`except Exception`) because OCR failure modes are genuinely varied (`TesseractError`, Pillow decode errors, I/O errors reading the image stream) and none of them should abort the rest of the document. `extract_pdf_pages` now distinguishes a new `"ocr_failed"` method (with `OCR_FAILED_MARKER`) from `"unavailable"` — tesseract present but failing on this specific page, vs. tesseract absent entirely. `ingest_pdf` skips both cases when building records (neither has usable text). `page.extract_text()` is now guarded with `(page.extract_text() or "").strip()`.*
-
-- **Verificado**: Test directo de `_ocr_page_image` con una página falsa cuyo `.images` lanza al iterarse — confirma que devuelve `None` en vez de propagar. Test de integración con `is_ocr_available()` forzado a `True` (tesseract "presente") y `_ocr_page_image` mockeado para devolver `None` — confirma que la página se marca `"ocr_failed"` con `OCR_FAILED_MARKER`, y que un PDF de 2 páginas (una con texto real, una con OCR fallido) completa la extracción de ambas páginas sin excepción. Test de `ingest_pdf` confirmando que las páginas `"ocr_failed"` se saltan igual que las `"unavailable"`. 3 tests nuevos.
-- *Verified: Direct test of `_ocr_page_image` with a fake page whose `.images` raises on iteration — confirms it returns `None` instead of propagating. Integration test with `is_ocr_available()` forced to `True` (tesseract "present") and `_ocr_page_image` mocked to return `None` — confirms the page is marked `"ocr_failed"` with `OCR_FAILED_MARKER`, and a 2-page PDF (one real text, one failed OCR) completes extraction of both pages without an exception. `ingest_pdf` test confirming `"ocr_failed"` pages are skipped the same as `"unavailable"` ones. 3 new tests.*
-
-- **Qué descarté**: Distinguir entre tipos específicos de fallo de OCR (`TesseractError` vs. error de Pillow vs. otro) con métodos/marcadores separados — descartado por complejidad no justificada; para el propósito de este pipeline (marcar honestamente "no hay texto usable aquí"), la distinción entre *por qué* falló no cambia qué hace el caller con esa página.
-- *What I discarded: Distinguishing between specific OCR failure types (`TesseractError` vs. a Pillow error vs. something else) with separate methods/markers — discarded as unjustified complexity; for this pipeline's purpose (honestly marking "no usable text here"), the distinction of *why* it failed doesn't change what the caller does with that page.*
-
-- **Qué asumí**: Que un `except Exception` amplio es aceptable aquí específicamente porque la función ya no propaga nada más allá de `None` — no está silenciando un error en medio de lógica de negocio más amplia, es la última línea de defensa de una función cuyo único trabajo es "intenta OCR, si no se puede, dilo honestamente."
-- *What I assumed: That a broad `except Exception` is acceptable here specifically because the function propagates nothing beyond `None` — it's not silencing an error in the middle of broader business logic, it's the last line of defense in a function whose only job is "try OCR, and if it can't, say so honestly."*
-
----
-
-### D48 · Validación del corpus fusionado — records malformados y colisión de ids entre fuentes
-
-- **Qué fallaba**: `retrieval_core.dedupe_by_field`/`fit_to_budget` acceden a `r[field]`/`r[field].strip()` sin validar que `field` exista ni que sea un string — un `KeyError`/`AttributeError` crudo, sin indicar qué archivo o registro lo causó, en funciones genéricas que no tienen ninguna noción de "corpus" ni de dónde vino el dato. Esto importa específicamente ahora porque el corpus del Grounding tool es una **fusión** (D38) de un archivo escrito a mano (`data/policy_docs.json`) y archivos generados por máquina (`data/ingested_docs/*.json`) — un `policy_docs.json` editado a mano con un campo faltante, o un archivo ingerido de un esquema más viejo/nuevo, tumbaba `/ask` sin ninguna pista de cuál registro o archivo era el culpable. Por separado: nada impedía que un doc ingerido reusara el id de un doc curado — ambos terminarían en el vector store, `known_policy_ids()` colapsaría el duplicado en un set (haciendo que el chequeo de alucinación de citas del harness de eval fuera ciego a esto), y una cita apuntando a ese id sería ambigua sobre qué documento realmente fundamentó la respuesta.
-- *What failed: `retrieval_core.dedupe_by_field`/`fit_to_budget` access `r[field]`/`r[field].strip()` without validating the field exists or is a string — a raw `KeyError`/`AttributeError`, with no indication of which file or record caused it, in generic functions with no notion of "corpus" or where the data came from. This matters specifically now because the Grounding tool's corpus is a **merge** (D38) of a hand-written file (`data/policy_docs.json`) and machine-generated ones (`data/ingested_docs/*.json`) — a hand-edited `policy_docs.json` missing a field, or an ingested file from an older/newer schema, took down `/ask` with no clue which record or file was at fault. Separately: nothing prevented an ingested doc from reusing a curated doc's id — both would end up in the vector store, `known_policy_ids()` would collapse the duplicate into a set (making the eval harness's citation-hallucination check blind to it), and a citation pointing at that id would be ambiguous about which document actually grounded the answer.*
-
-- **Qué hice**: Añadí `_validate_records()` en `grounding.py`, llamado sobre cada fuente (`policy_docs.json` y cada archivo en `data/ingested_docs/`) antes de fusionarla al corpus — falla con `ValueError` nombrando el archivo y el índice/id del registro problemático si falta algún campo requerido (`id`, `title`, `category`, `text`) o si `text` no es un string. `_load_policy_docs()` ahora también rastrea qué archivo definió cada id primero y lanza `ValueError` (nombrando ambos archivos) en cuanto detecta una colisión, ya sea entre un doc ingerido y uno curado o entre dos archivos ingeridos distintos.
-- *What I did: Added `_validate_records()` in `grounding.py`, called on each source (`policy_docs.json` and every file in `data/ingested_docs/`) before merging it into the corpus — raises `ValueError` naming the file and the problematic record's index/id if any required field (`id`, `title`, `category`, `text`) is missing or `text` isn't a string. `_load_policy_docs()` now also tracks which file first defined each id and raises `ValueError` (naming both files) the moment it detects a collision, whether between an ingested doc and a curated one or between two distinct ingested files.*
-
-- **Verificado**: 4 tests nuevos — campo requerido faltante, `text` no-string, colisión de id con un doc curado real (`RP-01`), y colisión entre dos archivos ingeridos distintos. Confirmado que los 15 docs curados y los flujos de ingesta existentes (sin colisiones) siguen pasando sin cambios. Suite completa y los 3 harnesses de eval sin regresiones.
-- *Verified: 4 new tests — missing required field, non-string `text`, id collision with a real curated doc (`RP-01`), and collision between two distinct ingested files. Confirmed the 15 curated docs and existing (non-colliding) ingestion flows still pass unchanged. Full suite and all 3 eval harnesses unaffected.*
-
-- **Qué descarté**: Namespacing automático de ids ingeridos (p. ej. prefijar cada id con el nombre del archivo fuente) para evitar colisiones en vez de fallar — descartado porque cambiaría silenciosamente el id que un caller espera citar (`ingest_and_index` ya deja que el caller elija su propio `doc_id_prefix` — un namespace automático adicional sería una segunda capa de indirección sin beneficio claro). Validar en `dedupe_by_field`/`fit_to_budget` mismos en vez de en el punto de carga del corpus — descartado porque esas funciones son deliberadamente genéricas (D22) y no deberían saber nada sobre la forma esperada de un registro de política; la validación pertenece donde el corpus se ensambla, no en cada función que lo consume después.
-- *What I discarded: Automatic namespacing of ingested ids (e.g. prefixing each id with its source filename) to avoid collisions instead of failing — discarded because it would silently change the id a caller expects to cite (`ingest_and_index` already lets the caller choose their own `doc_id_prefix` — an additional automatic namespace would be a second layer of indirection with no clear benefit). Validating inside `dedupe_by_field`/`fit_to_budget` themselves instead of at the corpus-load point — discarded because those functions are deliberately generic (D22) and shouldn't know anything about a policy record's expected shape; validation belongs where the corpus is assembled, not in every function that consumes it afterward.*
-
-- **Qué asumí**: Que fallar duro (`ValueError` que tumba la request) es preferible a saltar silenciosamente un registro malformado o un duplicado — para un sistema cuyo valor central es citar fuentes con precisión, un corpus corrupto debería anunciarse fuerte, no degradarse en silencio a un subconjunto parcialmente válido que nadie notaría.
-- *What I assumed: That failing hard (a `ValueError` that takes down the request) is preferable to silently skipping a malformed record or a duplicate — for a system whose core value is accurately citing sources, a corrupted corpus should announce itself loudly, not silently degrade to a partially-valid subset nobody would notice.*
-
----
-
-### D49 · `evaluate_copilot.py` llamaba a `known_policy_ids()` sin pasar su propio parámetro `mock`
-
-- **Qué fallaba**: `evaluate(mock: bool)` llamaba a `known_policy_ids()` sin argumento, usando silenciosamente el default de esa función (`mock=True`) sin importar lo que `mock` realmente fuera en ese scope. Benigno hoy porque ambos stores (mock/real) se construyen desde los mismos registros de `_load_policy_docs()` — pero un booleano por default decidiendo en silencio qué cache lee un chequeo de *validación* (el chequeo de alucinación de citas) es una trampa latente en cuanto los corpus de los dos modos puedan divergir alguna vez.
-- *What failed: `evaluate(mock: bool)` called `known_policy_ids()` with no argument, silently using that function's own default (`mock=True`) regardless of what `mock` actually was in that scope. Benign today because both stores (mock/real) are built from the same `_load_policy_docs()` records — but a defaulted boolean silently deciding which cache a *validation* check (the citation-hallucination check) reads is a latent trap the moment the two modes' corpora could ever diverge.*
-
-- **Qué hice**: Cambié la llamada a `known_policy_ids(mock=mock)`, pasando explícitamente el parámetro de la propia función en vez de dejar que el default oculto decida.
-- *What I did: Changed the call to `known_policy_ids(mock=mock)`, explicitly passing the function's own parameter instead of letting the hidden default decide.*
-
-- **Verificado**: `grep` confirmó que es el único caller de producción con este patrón — `tests/test_copilot_graph.py`'s propio uso ya fija `mock=True` explícitamente en el mismo test, así que su llamada sin argumento coincide con la intención real, no es el mismo bug. Suite completa y reporte de eval sin cambios (los dos modos comparten los mismos registros hoy, así que el output es idéntico).
-- *Verified: `grep` confirmed this is the only production caller with this pattern — `tests/test_copilot_graph.py`'s own usage already fixes `mock=True` explicitly in the same test, so its argument-less call matches the actual intent, not the same bug. Full suite and eval report unchanged (both modes share the same records today, so output is identical).*
-
----
-
-### D50 · `is_ocr_available()` se llamaba una vez por página en vez de una vez por documento
-
-- **Qué fallaba**: `extract_pdf_pages` llamaba `is_ocr_available()` dentro del loop de páginas — un `shutil.which` (escaneo del filesystem) por cada página sin capa de texto, cuando la respuesta no puede cambiar significativamente a mitad del loop de un mismo documento. El propio docstring de la función ya argumentaba correctamente por qué no cachear entre llamadas al *proceso* (una sesión larga que instala/desinstala tesseract sin reiniciar) — pero ese razonamiento es ortogonal a re-chequear N veces para un documento que abre y cierra en milisegundos.
-- *What failed: `extract_pdf_pages` called `is_ocr_available()` inside the page loop — one `shutil.which` (filesystem scan) per page with no text layer, when the answer can't meaningfully change mid-loop for the same document. The function's own docstring already correctly argued for not caching across *process* calls (a long-running session installing/uninstalling tesseract without restarting) — but that reasoning is orthogonal to re-checking N times for a document that opens and closes in milliseconds.*
-
-- **Qué hice**: Elevé la llamada a `is_ocr_available()` fuera del loop, una vez por llamada a `extract_pdf_pages()` — preserva exactamente el razonamiento de "no cachear entre llamadas al proceso" del docstring original, solo elimina la redundancia dentro de un mismo documento.
-- *What I did: Hoisted the `is_ocr_available()` call outside the loop, once per `extract_pdf_pages()` call — preserves exactly the original docstring's "don't cache across process calls" reasoning, just removes the redundancy within one document.*
-
-- **Verificado**: Test nuevo que cuenta las llamadas reales a `shutil.which` sobre un PDF de 3 páginas en blanco — confirmado que falla contra el código anterior (3 llamadas) y pasa con el fix (1 llamada). Los 31 tests preexistentes de `test_copilot_ingestion.py` pasan sin ningún cambio, confirmando que el refactor preserva el comportamiento exactamente.
-- *Verified: New test counting actual `shutil.which` calls over a 3-blank-page PDF — confirmed it fails against the prior code (3 calls) and passes with the fix (1 call). All 31 pre-existing `test_copilot_ingestion.py` tests pass with zero changes, confirming the refactor preserves behavior exactly.*
-
----
-
-
-
-## Parte 10 · Plataforma de producción
-*Part 10 · Production platform*
-
-Objetivo: llevar el Copilot de prototipo multi-agente de alta calidad a un servicio desplegable — seguridad de API, observabilidad, contenedor/orquestación, CI/CD y MLOps — sin romper la propiedad que hace este repo reproducible: `MOCK_LLM=1` + cero infraestructura sigue funcionando para tests y desarrollo local. Todo lo nuevo vive en `src/copilot/infra/` y `src/mlops/`; los nodos del grafo y las tools no cambian.
-*Goal: take the Copilot from a high-quality multi-agent prototype to a deployable service — API security, observability, container/orchestration, CI/CD and MLOps — without breaking the property that makes this repo reproducible: `MOCK_LLM=1` + zero infrastructure still works for tests and local dev. Everything new lives in `src/copilot/infra/` and `src/mlops/`; graph nodes and tools are unchanged.*
-
-### D51 · Observabilidad de producción — métricas Prometheus, logs correlacionados, y un Collector opcional (sin contradecir D37)
-
-- **Qué hice**: (1) `/metrics` con `prometheus-fastapi-instrumentator` (RED por handler, códigos de estado exactos — un pico de 429 no es un pico de 401) + series propias en `src/copilot/infra/metrics.py`: histograma de latencia por nodo del grafo, tools enrutadas, tokens LLM y coste estimado (desde `RunOutput.metrics` de Agno), eventos de guardrail/auth/rate-limit, ratio de cache. (2) `COPILOT_TRACE_EXPORTER=otlp` (OTLP/HTTP) hacia `deploy/otel-collector/config.yaml`: Jaeger para trazas, y el connector `span_metrics` que convierte spans en métricas RED para Prometheus. (3) Middleware ASGI que extrae `traceparent` W3C entrante, abre un span SERVER y devuelve `traceparent`/`X-Request-ID`. (4) Reglas de recording (p95/p99) y 5 alertas en `deploy/prometheus/rules.yml`; dashboard Grafana provisionado.
-- *What I did: (1) `/metrics` via `prometheus-fastapi-instrumentator` (RED per handler, exact status codes — a 429 spike isn't a 401 spike) + custom series in `src/copilot/infra/metrics.py`: per-graph-node latency histogram, routed tools, LLM tokens and estimated cost (from Agno's `RunOutput.metrics`), guardrail/auth/rate-limit events, cache ratio. (2) `COPILOT_TRACE_EXPORTER=otlp` (OTLP/HTTP) to `deploy/otel-collector/config.yaml`: Jaeger for traces, plus the `span_metrics` connector turning spans into RED metrics for Prometheus. (3) An ASGI middleware that extracts incoming W3C `traceparent`, opens a SERVER span, and returns `traceparent`/`X-Request-ID`. (4) p95/p99 recording rules and 5 alerts in `deploy/prometheus/rules.yml`; a provisioned Grafana dashboard.*
-
-- **Por qué**: Histogramas, no Summaries — los cuantiles de cliente no se agregan entre réplicas; los buckets sí. Métricas de la app *y* spanmetrics a propósito: `/metrics` sigue funcionando con el Collector caído, y spanmetrics sirve para cualquier servicio futuro que solo emita trazas. D37 dijo "sin collector" para que el repo corriera offline — sigue siendo cierto: el exportador por defecto es no-op, OTLP es opt-in.
-- *Why: Histograms, not Summaries — client-side quantiles can't be aggregated across replicas; buckets can. App metrics *and* spanmetrics on purpose: `/metrics` keeps working with the Collector down, and spanmetrics serves any future service that only emits traces. D37 said "no collector" so the repo ran offline — still true: the default exporter is a no-op, OTLP is opt-in.*
-
-- **Hallazgo real al implementarlo**: el span SERVER del middleware termina *después* de que `/ask` hace pop de su traza del buffer por-request (D40) — habría recreado exactamente la fuga que D40 arregló. `_RequestSpanBuffer` ahora ignora spans `SpanKind.SERVER`; test de regresión que vacía el buffer, hace 3 requests y exige que quede vacío. El primer intento filtraba por prefijo de nombre `copilot.` y rompía 4 tests existentes de `test_tracing.py` — filtrar por kind es el criterio correcto.
-- *Real finding while implementing: the middleware's SERVER span ends *after* `/ask` has popped its trace from the per-request buffer (D40) — it would have recreated exactly the leak D40 fixed. `_RequestSpanBuffer` now ignores `SpanKind.SERVER` spans; regression test empties the buffer, makes 3 requests and requires it to stay empty. The first attempt filtered on a `copilot.` name prefix and broke 4 existing `test_tracing.py` tests — filtering on kind is the right criterion.*
-
-- **Verificado**: stack de compose en vivo — una traza completa en Jaeger (`HTTP POST /ask` → `copilot.ask` → `copilot.node.{route,risk,data_analyst,synthesize}`), Prometheus con los 3 targets `up`, la regla `copilot:node_duration_seconds:p95` devolviendo series, `traces_span_metrics_*` expuestas por el Collector, dashboard y datasources cargados en Grafana. `otelcol validate` y `promtool check rules` en CI.
-- *Verified: live compose stack — a full trace in Jaeger (`HTTP POST /ask` → `copilot.ask` → `copilot.node.{route,risk,data_analyst,synthesize}`), Prometheus with all 3 targets `up`, the `copilot:node_duration_seconds:p95` rule returning series, `traces_span_metrics_*` exposed by the Collector, dashboard and datasources loaded in Grafana. `otelcol validate` and `promtool check rules` run in CI.*
-
-- **Qué descarté**: `opentelemetry-instrumentation-fastapi` — otra dependencia para lo que son ~60 líneas de middleware que además necesitaban el filtro de buffer de arriba. Exportador gRPC — arrastra `grpcio` (~10MB nativo) a la imagen sin ganancia a este volumen. Multiprocess mode de `prometheus_client` — un worker por contenedor, se escala por réplicas.
-- *What I discarded: `opentelemetry-instrumentation-fastapi` — another dependency for ~60 lines of middleware that needed the buffer filter above anyway. The gRPC exporter — drags `grpcio` (~10MB native) into the image for no gain at this volume. `prometheus_client` multiprocess mode — one worker per container, scaled by replicas.*
-
-- **Qué supuse**: Que los precios de lista de `gpt-4o-mini` en `MODEL_PRICING_PER_1M` son una estimación aceptable del coste — se etiqueta como estimación en la métrica y en el dashboard; si el proveedor devuelve `cost` en la respuesta, se usa ese.
-- *What I assumed: That `gpt-4o-mini` list prices in `MODEL_PRICING_PER_1M` are an acceptable cost estimate — labelled as an estimate in the metric and the dashboard; if the provider returns `cost` in the response, that is used instead.*
-
----
-
-### D52 · Seguridad de API — JWT, guardrails antes del LLM, y por qué no NeMo Guardrails / Llama Guard
-
-- **Qué hice**: (1) `src/copilot/infra/auth.py` — servidor de recursos OAuth2: valida Bearer JWT, RS256 vía JWKS de un IdP (rotación de claves sin redeploy) o HS256 para compose/tests; allowlist explícita de algoritmos (nunca `none`, nunca "lo que diga el header" — el clásico alg-confusion); exige `exp`/`sub` y `aud`/`iss` cuando están configurados; scope `copilot:ask`; 401 con `WWW-Authenticate` (RFC 6750), 403 por scope. `settings.py` **se niega a arrancar** con `APP_ENV=production` y `AUTH_MODE=none` (fail-closed). (2) `src/copilot/infra/guardrails.py` — redacción de PII *antes* del router, de la síntesis LLM, de la clave de cache, de los logs y del audit: tarjetas con checksum Luhn, SSN excluyendo rangos que la SSA nunca emite, CPF (los merchants son brasileños), IBAN, email, teléfono con 9-15 dígitos; la respuesta devuelve la pregunta redactada y los conteos. Prompt injection: reutiliza los patrones es/en/pt de `parte4_api/agent.py` + 5 nuevos; bloquea con 400 `prompt_injection_detected`.
-- *What I did: (1) `src/copilot/infra/auth.py` — an OAuth2 resource server: validates Bearer JWTs, RS256 via an IdP's JWKS (key rotation without redeploy) or HS256 for compose/tests; explicit algorithm allowlist (never `none`, never "whatever the header says" — classic alg confusion); requires `exp`/`sub` and `aud`/`iss` when configured; `copilot:ask` scope; 401 with `WWW-Authenticate` (RFC 6750), 403 on scope. `settings.py` **refuses to start** with `APP_ENV=production` and `AUTH_MODE=none` (fail closed). (2) `src/copilot/infra/guardrails.py` — PII redaction *before* the router, the synthesis LLM, the cache key, logs and audit: Luhn-checked cards, SSNs excluding never-issued SSA ranges, CPF (the merchants are Brazilian), IBAN, email, 9-15-digit phones; the response returns the redacted question and counts. Prompt injection: reuses `parte4_api/agent.py`'s es/en/pt patterns + 5 new ones; blocks with 400 `prompt_injection_detected`.*
-
-- **Por qué validación Luhn y umbral de dígitos**: el copilot recibe fechas (`2025-09-30` = 8 dígitos), merchant ids e importes constantemente; el regex de tarjeta de `parte4` sin checksum redactaría ids de pedido de 16 dígitos. Tests explícitos de *no*-redacción. La dirección de fallo aceptada es sobre-redactar (un SSN inválido `000-12-3456` no se etiqueta SSN pero sus 9 dígitos sí caen en la regla de teléfono — test documentado así).
-- *Why Luhn validation and a digit threshold: the copilot constantly receives dates (`2025-09-30` = 8 digits), merchant ids and amounts; `parte4`'s checksum-less card regex would redact 16-digit order ids. Explicit *non*-redaction tests. The accepted failure direction is over-redaction (an invalid SSN `000-12-3456` isn't tagged SSN, but its 9 digits do fall to the phone rule — test documents it that way).*
-
-- **Qué descarté — NeMo Guardrails / Llama Guard**: ambos son clasificadores LLM: una llamada de modelo extra (o una GPU para Llama Guard) por request, latencia y coste añadidos, y no determinísticos — rompería el `MOCK_LLM=1` determinístico del que dependen CI y el eval gate. Para PII, reglas validadas son el estándar pre-LLM precisamente porque son auditables y exactas. El límite de seguridad real sigue siendo arquitectónico (salida del router como `Literal` cerrado, ninguna tool ejecuta SQL/código generado por el LLM — D23). Un clasificador LLM tendría sentido como segunda capa *solo en modo real*, detrás de `check_input()`; no lo construí porque no tengo cómo medir su tasa de falsos positivos sin tráfico real.
-- *What I discarded — NeMo Guardrails / Llama Guard: both are LLM classifiers: an extra model call (or a GPU for Llama Guard) per request, added latency and cost, and non-deterministic — it would break the deterministic `MOCK_LLM=1` that CI and the eval gate depend on. For PII, validated rules are the pre-LLM standard precisely because they're auditable and exact. The real security boundary stays architectural (router output as a closed `Literal`, no tool executes LLM-generated SQL/code — D23). An LLM classifier would make sense as a second layer *in real mode only*, behind `check_input()`; I didn't build it because I have no way to measure its false-positive rate without real traffic.*
-
-- **Qué supuse**: Que la validación de tokens pertenece a la app aunque haya un API gateway delante — defensa en profundidad, y el `sub` validado es lo que identifica al tenant para el rate limit y el audit.
-- *What I assumed: That token validation belongs in the app even with an API gateway in front — defence in depth, and the validated `sub` is what identifies the tenant for rate limiting and audit.*
-
----
-
-### D53 · Redis para rate limiting y cache de respuestas — fail-open, y por qué ventana fija
-
-- **Qué hice**: `ratelimit.py` — ventana fija por minuto, clave = `sub` del JWT (o IP si anónimo), `INCR`+`EXPIRE` en una transacción Redis, cabeceras `X-RateLimit-*` y `Retry-After`; corre *después* de auth (un 401 no consume cuota — test). `cache.py` — cache de `/ask` con TTL, clave = SHA-256 de (pregunta **redactada**, merchant_id, locale, modo, versión de la app). Ambos con fallback en memoria si no hay `REDIS_URL`, y **fail-open** ante errores de Redis (log + métrica).
-- *What I did: `ratelimit.py` — per-minute fixed window, key = JWT `sub` (or IP if anonymous), `INCR`+`EXPIRE` in one Redis transaction, `X-RateLimit-*` and `Retry-After` headers; runs *after* auth (a 401 doesn't burn quota — tested). `cache.py` — a TTL cache for `/ask`, key = SHA-256 of (the **redacted** question, merchant_id, locale, mode, app version). Both fall back to in-process when `REDIS_URL` is unset, and **fail open** on Redis errors (log + metric).*
-
-- **Por qué**: Con >1 réplica detrás del HPA, un límite en memoria es un límite por pod — solo Redis lo hace global. Fail-open: un corte de Redis debe degradar la protección anti-abuso, no convertirse en un corte total de `/ask`; por la misma razón `/ready` informa del estado de Redis pero nunca falla por él (si no, un parpadeo de Redis vaciaría el Service entero). Cachear es correcto aquí porque todas las tools responden desde un snapshot estático; la versión en la clave invalida al desplegar. La clave no incluye al caller porque ninguna tool aplica autorización por caller — si se añadiera acceso por tenant, el tenant debe entrar en `cache_key()` primero (anotado en el código).
-- *Why: With >1 replica behind the HPA, an in-memory limit is a per-pod limit — only Redis makes it global. Fail-open: a Redis outage should degrade abuse protection, not become a full `/ask` outage; for the same reason `/ready` reports Redis status but never fails on it (otherwise a Redis blip would empty the whole Service). Caching is sound here because every tool answers from a static snapshot; the version in the key invalidates on deploy. The key excludes the caller because no tool applies per-caller authorization — if tenant-scoped access were added, the tenant must go into `cache_key()` first (noted in the code).*
-
-- **Qué descarté**: Ventana deslizante/token bucket (script Lua) — más exacto en el borde de ventana (la fija permite hasta 2x), pero esto es un guardarraíl de abuso/coste, no facturación. `slowapi` — otra dependencia para ~80 líneas.
-- *What I discarded: Sliding window/token bucket (Lua script) — more exact at the window edge (fixed allows up to 2x), but this is an abuse/cost guard, not billing. `slowapi` — another dependency for ~80 lines.*
-
-- **Verificado**: tests unitarios con un Redis falso (conteo y fail-open), tests de integración contra Redis real (TTL del contador incluido), y en compose: segunda petición idéntica con `cached: true` y latencia 0ms, claves `ratelimit:sub:dev-user:*` y `askcache:*` en Redis.
-- *Verified: unit tests against a fake Redis (counting and fail-open), integration tests against real Redis (counter TTL included), and in compose: a second identical request returns `cached: true` at 0ms, with `ratelimit:sub:dev-user:*` and `askcache:*` keys in Redis.*
-
----
-
-### D54 · Audit log en Postgres — y dos bugs reales que solo aparecieron al correrlo
-
-- **Qué hice**: `audit.py` — una fila por `/ask` (sujeto, outcome, status, ruta de tools, latencia, conteos de PII, `request_id`, `trace_id`), escrita en `BackgroundTasks` fuera del camino de la request, fail-open. **Nunca guarda la pregunta** — solo SHA-256 de la versión redactada, suficiente para detectar consultas repetidas/abusivas sin que la tabla de audit sea una segunda copia de lo que los usuarios pegan.
-- *What I did: `audit.py` — one row per `/ask` (subject, outcome, status, tool route, latency, PII counts, `request_id`, `trace_id`), written in `BackgroundTasks` off the request path, fail-open. **Never stores the question** — only a SHA-256 of the redacted version, enough to spot repeated/abusive queries without the audit table becoming a second copy of whatever users paste in.*
-
-- **Bug 1 — filas de `blocked`/`error` perdidas**: FastAPI descarta las `BackgroundTasks` cuando el endpoint *lanza* `HTTPException` — exactamente las filas que un auditor más quiere ver. Encontrado por un test que esperaba la fila `blocked`. Ahora esos caminos *devuelven* un `JSONResponse` con `background=` en vez de lanzar.
-- *Bug 1 — `blocked`/`error` rows lost: FastAPI discards `BackgroundTasks` when the endpoint *raises* `HTTPException` — exactly the rows an auditor most wants. Found by a test expecting the `blocked` row. Those paths now *return* a `JSONResponse` with `background=` instead of raising.*
-
-- **Bug 2 — carrera en la creación del esquema**: en compose, la primera fila `ok` desapareció. `CREATE TABLE IF NOT EXISTS` no es atómico en Postgres: dos escrituras concurrentes pasaron la comprobación y una murió con `UniqueViolation` en `pg_class`. Arreglo: lock de hilo en proceso + `pg_advisory_xact_lock` en la misma transacción que el DDL (cubre varias réplicas arrancando a la vez en un rollout). Test de integración de regresión con 4 "réplicas" × 8 escrituras concurrentes sobre una tabla recién borrada — **falla 3/3 sin el arreglo, pasa con él**.
-- *Bug 2 — schema-creation race: in compose, the first `ok` row went missing. `CREATE TABLE IF NOT EXISTS` isn't atomic in Postgres: two concurrent writes passed the existence check and one died on a `pg_class` `UniqueViolation`. Fix: an in-process thread lock + `pg_advisory_xact_lock` in the same transaction as the DDL (covers several replicas starting together during a rollout). Regression integration test with 4 "replicas" × 8 concurrent writes against a freshly dropped table — **fails 3/3 without the fix, passes with it**.*
-
-- **Qué descarté**: Escritura síncrona y fail-closed — lo correcto para sistemas donde cada acción *debe* auditarse (pagos, concesión de accesos); para un copilot analítico, disponibilidad por encima de completitud. Alembic — sobredimensionado para una única tabla append-only; sería el primer paso si el esquema evoluciona.
-- *What I discarded: Synchronous, fail-closed writes — right for systems where every action *must* be audited (payments, access grants); for an analytics copilot, availability over completeness. Alembic — oversized for a single append-only table; it would be the first step if the schema evolves.*
-
----
-
-### D55 · Logging estructurado con IDs de correlación
-
-- **Qué hice**: `logging_config.py` — formatter JSON que añade `request_id` (contextvar puesto por el middleware), `trace_id`/`span_id` del span OTel activo, y cualquier `extra={...}`; los loggers de uvicorn se redirigen al mismo handler y su access log se desactiva (el del middleware incluye `request_id`, `trace_id` y duración). `LOG_FORMAT=json` en contenedores, texto legible en local.
-- *What I did: `logging_config.py` — a JSON formatter adding `request_id` (a contextvar set by the middleware), `trace_id`/`span_id` from the active OTel span, and any `extra={...}`; uvicorn's loggers are routed to the same handler and its access log disabled (the middleware's includes `request_id`, `trace_id` and duration). `LOG_FORMAT=json` in containers, readable text locally.*
-
-- **Por qué**: Un solo ID pegado en un ticket encuentra la línea de log, la traza en Jaeger y la fila del audit. Middleware ASGI puro (no `BaseHTTPMiddleware`) para que el contextvar llegue de forma fiable a endpoints síncronos en el threadpool y el access log se escriba aunque la app lance.
-- *Why: One ID pasted into a ticket finds the log line, the trace in Jaeger and the audit row. Pure ASGI middleware (not `BaseHTTPMiddleware`) so the contextvar reliably reaches sync endpoints in the threadpool and the access log is written even when the app raises.*
-
-- **Verificado**: `docker logs` del contenedor muestra líneas JSON con `request_id: smoke-1` (el `X-Request-ID` enviado) y el mismo `trace_id` que el `traceparent` de la respuesta. Se quitó el campo `color_message` (duplicado ANSI de uvicorn) tras verlo en la salida real.
-- *Verified: the container's `docker logs` show JSON lines with `request_id: smoke-1` (the `X-Request-ID` sent) and the same `trace_id` as the response's `traceparent`. Dropped the `color_message` field (uvicorn's ANSI duplicate) after seeing it in real output.*
-
----
-
-### D56 · Contenedor, Kubernetes y CI/CD — y lo que el scan de Trivy encontró de verdad
-
-- **Qué hice**: (1) `Dockerfile`: bases pineadas tag+digest en líneas `FROM` literales (dependabot `docker` las actualiza), cache de uv con BuildKit, bytecode precompilado (necesario con rootfs read-only), UID 10001 no-root que no puede modificar su propio código, `HEALTHCHECK` con stdlib (sin curl), `--proxy-headers` para que el rate limit por IP vea al cliente real detrás del ingress. (2) `k8s/base` (Kustomize): namespace con Pod Security `restricted` forzado, Deployment con `readOnlyRootFilesystem`/`drop: [ALL]`/seccomp, probes startup/liveness(`/health`)/readiness(`/ready`), `preStop` sleep, topology spread por zona y nodo, HPA, PDB, Ingress TLS (bloquea `/metrics` hacia fuera), NetworkPolicy default-deny; `k8s/overlays/local` para minikube. (3) CI: ruff, mypy, bandit, Trivy fs, tests + gate de cobertura 85% (medido 93% con branch coverage), integración con Redis/Postgres como service containers, validación de manifests (kubeconform strict), collector (`otelcol validate`), reglas (`promtool`), compose; build + smoke test del contenedor con las mismas restricciones que k8s; gate Trivy. CD (push a main/tag): GHCR con SBOM + provenance SLSA, firma cosign keyless vía OIDC.
-- *What I did: (1) `Dockerfile`: base images pinned tag+digest in literal `FROM` lines (dependabot `docker` bumps them), BuildKit uv cache, precompiled bytecode (required with a read-only rootfs), non-root UID 10001 that can't modify its own code, a stdlib `HEALTHCHECK` (no curl), `--proxy-headers` so the per-IP rate limit sees the real client behind the ingress. (2) `k8s/base` (Kustomize): namespace enforcing Pod Security `restricted`, a Deployment with `readOnlyRootFilesystem`/`drop: [ALL]`/seccomp, startup/liveness (`/health`)/readiness (`/ready`) probes, `preStop` sleep, zone+node topology spread, HPA, PDB, TLS Ingress (blocks `/metrics` externally), default-deny NetworkPolicy; `k8s/overlays/local` for minikube. (3) CI: ruff, mypy, bandit, Trivy fs, tests + 85% coverage gate (measured 93% with branch coverage), integration against Redis/Postgres service containers, manifest validation (kubeconform strict), collector (`otelcol validate`), rules (`promtool`), compose; container build + smoke test under the same constraints as k8s; Trivy gate. CD (push to main/tag): GHCR with SBOM + SLSA provenance, cosign keyless signing via OIDC.*
-
-- **Hallazgos de Trivy (primer scan: 1 CRITICAL + 3 HIGH corregibles)**: `anyio` 4.13.0 (CRITICAL) → 4.14.2 vía lockfile; `lightgbm` 4.5.0 (CVE-2024-43598, RCE) → 4.6.0 — **verificado antes de subirlo** que `outputs/model.pkl` deserializa y predice idéntico (diferencia absoluta máxima 0.0 sobre los 9.967 merchants), dado lo frágil que es el pickle (D32); `msgpack` y `setuptools` no estaban en el venv — eran copias *vendorizadas dentro del pip del sistema* de la imagen base, que la app nunca usa → pip se desinstala del runtime. Resultado: 0 HIGH/CRITICAL corregibles.
-- *Trivy findings (first scan: 1 CRITICAL + 3 HIGH fixable): `anyio` 4.13.0 (CRITICAL) → 4.14.2 via the lockfile; `lightgbm` 4.5.0 (CVE-2024-43598, RCE) → 4.6.0 — **verified before bumping** that `outputs/model.pkl` unpickles and predicts identically (max abs diff 0.0 over all 9,967 merchants), given how fragile the pickle is (D32); `msgpack` and `setuptools` weren't in the venv — they were copies *vendored inside the base image's system pip*, which the app never uses → pip is uninstalled from the runtime. Result: 0 fixable HIGH/CRITICAL.*
-
-- **Tamaño de imagen 2.81GB → 1.36GB**: `xgboost` (no importado por ningún módulo, app o script) + su dependencia `nvidia-nccl-cu12`, `jupyter` e `ipykernel` eran ~0.9GB que nada carga en runtime. D33/D34 lo habían registrado como trade-off aceptado; con el tamaño de imagen como objetivo explícito, se revisa: pasan al extra `notebooks` (`make setup` lo sigue instalando). Lo que queda es runtime real: numba/llvmlite (vía shap), scipy, pandas, duckdb.
-- *Image size 2.81GB → 1.36GB: `xgboost` (not imported by any module, app or script) + its `nvidia-nccl-cu12` dependency, `jupyter` and `ipykernel` were ~0.9GB nothing loads at runtime. D33/D34 had recorded it as an accepted tradeoff; with image size as an explicit goal, revisited: they move to a `notebooks` extra (`make setup` still installs it). What remains is real runtime: numba/llvmlite (via shap), scipy, pandas, duckdb.*
-
-- **Lint como gate real**: D29 lo dejó advisory por la deuda en los notebooks. Arreglada la deuda de los `.py` (imports de `parte4_api/agent.py` subidos al principio del módulo — verificado que no había ciclo; import-sort en 3 tests) y excluidos los notebooks en `pyproject.toml` → ruff bloquea en CI. `target-version` de ruff pasa a `py310` para coincidir con `requires-python` (flaggeaba `timezone.utc`, que es lo correcto en 3.10). mypy: estricto en `src/copilot/infra` y `src/mlops`, estándar en el resto de `src/copilot` — arreglar el tipado de `traced_node` (Protocol genérico, porque LangGraph casa por el *nombre* del parámetro `state`) destapó que `strict = true` dentro de un override de mypy se filtra a todo el run; los flags se listan uno a uno.
-- *Lint as a real gate: D29 left it advisory because of notebook debt. Fixed the `.py` debt (`parte4_api/agent.py`'s imports hoisted to module top — verified no cycle; import sort in 3 tests) and excluded notebooks in `pyproject.toml` → ruff blocks in CI. Ruff's `target-version` moves to `py310` to match `requires-python` (it flagged `timezone.utc`, which is correct on 3.10). mypy: strict on `src/copilot/infra` and `src/mlops`, standard on the rest of `src/copilot` — fixing `traced_node`'s typing (a generic Protocol, because LangGraph matches on the parameter *name* `state`) revealed that `strict = true` inside a mypy override leaks to the whole run; the flags are listed individually.*
-
-- **Supply chain de CI**: Trivy, kubeconform y el collector corren como imágenes oficiales pineadas por digest, no vía acciones de terceros — los tags de `aquasecurity/trivy-action` fueron secuestrados en 2026 para exfiltrar secretos de CI. Las acciones restantes (GitHub/Docker/sigstore) están pineadas por SHA de commit completo con el tag en un comentario — un tag movido o secuestrado no cambia lo que corre; dependabot actualiza SHA y comentario juntos.
-- *CI supply chain: Trivy, kubeconform and the collector run as official digest-pinned images, not via third-party actions — `aquasecurity/trivy-action`'s tags were hijacked in 2026 to exfiltrate CI secrets. The remaining actions (GitHub/Docker/sigstore) are pinned to full commit SHAs with the tag in a comment — a moved or hijacked tag can't change what runs; dependabot bumps SHA and comment together.*
-
-- **Qué descarté**: Helm — Kustomize cubre base + overlays sin plantillas; un chart tendría sentido para distribuir a terceros. Redis/Postgres como StatefulSets en el namespace — en producción son servicios gestionados (ElastiCache/RDS), referenciados por Secret. Límite de CPU en el pod — el throttling de CFS empeora el p99 de una API sensible a latencia más que un vecino ruidoso; se fija request y el HPA escala sobre él. Distroless — el venv enlaza al intérprete de la imagen base; cambiar de base es un proyecto aparte.
-- *What I discarded: Helm — Kustomize covers base + overlays without templating; a chart would make sense for distributing to third parties. Redis/Postgres as StatefulSets in the namespace — in production they're managed services (ElastiCache/RDS), referenced via Secret. A pod CPU limit — CFS throttling hurts a latency-sensitive API's p99 more than a noisy neighbour; the request is set and the HPA scales on it. Distroless — the venv links to the base image's interpreter; changing base is its own project.*
-
-- **Qué supuse**: `FORWARDED_ALLOW_IPS=10.0.0.0/8` y los CIDRs de la NetworkPolicy son placeholders a ajustar al rango de pods/VPC de cada cluster. Los recursos (512Mi request / 1Gi límite) salen de medir ~370MiB RSS en caliente en compose, con el CSV fixture; con el CSV real de ~200k filas habría que volver a medir.
-- *What I assumed: `FORWARDED_ALLOW_IPS=10.0.0.0/8` and the NetworkPolicy CIDRs are placeholders to adjust per cluster pod/VPC range. Resources (512Mi request / 1Gi limit) come from measuring ~370MiB warm RSS in compose with the fixture CSV; the real ~200k-row CSV would need re-measuring.*
-
----
-
-### D57 · MLflow para el reentrenamiento del modelo de churn, y drift por PSI
-
-- **Qué hice**: `src/mlops/churn_training.py` + `scripts/train_churn_mlflow.py`: sweep de 4 configuraciones LightGBM (la primera = exactamente la del notebook, para que sea comparable con `outputs/metrics.json`), un run MLflow anidado por configuración, selección por **PR-AUC de validación** (con ~9% de prevalencia el ROC-AUC halaga), refit sobre train+val y un único reporte sobre test intacto. Drift: PSI por feature (train vs. holdout, o vs. un snapshot nuevo con `--current-csv`), con bins por cuantiles de la referencia y un bin propio para nulos, umbrales 0.1/0.2; métricas `drift_psi_*` + `drift_report.json`. El modelo se registra con firma e input example. Servidor MLflow en compose (`--profile mlops`).
-- *What I did: `src/mlops/churn_training.py` + `scripts/train_churn_mlflow.py`: a 4-config LightGBM sweep (the first = exactly the notebook's, so it's comparable to `outputs/metrics.json`), one nested MLflow run per config, selection by **validation PR-AUC** (at ~9% prevalence ROC-AUC flatters), refit on train+val and a single report on the untouched test set. Drift: per-feature PSI (train vs. holdout, or vs. a new snapshot via `--current-csv`), reference-quantile bins plus a dedicated null bin, 0.1/0.2 thresholds; `drift_psi_*` metrics + `drift_report.json`. The model is logged with a signature and input example. An MLflow server in compose (`--profile mlops`).*
-
-- **Por qué features compartidas**: extraje `build_feature_matrix()` de `risk.build_merchant_features()` — el entrenamiento offline y el scoring online usan ahora *la misma función*, así que el skew train/serve es estructuralmente imposible en vez de mantenerse a mano (el notebook sigue sin ser importable, D24). Los tests de `risk` y del eval pasan sin cambios.
-- *Why shared features: I extracted `build_feature_matrix()` from `risk.build_merchant_features()` — offline training and online scoring now use *the same function*, so train/serve skew is structurally impossible instead of kept in sync by hand (the notebook still isn't importable, D24). The `risk` and eval tests pass unchanged.*
-
-- **Formato skops, no pickle**: MLflow 3.x serializa modelos sklearn con skops (sin ejecución de código arbitrario al cargar) — la contraparte segura de la advertencia de `joblib.load()` en SECURITY.md. Hay que declarar 5 tipos de confianza (Booster/LGBMClassifier de LightGBM y 3 internos de sklearn/numpy), que quedan guardados con el modelo.
-- *skops format, not pickle: MLflow 3.x serializes sklearn models with skops (no arbitrary code execution on load) — the safe counterpart of SECURITY.md's `joblib.load()` warning. 5 trusted types must be declared (LightGBM's Booster/LGBMClassifier and 3 sklearn/numpy internals), stored with the model.*
-
-- **Resultado real, sin adornar** (CSV real, ~10k merchants): ganó la configuración más regularizada (`num_leaves=7`, `min_child_samples=100`): test ROC-AUC 0.628 / PR-AUC 0.125, frente al 0.583 del notebook. No lo presento como mejora limpia: el split de test puede no coincidir merchant a merchant con el del notebook (orden de filas distinto), y el Brier empeora a 0.208 (`scale_pos_weight` sin calibrar). Drift máximo PSI 0.016 — esperable, train y holdout son el mismo snapshot. **No** sobrescribe `outputs/model.pkl`: promover un modelo reentrenado al artefacto servido es una decisión humana aparte (y la restricción de pickle de sklearn en `dependabot.yml` es justo por qué).
-- *Real result, unvarnished (real CSV, ~10k merchants): the most regularized config won (`num_leaves=7`, `min_child_samples=100`): test ROC-AUC 0.628 / PR-AUC 0.125, vs. the notebook's 0.583. I don't present it as a clean improvement: the test split may not match the notebook's merchant-for-merchant (different row order), and Brier worsens to 0.208 (uncalibrated `scale_pos_weight`). Max drift PSI 0.016 — expected, train and holdout are the same snapshot. It does **not** overwrite `outputs/model.pkl`: promoting a retrained model into the served artifact is a separate human decision (and the sklearn pickle constraint in `dependabot.yml` is exactly why).*
-
-- **Qué descarté**: `mlflow` completo en el entorno de la app — Flask/alembic/SQLAlchemy que el cliente no necesita; `mlflow-skinny` es el cliente, el servidor corre en su propio contenedor. Optuna — un grid de 4 puntos es auditable y suficiente para un modelo cuyo techo lo marca la señal del dataset, no la búsqueda.
-- *What I discarded: full `mlflow` in the app env — Flask/alembic/SQLAlchemy the client doesn't need; `mlflow-skinny` is the client, the server runs in its own container. Optuna — a 4-point grid is auditable and enough for a model whose ceiling is set by the dataset's signal, not the search.*
-
----
-
-
-
-## Decisiones extra  
-*Additional decisions*
-
-### D13 · Bump de pandas 2.2.2 a 2.2.3
-
-- **Qué hice**: Actualicé `pyproject.toml` de `pandas==2.2.2` a `pandas==2.2.3`.
-- *What I did: Updated `pyproject.toml` from `pandas==2.2.2` to `pandas==2.2.3`.*
-
-- **Por qué**: pandas 2.2.2 no tiene wheel precompilado para Python 3.13. `uv sync` intentaba compilar desde source y fallaba en el paso de Meson/Cython. pandas 2.2.3 (patch release, misma API) sí tiene wheel para Python 3.13, y en 3.11/3.12 no hay diferencia de comportamiento.
-- *Why: pandas 2.2.2 has no precompiled wheel for Python 3.13. `uv sync` tried to compile from source and failed at the Meson/Cython step. pandas 2.2.3 (patch release, identical API) does have a 3.13 wheel, and there's no behavior difference on 3.11/3.12.*
-
-- **Qué supuse**: Que quien corra esto en 3.11 o 3.12 no ve ningún cambio de comportamiento por el bump de patch version.
-- *What I assumed: That anyone running this on 3.11 or 3.12 sees no behavior change from the patch-version bump.*
+Cada uno es una decisión de alcance con un siguiente paso explícito, no un descuido.

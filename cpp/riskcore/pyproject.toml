@@ -1,0 +1,20 @@
+[build-system]
+requires = ["scikit-build-core==0.11.6", "pybind11==3.0.1"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "riskcore"
+version = "0.1.0"
+description = "C++20 portfolio VaR / Expected Shortfall engine with Python bindings"
+requires-python = ">=3.10"
+dependencies = ["numpy>=2"]
+
+[tool.scikit-build]
+cmake.version = ">=3.24"
+cmake.build-type = "Release"
+wheel.packages = ["python/riskcore"]
+build-dir = "build/{wheel_tag}"
+
+[tool.scikit-build.cmake.define]
+RISKCORE_PYTHON = "ON"
+RISKCORE_TESTS = "OFF"

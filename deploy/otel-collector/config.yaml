@@ -1,11 +1,11 @@
-# OpenTelemetry Collector pipeline (D51).
+# OpenTelemetry Collector pipeline (DECISIONS.md D16).
 #
 #   app --OTLP/HTTP--> collector --OTLP--> Jaeger          (trace storage + UI)
 #                         |
 #                         +--spanmetrics--> :8889 <--scrape-- Prometheus --> Grafana
 #
 # The spanmetrics connector turns spans into RED metrics (calls, errors,
-# duration histograms per span name) — so per-node latency is available
+# duration histograms per span name), so per-node latency is available
 # from traces alone, independently of the app's own /metrics. The two are
 # deliberately redundant: /metrics keeps working with the collector down,
 # and spanmetrics works for any future service that only emits traces.

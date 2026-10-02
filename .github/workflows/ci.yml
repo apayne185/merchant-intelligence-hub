@@ -1,16 +1,15 @@
-# Two-stage pipeline (DECISIONS.md D56):
+# Two-stage pipeline:
 #
 #   CI (every PR + push)                         CD (push to main / v* tag, CI green)
-#   ─────────────────────                        ─────────────────────────────────────
-#   lint ─────────┐                              publish: buildx → GHCR
-#   typecheck ────┤                                (SBOM + SLSA provenance attached)
-#   security ─────┤                              cosign keyless sign (GitHub OIDC)
-#   test ─────────┼──> container ──────────────> image digest → job summary
-#   integration ──┤    (build, smoke-run
-#   deploy-config ┘     read-only, Trivy gate)
+#   lint ---------+                              publish: buildx -> GHCR
+#   typecheck ----+                                (SBOM + SLSA provenance attached)
+#   security -----+                              cosign keyless sign (GitHub OIDC)
+#   cpp ----------+                              image digest -> job summary
+#   test ---------+--> container ------------->
+#   integration --+    (build, smoke-run read-only, Trivy gate)
+#   deploy-config +
 #
-# The job id `test` is kept from the original workflow on purpose — it's
-# the status check branch protection was set up to require (D29).
+# The job id `test` is the status check branch protection requires.
 name: CI/CD
 
 on:
@@ -31,13 +30,10 @@ concurrency:
 env:
   PYTHON_VERSION: "3.13"
   IMAGE: ghcr.io/${{ github.repository }}
-  # Scanner/validator images pinned by digest and run as plain containers,
-  # instead of third-party wrapper actions: aquasecurity/trivy-action's
-  # tags were hijacked in 2026 to exfiltrate CI secrets — a digest-pinned
-  # official image removes that whole class of supply-chain risk. The
-  # remaining actions are pinned to full commit SHAs (tag in the trailing
-  # comment), so a moved/hijacked tag can't change what runs; dependabot's
-  # github-actions ecosystem bumps SHA and comment together.
+  # Scanners/validators run as digest-pinned official images rather than
+  # third-party wrapper actions (aquasecurity/trivy-action's tags were
+  # hijacked in 2026 to exfiltrate CI secrets). Every action is pinned to a
+  # full commit SHA, so a moved tag cannot change what runs.
   TRIVY_IMAGE: aquasec/trivy:0.67.2@sha256:e2b22eac59c02003d8749f5b8d9bd073b62e30fefaef5b7c8371204e0a4b0c08
   OTELCOL_IMAGE: otel/opentelemetry-collector-contrib:0.161.0@sha256:fd328de2552466ad78385e1b1289c3f2402b1c45f265b252aab1955b42845ac1
   KUBECONFORM_IMAGE: ghcr.io/yannh/kubeconform:v0.7.0
@@ -56,20 +52,14 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Lockfile freshness check
-        # `uv sync` (below) silently reconciles pyproject.toml/uv.lock
-        # drift on the fly without failing — which is exactly why this repo
-        # accumulated real drift 4 times over via dependabot merges
-        # (shap, pre-commit, pyspark, ruff all had a stale uv.lock even
-        # though pyproject.toml was correctly bumped) before a `--frozen`
-        # sync (in the Dockerfile) finally hit it as a hard build failure.
-        # `uv lock --check` catches this immediately instead. See
-        # DECISIONS.md D33.
+        # `uv sync` silently reconciles pyproject/uv.lock drift; this fails on it.
         run: uv lock --check
 
-      - name: Ruff (hard gate)
-        # Was advisory (continue-on-error) until D56 cleared the .py lint
-        # debt; notebooks are excluded in pyproject.toml, not here.
+      - name: Ruff
         run: uv run --extra dev ruff check src/ tests/ scripts/
+
+      - name: No em dashes (house style)
+        run: python3 scripts/check_no_em_dash.py
 
   typecheck:
     runs-on: ubuntu-latest
@@ -80,8 +70,8 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - name: mypy (strict on src/copilot/infra + src/mlops, see pyproject.toml)
-        run: uv run --extra dev --extra mlops mypy
+      - name: mypy (strict on infra, filings, risk, streaming, verification; see pyproject.toml)
+        run: uv run --extra dev mypy
 
   security:
     runs-on: ubuntu-latest
@@ -93,14 +83,31 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Bandit SAST
-        # Zero findings at every severity today; each suppression in the
-        # code carries an inline `nosec <id>` + justification (D56).
+        # Zero findings; each suppression carries an inline justification.
         run: uv run --extra dev bandit -r src scripts -q
-      - name: Trivy — dependency + secret scan of the repo
+      - name: Trivy dependency + secret scan of the repo
         run: >
           docker run --rm -v "$PWD:/src:ro" ${{ env.TRIVY_IMAGE }}
           fs --scanners vuln,secret --severity HIGH,CRITICAL --ignore-unfixed
           --exit-code 1 --skip-dirs /src/.venv /src
+
+  cpp:
+    # The C++ engine on its own: warnings-as-errors build, unit tests, and the
+    # same tests under AddressSanitizer + UndefinedBehaviorSanitizer.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Release build + ctest
+        run: |
+          cmake -S cpp/riskcore -B build/release -DRISKCORE_PYTHON=OFF -DRISKCORE_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/release -j
+          ctest --test-dir build/release --output-on-failure
+      - name: ASan + UBSan build + ctest
+        run: |
+          cmake -S cpp/riskcore -B build/asan -DRISKCORE_PYTHON=OFF -DRISKCORE_TESTS=ON -DRISKCORE_SANITIZE=ON -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build/asan -j
+          ctest --test-dir build/asan --output-on-failure
 
   test:
     runs-on: ubuntu-latest
@@ -116,15 +123,13 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install dependencies
-        run: uv sync --extra dev --extra mlops
+      - name: Install dependencies (compiles riskcore)
+        run: uv sync --extra dev
 
       - name: Test + coverage gate
-        # fail_under=85 lives in pyproject.toml [tool.coverage.report];
-        # measured 93% (branch coverage) when the gate was introduced.
+        # fail_under lives in pyproject.toml [tool.coverage.report].
         env:
           MOCK_LLM: "1"
-          MLFLOW_DISABLE_AGENT_HINT: "1"
         run: uv run pytest -v --cov --cov-report=term --cov-report=xml
 
       - name: Upload coverage report
@@ -135,36 +140,30 @@ jobs:
           path: coverage.xml
           if-no-files-found: ignore
 
-      - name: Eval — complaint classifier golden set
+      - name: "Eval: golden set + adversarial verifier test"
         env:
           MOCK_LLM: "1"
-        run: uv run python -m scripts.evaluate_classifier
-
-      - name: Eval — copilot golden set
-        env:
-          MOCK_LLM: "1"
+          LOG_LEVEL: WARNING
         run: uv run python -m scripts.evaluate_copilot
 
-      - name: Eval — retrieval quality benchmark (mock embedder)
-        # Informational report, not a hard gate here — the floors this
-        # benchmark cares about (recall@3, MRR) are already enforced as
-        # pytest assertions in tests/test_evaluate_retrieval.py, which runs
-        # as part of the Test step above. This step just regenerates
-        # outputs/eval_report_retrieval.json so it stays in sync with the
-        # committed golden set. See DECISIONS.md D36.
-        env:
-          MOCK_LLM: "1"
-        run: uv run python -m scripts.evaluate_retrieval
-
-      - name: Eval gate — hard reliability floors
-        # Fails the build. Floors are anchored to committed baseline values
-        # (DECISIONS.md D21, D28); both harnesses are deterministic under
-        # MOCK_LLM=1, so a failure here means a real regression, not noise.
-        # See D29.
+      - name: Eval gate (hard floors)
+        # Deterministic under MOCK_LLM=1: a drop below a floor is a regression, not noise.
         run: uv run python -m scripts.check_eval_floors
 
+      - name: Benchmark riskcore vs NumPy (informational)
+        run: uv run python -m scripts.benchmark_riskcore >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload eval + benchmark reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: eval-reports
+          path: outputs/*.json
+          if-no-files-found: ignore
+
   integration:
-    # The real backends the unit tests replace with fakes (D53/D54).
+    # The real backends the unit tests replace with fakes (Redis streams,
+    # rate limits, cache; Postgres audit log).
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -197,12 +196,12 @@ jobs:
         run: uv run pytest -v -m integration
 
   deploy-config:
-    # Every deployment artifact is validated, not just the Python.
+    # Every deployment artifact is validated, not just the code.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Kubernetes manifests — kustomize render + kubeconform (strict)
+      - name: Kubernetes manifests (kustomize render + kubeconform, strict)
         run: |
           for dir in k8s/base k8s/overlays/local; do
             echo "::group::$dir"
@@ -223,7 +222,7 @@ jobs:
         run: docker compose -f docker-compose.yml config --quiet
 
   container:
-    needs: [lint, typecheck, test]
+    needs: [lint, typecheck, cpp, test]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -236,29 +235,33 @@ jobs:
           context: .
           platforms: linux/amd64
           load: true
-          tags: merchant-copilot:ci
+          tags: filings-copilot:ci
           build-args: |
             VERSION=ci-${{ github.sha }}
             REVISION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Smoke test — same runtime constraints as k8s (read-only rootfs, non-root, no caps)
+      - name: Smoke test (same runtime constraints as k8s; read-only rootfs, non-root, no caps)
         env:
           SECRET: ci-only-secret-0123456789abcdef0123456789
         run: |
           docker run -d --name copilot -p 8001:8001 \
             --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
             -e MOCK_LLM=1 -e AUTH_MODE=jwt -e AUTH_JWT_SECRET="$SECRET" \
-            merchant-copilot:ci
+            filings-copilot:ci
           for _ in $(seq 1 30); do curl -fsS localhost:8001/health && break; sleep 2; done
           test "$(docker exec copilot id -u)" = "10001"
           curl -fsS localhost:8001/ready
           test "$(curl -s -o /dev/null -w '%{http_code}' -XPOST localhost:8001/ask -H 'content-type: application/json' -d '{"question":"x"}')" = "401"
-          TOKEN=$(docker run --rm -e SECRET="$SECRET" --entrypoint python merchant-copilot:ci -c \
+          TOKEN=$(docker run --rm -e SECRET="$SECRET" --entrypoint python filings-copilot:ci -c \
             "import os; from src.copilot.infra.auth import mint_dev_token; print(mint_dev_token(os.environ['SECRET']))")
           curl -fsS -XPOST localhost:8001/ask -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
-            -d '{"question":"Is merchant 90001 at risk of churning?","merchant_id":90001}' | python3 -m json.tool
+            -d '{"question":"What was Apple revenue in FY2025?"}' > answer.json
+          python3 -m json.tool answer.json
+          python3 -c "import json,sys; v=json.load(open('answer.json'))['verification']; sys.exit(0 if v['status']=='verified' else 1)"
+          curl -fsS -XPOST localhost:8001/v1/risk -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+            -d '{"portfolio":[{"ticker":"AAPL","weight":0.5},{"ticker":"JPM","weight":0.5}],"mc_paths":5000}' | python3 -m json.tool
           curl -fsS localhost:8001/metrics | grep -q copilot_ask_requests_total
           docker inspect --format '{{.State.Health.Status}}' copilot
 
@@ -266,15 +269,15 @@ jobs:
         if: failure()
         run: docker logs copilot
 
-      - name: Trivy image scan (gate — fixable HIGH/CRITICAL fail the build)
+      - name: Trivy image scan (gate; fixable HIGH/CRITICAL fail the build)
         run: >
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ${{ env.TRIVY_IMAGE }}
           image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
-          merchant-copilot:ci
+          filings-copilot:ci
 
   # ───────────────────────────── CD ─────────────────────────────
   publish:
-    needs: [lint, typecheck, security, test, integration, deploy-config, container]
+    needs: [lint, typecheck, security, cpp, test, integration, deploy-config, container]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -320,7 +323,7 @@ jobs:
           provenance: mode=max
           cache-from: type=gha
 
-      - name: Sign image (cosign keyless — identity = this workflow run)
+      - name: Sign image (cosign keyless; identity = this workflow run)
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: cosign sign --yes "${IMAGE}@${DIGEST}"
@@ -332,7 +335,7 @@ jobs:
           {
             echo "### Published \`${IMAGE}@${DIGEST}\`"
             echo
-            echo "Deploy by digest: \`cd k8s/base && kustomize edit set image merchant-copilot=${IMAGE}@${DIGEST}\`"
+            echo "Deploy by digest: \`cd k8s/base && kustomize edit set image filings-copilot=${IMAGE}@${DIGEST}\`"
             echo
             echo "Verify: \`cosign verify ${IMAGE}@${DIGEST} --certificate-identity-regexp 'https://github.com/${GITHUB_REPOSITORY}/' --certificate-oidc-issuer https://token.actions.githubusercontent.com\`"
           } >> "$GITHUB_STEP_SUMMARY"

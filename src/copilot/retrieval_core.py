@@ -1,55 +1,38 @@
 """
-Corpus-agnostic RAG machinery: in-memory vector store, mock/real embedders,
-and generic context-window management (dedup + character budget).
+Corpus-agnostic retrieval: BM25 lexical search, an in-memory dense vector
+store, and hybrid ranking with Reciprocal Rank Fusion.
 
-Extracted from src/parte4_api/retrieval.py (DECISIONS.md D17-D20), which
-built this for a single corpus (historical complaints). A second corpus
-(data/policy_docs.json, the Grounding tool in src/copilot/tools/grounding.py)
-needed the exact same mechanics, and duplicating a working, already-tested
-vector store instead of sharing it would be the kind of unjustified
-reinvention this project's own decisions (D17-D19) argue against — see
-DECISIONS.md D22.
+  mock mode: BM25 only (offline, deterministic, no model download);
+  real mode: BM25 and dense embeddings, fused with RRF (k=60).
 
-src/parte4_api/retrieval.py imports SimpleVectorStore and the embedders from
-here and keeps its own corpus-specific caching/wrapper functions
-(build_case_store, get_case_store, retrieve_similar_cases) — its public API
-is unchanged by this extraction.
+Why hybrid for filings: dense embeddings capture paraphrase ("dependence on
+our CEO" ~ "key personnel"), while BM25 keeps rare exact terms that decide
+relevance in legal text ("talc", "Section 232", "CHIPS Act") from being
+averaged away. RRF combines rank positions, so the two scores never need to
+be calibrated against each other.
+
+Scale note: brute-force cosine over ~1k passages is a single matrix-vector
+product (well under a millisecond), so an ANN index (FAISS, pgvector) would
+add an operational dependency without a measurable latency win at this
+corpus size. The store's interface (add/query) is what an ANN-backed
+replacement would implement.
 """
 from __future__ import annotations
 
 import os
+import re
+import threading
 from collections.abc import Callable
 from typing import Any, Protocol
 
 import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
 
-# AZURE_OPENAI_ENDPOINT is the one env var Microsoft's SDK docs treat as
-# "Azure is configured" — api_key/api_version have same-named non-Azure
-# fallbacks (AZURE_OPENAI_API_KEY isn't the same var as OPENAI_API_KEY, but
-# both mean "some OpenAI-compatible API key exists"), while an Azure
-# resource endpoint URL has no ambiguous non-Azure meaning. So it's what
-# _select_real_embedder() below branches on. See DECISIONS.md D39.
 _AZURE_ENDPOINT_ENV_VAR = "AZURE_OPENAI_ENDPOINT"
-
-
-# -----------------------------------------------------------------------------
-# Vector store — brute-force cosine similarity, adequate for ~10s-100s of
-# records held in memory. Not meant to scale past that without swapping in a
-# real ANN index (FAISS/pgvector/Pinecone) — see DECISIONS.md D17.
-# -----------------------------------------------------------------------------
-def _cosine_similarity(query_vec: np.ndarray, matrix: np.ndarray) -> np.ndarray:
-    query_vec = query_vec.reshape(1, -1)
-    query_norm = np.linalg.norm(query_vec, axis=1, keepdims=True)
-    matrix_norm = np.linalg.norm(matrix, axis=1, keepdims=True)
-    query_norm = np.where(query_norm == 0, 1e-9, query_norm)
-    matrix_norm = np.where(matrix_norm == 0, 1e-9, matrix_norm)
-    sims = (matrix @ query_vec.T) / (matrix_norm * query_norm.T)
-    return sims.ravel()
+_EMBED_BATCH = 256
 
 
 class SimpleVectorStore:
-    """Minimal in-memory vector store: add() + query() by cosine similarity."""
+    """Rows are L2-normalised once at insert time, so a query is one dot product."""
 
     def __init__(self) -> None:
         self._vectors: np.ndarray | None = None
@@ -60,67 +43,119 @@ class SimpleVectorStore:
 
     @property
     def records(self) -> list[dict[str, Any]]:
-        """The exact records this store was built from — lets callers (e.g.
-        an eval harness's hallucination check) inspect what's actually
-        cached and being served, instead of re-reading the source file and
-        risking a stale/live desync once the store is cached. See
-        DECISIONS.md D34/D35."""
         return list(self._records)
 
+    @staticmethod
+    def _normalise(m: np.ndarray) -> np.ndarray:
+        norms = np.linalg.norm(m, axis=-1, keepdims=True)
+        return m / np.where(norms == 0, 1.0, norms)
+
     def add(self, records: list[dict[str, Any]], vectors: np.ndarray) -> None:
+        vectors = self._normalise(np.asarray(vectors, dtype=np.float64))
         self._records.extend(records)
         self._vectors = vectors if self._vectors is None else np.vstack([self._vectors, vectors])
 
     def query(self, vector: np.ndarray, k: int = 3) -> list[dict[str, Any]]:
-        # k <= 0 guarded explicitly: a negative k reaching the slice below
-        # would hit Python's negative-slice semantics ([:-1] drops the last
-        # element instead of returning nothing) and silently return almost
-        # the whole corpus instead of an empty result.
         if not self._records or self._vectors is None or k <= 0:
             return []
-        sims = _cosine_similarity(vector, self._vectors)
+        sims = self._vectors @ self._normalise(np.asarray(vector, dtype=np.float64))
         k = min(k, len(self._records))
-        # lexsort with a fixed secondary key (original index), not argsort+
-        # reverse: numpy's default argsort isn't stable, and even a stable
-        # ascending sort reversed via [::-1] flips tie order too — same
-        # nondeterminism class already fixed once in parte3_modeling.ipynb's
-        # recall_at_k. With ties (two corpus entries equally similar to the
-        # query), this keeps results reproducible run-to-run instead of
-        # depending on numpy's internal tie-breaking.
+        # Stable tie-break on insertion order: identical scores must not make
+        # results (and therefore citations) vary between runs.
         order = np.lexsort((np.arange(len(sims)), -sims))
-        top_idx = order[:k]
-        return [self._records[i] for i in top_idx]
+        return [self._records[i] for i in order[:k]]
 
 
-# -----------------------------------------------------------------------------
-# Embedders — real (OpenAI) vs. mock (offline, deterministic, no network call
-# or model download). Every corpus using this module follows the same
-# MOCK_LLM=1-must-work-at-zero-cost rule as the rest of the repo.
-# -----------------------------------------------------------------------------
 class Embedder(Protocol):
     def embed(self, texts: list[str]) -> np.ndarray: ...
 
 
-class MockEmbedder:
-    """Deterministic, offline stand-in for real embeddings.
+# Ordered longest-first; "-ion" alone is not stripped ("mention", "region"),
+# only "-ation(s)", so regulation/regulations/regulatory all become "regulat".
+_SUFFIXES = ("ations", "ation", "ories", "ory", "ing", "ies", "es", "ed", "ly", "s")
+# Question scaffolding that carries no topical signal but can have high IDF.
+_QUERY_WORDS = frozenset({"does", "did", "say", "says", "said", "mention", "mentions", "disclose", "discloses",
+                          "describe", "describes", "tell", "company", "companies", "10", "k"})
+_ENGLISH_STOP = frozenset("""
+a about above after again against all also am an and any are as at be because been before being below
+between both but by can could did do does doing down during each few for from further had has have
+having he her here hers herself him himself his how however i if in into is it its itself just may me
+might more most must my myself no nor not now of off on once only or other our ours ourselves out over
+own same shall she should so some such than that the their theirs them themselves then there these they
+this those through to too under until up upon us very was we were what when where which while who whom
+why will with within without would you your yours yourself yourselves
+""".split())
+_STOP = _ENGLISH_STOP | _QUERY_WORDS
+_TOKEN = re.compile(r"[a-z0-9]+")
 
-    TF-IDF over the corpus text, not a semantic embedding — it ranks lexical
-    overlap, not meaning. Good enough to demonstrate the retrieval mechanics
-    without a model download; real semantic similarity requires OpenAIEmbedder.
-    """
 
-    def __init__(self, corpus_texts: list[str]) -> None:
-        self._vectorizer = TfidfVectorizer(max_features=256)
-        if corpus_texts:
-            self._vectorizer.fit(corpus_texts)
+def analyze(text: str) -> list[str]:
+    """Lowercase word tokens, English stop words removed, light suffix
+    stripping so regulation/regulations/regulatory share one term."""
+    out = []
+    for tok in _TOKEN.findall(text.lower()):
+        if tok in _STOP or len(tok) < 2:
+            continue
+        for suf in _SUFFIXES:
+            if tok.endswith(suf) and len(tok) - len(suf) >= 4:
+                tok = tok[: -len(suf)]
+                break
+        out.append(tok)
+    return out
 
-    def embed(self, texts: list[str]) -> np.ndarray:
-        return self._vectorizer.transform(texts).toarray()
+
+class BM25Index:
+    """Okapi BM25 (k1=1.5, b=0.75) over postings lists: for each term, the
+    documents containing it and its frequency in each. Scoring a query only
+    touches the postings of its own terms."""
+
+    def __init__(self, texts: list[str], k1: float = 1.5, b: float = 0.75) -> None:
+        self._n = len(texts)
+        postings: dict[str, dict[int, int]] = {}
+        lengths = np.zeros(self._n)
+        for doc, text in enumerate(texts):
+            terms = analyze(text)
+            lengths[doc] = len(terms)
+            for term in terms:
+                bucket = postings.setdefault(term, {})
+                bucket[doc] = bucket.get(doc, 0) + 1
+        self._postings = {
+            t: (np.fromiter(d.keys(), dtype=np.int64), np.fromiter(d.values(), dtype=np.float64))
+            for t, d in postings.items()
+        }
+        avgdl = float(lengths.mean()) if self._n else 1.0
+        self._norm = k1 * (1 - b + b * lengths / (avgdl or 1.0))
+        self._k1 = k1
+
+    def idf(self, term: str) -> float:
+        df = len(self._postings[term][0]) if term in self._postings else 0
+        return float(np.log(1.0 + (self._n - df + 0.5) / (df + 0.5)))
+
+    def scores(self, query: str) -> np.ndarray:
+        out = np.zeros(self._n)
+        for term in set(analyze(query)):
+            if term not in self._postings:
+                continue
+            docs, tf = self._postings[term]
+            out[docs] += self.idf(term) * tf * (self._k1 + 1) / (tf + self._norm[docs])
+        return out
+
+
+def _ranked(scores: np.ndarray, k: int) -> list[int]:
+    """Top-k indices with a stable tie-break on insertion order."""
+    order = np.lexsort((np.arange(len(scores)), -scores))
+    return [int(i) for i in order[:k] if scores[i] > 0]
+
+
+def reciprocal_rank_fusion(rankings: list[list[int]], k: int = 60) -> list[int]:
+    fused: dict[int, float] = {}
+    for ranking in rankings:
+        for rank, idx in enumerate(ranking):
+            fused[idx] = fused.get(idx, 0.0) + 1.0 / (k + rank + 1)
+    return [i for i, _ in sorted(fused.items(), key=lambda kv: (-kv[1], kv[0]))]
 
 
 class OpenAIEmbedder:
-    """Real embeddings via OpenAI's `text-embedding-3-small`."""
-
     def __init__(self, model: str = "text-embedding-3-small") -> None:
         from openai import OpenAI
 
@@ -128,120 +163,80 @@ class OpenAIEmbedder:
         self._model = model
 
     def embed(self, texts: list[str]) -> np.ndarray:
-        response = self._client.embeddings.create(model=self._model, input=texts)
-        return np.array([item.embedding for item in response.data])
+        out: list[list[float]] = []
+        for i in range(0, len(texts), _EMBED_BATCH):
+            resp = self._client.embeddings.create(model=self._model, input=texts[i : i + _EMBED_BATCH])
+            out.extend(item.embedding for item in resp.data)
+        return np.array(out)
 
 
-class AzureOpenAIEmbedder:
-    """Real embeddings via an Azure OpenAI resource — same
-    embeddings.create() call shape as OpenAIEmbedder, but against an
-    Azure-hosted deployment instead of api.openai.com. See DECISIONS.md
-    D39 for why this is a third branch alongside Mock/OpenAI rather than a
-    replacement for either.
-
-    `model` here is the Azure **deployment name**, not the underlying
-    model id (e.g. "text-embedding-3-small") — Azure OpenAI resources
-    route by deployment, a resource-specific name an admin chose when
-    creating the deployment, which may or may not match the model id
-    itself. Defaults to AZURE_OPENAI_EMBEDDING_DEPLOYMENT so this can be
-    swapped without a code change if a deployment gets renamed.
-    """
+class AzureOpenAIEmbedder(OpenAIEmbedder):
+    """Same call shape against an Azure OpenAI deployment. `model` is the
+    Azure deployment name (AZURE_OPENAI_EMBEDDING_DEPLOYMENT), not the model id."""
 
     def __init__(self, model: str | None = None) -> None:
         from openai import AzureOpenAI
 
-        # AzureOpenAI() with no args already reads AZURE_OPENAI_API_KEY,
-        # AZURE_OPENAI_ENDPOINT, and OPENAI_API_VERSION from the
-        # environment (see the openai SDK's own docstring) — no need to
-        # thread them through here ourselves, same as OpenAIEmbedder
-        # leaning on OpenAI()'s OPENAI_API_KEY auto-read above.
         self._client = AzureOpenAI()
         self._model = model or os.environ.get("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-small")
 
-    def embed(self, texts: list[str]) -> np.ndarray:
-        response = self._client.embeddings.create(model=self._model, input=texts)
-        return np.array([item.embedding for item in response.data])
-
 
 def _select_real_embedder() -> Embedder:
-    """Picks the real (non-mock) embedder backend. AZURE_OPENAI_ENDPOINT
-    present means an Azure resource is actually configured for this
-    process — route there; otherwise fall back to plain OpenAI, unchanged
-    from before this function existed. Deliberately NOT gated by a
-    separate "which backend" flag: the presence of Azure-specific
-    configuration is itself the signal, so a deployment that sets
-    AZURE_OPENAI_ENDPOINT gets Azure without needing a second env var to
-    also flip, and a deployment that never sets it keeps working exactly
-    as before with zero config changes. See DECISIONS.md D39.
-    """
+    """An Azure endpoint in the environment means Azure is the configured backend."""
     if os.environ.get(_AZURE_ENDPOINT_ENV_VAR):
         return AzureOpenAIEmbedder()
     return OpenAIEmbedder()
 
 
-# -----------------------------------------------------------------------------
-# Generic context-window management — see DECISIONS.md D20 for the original
-# rationale (near-duplicate cases waste context budget; unbounded text could
-# blow past a token budget). Parameterized by field name so any corpus'
-# records (resolution_notes, policy text, ...) can reuse the same logic.
-# -----------------------------------------------------------------------------
 def dedupe_by_field(records: list[dict[str, Any]], field: str) -> list[dict[str, Any]]:
-    """Drops records with an identical (case/whitespace-insensitive) value
-    in `field`. Generalizes retrieval.py's original _dedupe_by_resolution."""
+    """Drops records whose `field` is identical after case/whitespace folding
+    (10-Ks repeat boilerplate paragraphs; repeats waste context budget)."""
     seen: set[str] = set()
-    deduped = []
+    out = []
     for r in records:
-        key = r[field].strip().lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(r)
-    return deduped
+        key = " ".join(r[field].lower().split())
+        if key not in seen:
+            seen.add(key)
+            out.append(r)
+    return out
 
 
-def fit_to_budget(records: list[dict[str, Any]], max_chars: int, field: str) -> list[dict[str, Any]]:
-    """Truncates `field` so the total injected context stays under a fixed
-    character budget, dropping lower-ranked records entirely once the budget
-    runs out. Generalizes retrieval.py's original _fit_to_budget."""
-    budget = max_chars
-    fitted = []
-    for r in records:
-        if budget <= 0:
-            break
-        text = r[field]
-        if len(text) > budget:
-            text = text[: max(0, budget - 1)].rstrip() + "…"
-        fitted.append({**r, field: text})
-        budget -= len(text)
-    return fitted
+class HybridIndex:
+    """BM25 alone (embedder=None) or BM25 + dense, fused with RRF."""
 
-
-# -----------------------------------------------------------------------------
-# Multi-corpus store cache — generalizes retrieval.py's get_case_store/
-# build_case_store (D19) from a single corpus keyed by mode, to any number
-# of named corpora each keyed by (corpus_name, mode). Same reasoning as D19:
-# tests exercise multiple corpora and both modes in one pytest process, so a
-# single global store would return the wrong one.
-# -----------------------------------------------------------------------------
-CorpusLoader = Callable[[], list[dict[str, Any]]]
-
-_CORPUS_STORE_CACHE: dict[tuple[str, bool], tuple[SimpleVectorStore, Embedder]] = {}
-
-
-def get_corpus_store(
-    corpus_name: str, loader: CorpusLoader, text_field: str, mock: bool
-) -> tuple[SimpleVectorStore, Embedder]:
-    """Loads+embeds `corpus_name` on first use per (corpus_name, mock), then
-    returns the cached store + the embedder used (queries must reuse it — an
-    embedding from a different vectorizer/model wouldn't share the corpus'
-    vector space)."""
-    key = (corpus_name, mock)
-    if key not in _CORPUS_STORE_CACHE:
-        records = loader()
+    def __init__(self, records: list[dict[str, Any]], text_field: str, embedder: Embedder | None) -> None:
+        self.records = records
         texts = [r[text_field] for r in records]
-        embedder: Embedder = MockEmbedder(texts) if mock else _select_real_embedder()
-        store = SimpleVectorStore()
-        if texts:
-            store.add(records, embedder.embed(texts))
-        _CORPUS_STORE_CACHE[key] = (store, embedder)
-    return _CORPUS_STORE_CACHE[key]
+        self._bm25 = BM25Index(texts)
+        self._embedder = embedder
+        self._dense: SimpleVectorStore | None = None
+        if embedder is not None and texts:
+            self._dense = SimpleVectorStore()
+            self._dense.add([{"i": i} for i in range(len(texts))], embedder.embed(texts))
+
+    def __len__(self) -> int:
+        return len(self.records)
+
+    def search(self, query: str, k: int) -> list[dict[str, Any]]:
+        if not self.records or k <= 0:
+            return []
+        depth = max(k * 4, 20)
+        rankings = [_ranked(self._bm25.scores(query), depth)]
+        if self._dense is not None and self._embedder is not None:
+            hits = self._dense.query(self._embedder.embed([query])[0], k=depth)
+            rankings.append([h["i"] for h in hits])
+        return [self.records[i] for i in reciprocal_rank_fusion(rankings)[:k]]
+
+
+CorpusLoader = Callable[[], list[dict[str, Any]]]
+_CACHE: dict[tuple[str, bool], HybridIndex] = {}
+_CACHE_LOCK = threading.Lock()
+
+
+def get_index(corpus_name: str, loader: CorpusLoader, text_field: str, mock: bool) -> HybridIndex:
+    """Builds the index for (corpus_name, mock) once per process."""
+    key = (corpus_name, mock)
+    with _CACHE_LOCK:
+        if key not in _CACHE:
+            _CACHE[key] = HybridIndex(loader(), text_field, None if mock else _select_real_embedder())
+        return _CACHE[key]

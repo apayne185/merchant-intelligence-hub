@@ -1,15 +1,15 @@
 """
-Prometheus metrics for the copilot API (D51).
+Prometheus metrics for the copilot API (DECISIONS.md D16).
 
 Two layers:
   - HTTP RED metrics (rate/errors/duration per handler+status) from
-    prometheus-fastapi-instrumentator — the generic gateway view.
-  - Copilot-specific series below — what the HTTP layer can't see: per-node
+    prometheus-fastapi-instrumentator, the generic gateway view.
+  - Copilot-specific series below, what the HTTP layer can't see: per-node
     latency inside the graph, which tools fired, LLM token spend and its
     estimated cost, guardrail/auth/rate-limit events, cache hit ratio.
 
 p95/p99 are computed in PromQL (`histogram_quantile`) from the histogram
-buckets — see deploy/prometheus/rules.yml and the Grafana dashboard — not
+buckets (see deploy/prometheus/rules.yml and the Grafana dashboard) not
 precomputed here: client-side quantiles (Summary) can't be aggregated
 across replicas, histograms can.
 
@@ -27,7 +27,7 @@ from prometheus_client import Counter, Histogram
 logger = logging.getLogger(__name__)
 
 # Node latencies span ~0.1ms (mock router) to tens of seconds (a slow real
-# LLM call) — buckets cover that whole range, denser where the SLO sits.
+# LLM call), buckets cover that whole range, denser where the SLO sits.
 _NODE_BUCKETS = (0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0)
 HTTP_LATENCY_BUCKETS = (0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0)
 
@@ -66,6 +66,18 @@ CACHE_EVENTS = Counter(
     "copilot_cache_requests_total",
     "/ask response cache lookups: hit | miss | error.",
     ["result"],
+)
+
+LLM_TTFT = Histogram(
+    "copilot_llm_time_to_first_token_seconds",
+    "Time from LLM request to first streamed content token (real mode only).",
+    ["model", "call"],
+    buckets=(0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0, 1.5, 2.5, 5.0),
+)
+VERIFICATION_OUTCOMES = Counter(
+    "copilot_answer_verification_total",
+    "Numeric verification of answers: verified | failed | no_numeric_claims | fallback.",
+    ["outcome"],
 )
 
 # USD per 1M tokens (input, output), OpenAI list prices. Used only when the

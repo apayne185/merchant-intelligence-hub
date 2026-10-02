@@ -1,8 +1,8 @@
 """
-Tests for src/copilot/tracing.py — span creation, the request-scoped span
+Tests for src/copilot/tracing.py, span creation, the request-scoped span
 buffer, and error handling. Structure/attributes only, never timing values
 (duration_ms is a real wall-clock measurement, so asserting on its exact
-value would be flaky by construction — see the module docstring).
+value would be flaky by construction, see the module docstring).
 """
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def test_get_trace_does_not_return_a_different_traces_spans() -> None:
 
 def test_request_span_buffer_evicts_oldest_trace_past_max_traces() -> None:
     # Unit-level test of the eviction backstop directly on the buffer
-    # class, independent of the process-wide tracer/cache — constructing a
+    # class, independent of the process-wide tracer/cache, constructing a
     # small buffer directly and feeding it 3 real, independently-traced
     # spans (each its own trace_id) avoids needing 256+ requests to
     # exercise the max_traces=256 default.
@@ -82,10 +82,10 @@ def test_request_span_buffer_evicts_oldest_trace_past_max_traces() -> None:
 
 
 # -----------------------------------------------------------------------------
-# JsonLinesFileExporter — size cap/rotation. A prior bug: no cap existed at
+# JsonLinesFileExporter, size cap/rotation. A prior bug: no cap existed at
 # all, so COPILOT_TRACE_EXPORTER=file grew outputs/traces.jsonl forever
 # over a long-running process, and the file wasn't even gitignored (a
-# broad `git add outputs/` — this repo's own convention for eval reports —
+# broad `git add outputs/`, this repo's own convention for eval reports:
 # would have swept it in). See DECISIONS.md.
 # -----------------------------------------------------------------------------
 def test_json_lines_file_exporter_appends_below_cap(tmp_path: Path) -> None:
@@ -139,5 +139,5 @@ def test_json_lines_file_exporter_rotation_overwrites_prior_backup(
 
     backup = path.with_suffix(".jsonl.1")
     assert backup.exists()
-    # Only one generation of backup is kept — a single .1, not .1/.2/.3.
+    # Only one generation of backup is kept, a single .1, not .1/.2/.3.
     assert not path.with_suffix(".jsonl.2").exists()

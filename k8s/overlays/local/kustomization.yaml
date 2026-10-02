@@ -1,42 +1,42 @@
-# Local overlay for minikube/kind — the production base, minus the things
+# Local overlay for minikube/kind, the production base, minus the things
 # only a real environment has (IdP, managed Redis/Postgres, collector, LLM key).
 # Keeps APP_ENV=production so the fail-closed auth path is what runs.
 #
-#   minikube image load merchant-copilot:dev
+#   minikube image load filings-copilot:dev
 #   kubectl apply -k k8s/overlays/local
-#   kubectl -n merchant-intelligence port-forward svc/merchant-copilot 8001:80
+#   kubectl -n filings-risk port-forward svc/filings-copilot 8001:80
 #   TOKEN=$(uv run python -m scripts.mint_dev_token --secret local-dev-secret-change-me-0123456789 \
-#             --audience merchant-copilot-api --issuer https://idp.example.com/)
+#             --audience filings-copilot-api --issuer https://idp.example.com/)
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # Needed again here: the base's `namespace:` only applies to the base's own
 # resources, so without this the secretGenerator output below landed in
-# `default` and the pod failed with `secret "merchant-copilot" not found`.
-namespace: merchant-intelligence
+# `default` and the pod failed with `secret "filings-copilot" not found`.
+namespace: filings-risk
 
 resources:
   - ../../base
 
 # Matches the name *after* the base's own images: rewrite
-# (merchant-copilot -> ghcr.io/...), not the placeholder in deployment.yaml —
+# (filings-copilot -> ghcr.io/...), not the placeholder in deployment.yaml:
 # overlays see the base's already-transformed output. Found by actually
 # deploying this overlay: matching the placeholder silently did nothing and
 # the pod tried to pull the unpublished GHCR tag.
 images:
   - name: ghcr.io/apayne185/merchant-intelligence-hub
-    newName: merchant-copilot
+    newName: filings-copilot
     newTag: dev
 
 secretGenerator:
-  - name: merchant-copilot
+  - name: filings-copilot
     options:
       disableNameSuffixHash: true
     literals:
       - AUTH_JWT_SECRET=local-dev-secret-change-me-0123456789
 
 patches:
-  - target: { kind: ConfigMap, name: merchant-copilot-config }
+  - target: { kind: ConfigMap, name: filings-copilot-config }
     patch: |
       - op: replace
         path: /data/MOCK_LLM
@@ -50,12 +50,12 @@ patches:
       - op: replace
         path: /data/COPILOT_TRACE_EXPORTER
         value: none
-  - target: { kind: Deployment, name: merchant-copilot }
+  - target: { kind: Deployment, name: filings-copilot }
     patch: |
       - op: replace
         path: /spec/replicas
         value: 1
-  - target: { kind: HorizontalPodAutoscaler, name: merchant-copilot }
+  - target: { kind: HorizontalPodAutoscaler, name: filings-copilot }
     patch: |
       - op: replace
         path: /spec/minReplicas
@@ -63,8 +63,20 @@ patches:
       - op: replace
         path: /spec/maxReplicas
         value: 3
-  - target: { kind: PodDisruptionBudget, name: merchant-copilot }
+  - target: { kind: PodDisruptionBudget, name: filings-copilot }
     patch: |
       - op: replace
         path: /spec/minAvailable
+        value: 0
+  # No Redis in this overlay, so EDGAR ingestion is off; docker-compose runs
+  # the full streaming stack locally.
+  - target: { kind: Deployment, name: filings-ingest-worker }
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 0
+  - target: { kind: Deployment, name: filings-poller }
+    patch: |
+      - op: replace
+        path: /spec/replicas
         value: 0

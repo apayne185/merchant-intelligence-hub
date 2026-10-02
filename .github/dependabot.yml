@@ -1,34 +1,13 @@
-# Automated dependency updates — see DECISIONS.md D29.
+# Automated dependency updates.
 version: 2
 updates:
   # Covers pyproject.toml / uv.lock. Must be "uv", not "pip": the pip
-  # ecosystem bumps pyproject.toml but never regenerates uv.lock, so every
-  # PR it opened failed CI's `uv lock --check` step (D33).
+  # ecosystem bumps pyproject.toml but never regenerates uv.lock, so its PRs
+  # fail CI's `uv lock --check`.
   - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "weekly"
-    ignore:
-      # outputs/model.pkl is a joblib pickle of a sklearn Pipeline created
-      # under scikit-learn 1.5.x. Verified (DECISIONS.md D32): even a minor
-      # bump (1.5.2 -> 1.7.2) hard-breaks unpickling it
-      # (AttributeError: _RemainderColsList, an internal ColumnTransformer
-      # class that changed between versions) — not just the harmless
-      # InconsistentVersionWarning a patch bump produces (D31). Patches
-      # still flow through; a minor/major bump needs a deliberate
-      # re-train-and-re-pickle first, not an automated PR.
-      - dependency-name: "scikit-learn"
-        update-types: ["version-update:semver-minor", "version-update:semver-major"]
-      # delta-spark's major version is tied to a specific PySpark major
-      # version (delta-spark 4.x requires pyspark 4.x); this repo
-      # intentionally pins pyspark==3.5.x. A coordinated Spark-4 migration
-      # is a deliberate undertaking, not a routine dependency bump — and
-      # dependabot proposes each package independently, so it can't do that
-      # coordination itself.
-      - dependency-name: "delta-spark"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "pyspark"
-        update-types: ["version-update:semver-major"]
 
   # Keeps actions/checkout, astral-sh/setup-uv, actions/setup-python
   # (.github/workflows/ci.yml) pinned to current, patched versions.
@@ -37,8 +16,8 @@ updates:
     schedule:
       interval: "weekly"
 
-  # Dockerfile base images (python slim, uv) are pinned tag@digest (D56);
-  # this is what moves those pins forward — including picking up base-image
+  # Dockerfile base images (python slim, uv) are pinned tag@digest;
+  # this is what moves those pins forward, including picking up base-image
   # CVE fixes the CI Trivy gate would otherwise start failing on.
   - package-ecosystem: "docker"
     directory: "/"
@@ -53,7 +32,7 @@ updates:
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
 
   # docker-compose.yml service images (redis, postgres, collector,
-  # prometheus, grafana, jaeger, mlflow).
+  # prometheus, grafana, jaeger).
   - package-ecosystem: "docker-compose"
     directory: "/"
     schedule:

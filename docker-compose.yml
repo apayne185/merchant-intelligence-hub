@@ -1,21 +1,21 @@
-# Local production-like stack for the Merchant Intelligence Copilot (D51, D56).
+# Local production-like stack for the Filings & Risk Copilot.
 #
-#   docker compose up -d --build                  # app + redis + postgres + observability
-#   docker compose --profile mlops up -d          # + MLflow tracking server
+#   docker compose up -d --build        # API, ingest workers, Redis, Postgres, observability
+#   docker compose run --rm poller-replay    # publish the fixture filing index into the stream
+#   SEC_USER_AGENT="Name you@example.com" docker compose --profile live up -d poller   # live EDGAR polling
 #
-#   TOKEN=$(docker compose exec -T copilot python -m scripts.mint_dev_token)   # or: make token
+#   TOKEN=$(make token)
 #   curl -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
-#        -d '{"question": "Which merchants are trending toward churn?"}' localhost:8001/ask
+#        -d '{"question": "What was Apple revenue in FY2025?"}' localhost:8001/ask
 #
-# UIs: API docs http://localhost:8001/docs · Grafana http://localhost:3000 (anonymous viewer)
-#      Prometheus http://localhost:9090 · Jaeger http://localhost:16686 · MLflow http://localhost:5000
+# UIs: API docs http://localhost:8001/docs, Grafana http://localhost:3000 (anonymous viewer),
+#      Prometheus http://localhost:9090, Jaeger http://localhost:16686
 #
-# Everything defaults to MOCK_LLM=1 (zero cost). For real LLM calls put
-# OPENAI_API_KEY in a .env file next to this one and set MOCK_LLM=0.
-# All secrets below are local-only placeholders — k8s/ reads real ones from
-# a Secret (see k8s/base/secret.example.yaml), never from this file.
+# Defaults to MOCK_LLM=1 (zero cost). For real LLM calls put OPENAI_API_KEY in
+# a .env file next to this one and set MOCK_LLM=0. Secrets here are local-only
+# placeholders; k8s/ reads real ones from a Secret.
 
-name: merchant-intelligence
+name: filings-risk-copilot
 
 x-hardening: &hardening
   security_opt: ["no-new-privileges:true"]
@@ -27,8 +27,8 @@ services:
     build:
       context: .
       args:
-        VERSION: "0.3.0-compose"
-    image: merchant-copilot:compose
+        VERSION: "1.0.0-compose"
+    image: filings-risk-copilot:compose
     ports: ["8001:8001"]
     environment:
       MOCK_LLM: "${MOCK_LLM:-1}"
@@ -42,28 +42,78 @@ services:
       AUDIT_DATABASE_URL: postgresql://copilot:copilot@postgres:5432/copilot
       COPILOT_TRACE_EXPORTER: otlp
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-      OTEL_SERVICE_NAME: merchant-intelligence-copilot
-      OTEL_RESOURCE_ATTRIBUTES: service.version=0.3.0,deployment.environment=compose
+      OTEL_SERVICE_NAME: filings-risk-copilot
+      OTEL_RESOURCE_ATTRIBUTES: service.version=1.0.0,deployment.environment=compose
       LOG_FORMAT: json
-    # Same runtime constraints as k8s/base/deployment.yaml's securityContext, so
-    # "works in compose" actually predicts "works in the cluster".
+    # Same runtime constraints as the k8s securityContext, so "works in compose"
+    # predicts "works in the cluster".
     read_only: true
     tmpfs: ["/tmp"]
     cap_drop: [ALL]
-    # scripts/ isn't in the image (.dockerignore); mounted read-only so
-    # `make token` can mint a dev JWT with the container's own secret.
+    # scripts/ is mounted read-only so `make token` can mint a dev JWT with
+    # the container's own secret.
     volumes: ["./scripts:/app/scripts:ro"]
     depends_on:
       redis: { condition: service_healthy }
       postgres: { condition: service_healthy }
       otel-collector: { condition: service_started }
 
+  # Competing consumers in the `ingest` group: scale with --scale ingest-worker=N.
+  ingest-worker:
+    <<: *hardening
+    image: filings-risk-copilot:compose
+    command: ["python", "-m", "src.streaming.worker", "--source", "${INGEST_SOURCE:-fixtures}"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      SEC_USER_AGENT: "${SEC_USER_AGENT:-}"
+      LOG_FORMAT: json
+    deploy: { replicas: 2 }
+    # The image's default health check probes the API port; workers expose metrics instead.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9102/metrics', timeout=2)"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: [ALL]
+    depends_on:
+      redis: { condition: service_healthy }
+      copilot: { condition: service_started }
+
+  # One-shot (`docker compose run --rm poller-replay`): publishes
+  # data/filings/filing_index.json as filing events.
+  poller-replay:
+    image: filings-risk-copilot:compose
+    profiles: [replay]
+    command: ["python", "-m", "src.streaming.poller", "--replay"]
+    environment: { REDIS_URL: "redis://redis:6379/0" }
+    read_only: true
+    cap_drop: [ALL]
+    depends_on: { redis: { condition: service_healthy } }
+
+  poller:
+    <<: *hardening
+    image: filings-risk-copilot:compose
+    profiles: [live]
+    command: ["python", "-m", "src.streaming.poller", "--live", "--interval", "60"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      # Required for live polling; the poller exits with a clear error without it.
+      SEC_USER_AGENT: "${SEC_USER_AGENT:-}"
+    read_only: true
+    cap_drop: [ALL]
+    depends_on: { redis: { condition: service_healthy } }
+
   redis:
     <<: *hardening
     image: redis:8.10.0-alpine
-    # Cache + rate-limit counters are disposable: no persistence, bounded
-    # memory, LRU eviction — a full Redis degrades caching, never errors.
-    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    # Redis holds disposable keys (cache, rate-limit counters, all with TTLs)
+    # and durable ones (the filing streams). volatile-lru evicts only keys with
+    # a TTL, so memory pressure drops cache entries, never the work queue;
+    # AOF persistence keeps the streams across restarts.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-lru"]
+    volumes: ["redisdata:/data"]
     ports: ["6379:6379"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -129,23 +179,7 @@ services:
     ports: ["3000:3000"]
     depends_on: [prometheus, jaeger]
 
-  mlflow:
-    <<: *hardening
-    profiles: [mlops]
-    image: ghcr.io/mlflow/mlflow:v3.16.1
-    command:
-      - mlflow
-      - server
-      - --host=0.0.0.0
-      - --port=5000
-      - --backend-store-uri=sqlite:////mlflow/mlflow.db
-      - --artifacts-destination=/mlflow/artifacts
-      - --serve-artifacts
-      - --allowed-hosts=localhost:5000,127.0.0.1:5000,mlflow:5000
-    volumes: ["mlflowdata:/mlflow"]
-    ports: ["5000:5000"]
-
 volumes:
   pgdata:
   promdata:
-  mlflowdata:
+  redisdata:

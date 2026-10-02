@@ -1,9 +1,9 @@
 # Minimal VPC for the Copilot's Fargate deployment: 2 public subnets across
-# 2 AZs, an Internet Gateway, no NAT gateway — Fargate tasks get public IPs
+# 2 AZs, an Internet Gateway, no NAT gateway, Fargate tasks get public IPs
 # directly (see security_groups.tf's task SG egress, ecs.tf's
 # assign_public_ip) and reach ECR/CloudWatch over the IGW. A real VPC
-# rather than the account's default one is deliberate here — see
-# DECISIONS.md D33.
+# rather than the account's default one is deliberate here, see
+# DECISIONS.md D20.
 
 data "aws_availability_zones" "available" {
   state = "available"
@@ -46,11 +46,11 @@ resource "aws_route_table" "public" {
 
 # Without this association, the public subnets silently stay on the VPC's
 # main route table (no route to the IGW) and Fargate tasks have no path to
-# the internet at all — a failure mode terraform validate can't catch,
-# since it's live routing behavior, not a syntax error. See DECISIONS.md D33.
+# the internet at all, a failure mode terraform validate can't catch,
+# since it's live routing behavior, not a syntax error. See DECISIONS.md D20.
 resource "aws_route_table_association" "public" {
   # Derived from aws_subnet.public's own count, not a second independent
-  # "2" literal — widening to a 3rd AZ only requires changing the subnet
+  # "2" literal, widening to a 3rd AZ only requires changing the subnet
   # resource; a hardcoded count here could silently mismatch and leave a
   # subnet unassociated to the IGW route, which terraform validate can't
   # catch either.

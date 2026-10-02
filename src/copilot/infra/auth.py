@@ -1,16 +1,16 @@
 """
-Bearer-JWT authentication for the copilot API — the resource-server half of
+Bearer-JWT authentication for the copilot API, the resource-server half of
 OAuth2: validate an access token an identity provider issued, don't be the
-identity provider. See DECISIONS.md D52.
+identity provider. See DECISIONS.md D15.
 
 Two key sources, both standard:
   - AUTH_JWKS_URL: RS256/ES256 tokens from a real IdP (Auth0, Entra ID,
-    Keycloak, Cognito) — public keys fetched from its JWKS endpoint and
+    Keycloak, Cognito), public keys fetched from its JWKS endpoint and
     cached, so key rotation needs no redeploy.
-  - AUTH_JWT_SECRET: HS256 shared secret — for local docker-compose and
+  - AUTH_JWT_SECRET: HS256 shared secret, for local docker-compose and
     tests, minted with `scripts/mint_dev_token.py`.
 
-AUTH_MODE=none (the default outside production — settings.py refuses it
+AUTH_MODE=none (the default outside production, settings.py refuses it
 under APP_ENV=production) returns an anonymous principal so local dev and
 the existing test suite need no token.
 """
@@ -106,7 +106,7 @@ def get_principal(
     except jwt.ExpiredSignatureError:
         raise _unauthorized("invalid_token", "token expired") from None
     except (jwt.InvalidTokenError, jwt.PyJWKClientError):
-        # Never echo the decode error to the client — it can reveal which
+        # Never echo the decode error to the client, it can reveal which
         # check failed (aud vs iss vs signature), useful to an attacker.
         raise _unauthorized("invalid_token", "token validation failed") from None
 

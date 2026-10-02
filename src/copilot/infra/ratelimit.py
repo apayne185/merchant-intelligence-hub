@@ -1,10 +1,10 @@
 """
-Per-caller fixed-window rate limiting for /ask (D53).
+Per-caller fixed-window rate limiting (DECISIONS.md D15).
 
 Keyed by the JWT subject when authenticated (a tenant's quota follows the
 tenant across IPs/replicas), by client IP otherwise. Redis-backed when
-REDIS_URL is set — the only way a limit means anything with >1 replica
-behind the HPA — with an in-process fallback for local dev/tests.
+REDIS_URL is set, the only way a limit means anything with >1 replica
+behind the HPA, with an in-process fallback for local dev/tests.
 
 Fixed window, not sliding/token-bucket: one INCR+EXPIRE per request, exact
 and cheap, and the known weakness (up to 2x the limit across a window
@@ -83,7 +83,7 @@ class RedisRateLimiter:
             pipe = self._client.pipeline(transaction=True)
             pipe.incr(rkey)
             # Key is unique per window, so re-arming the TTL on every hit is
-            # harmless — it only ever outlives its window by < 1 window.
+            # harmless, it only ever outlives its window by < 1 window.
             pipe.expire(rkey, window * 2)
             count = int(pipe.execute()[0])
         except redis.RedisError:
@@ -118,7 +118,7 @@ def enforce_rate_limit(
     if principal.is_anonymous:
         # request.client is the real caller only if uvicorn runs with
         # --proxy-headers and a trusted --forwarded-allow-ips (Dockerfile
-        # CMD / k8s deployment) — otherwise every request behind the
+        # CMD / k8s deployment), otherwise every request behind the
         # ingress would share the ingress pod's IP and one bucket.
         key = f"ip:{request.client.host if request.client else 'unknown'}"
     else:

@@ -1,0 +1,82 @@
+[
+  {
+    "ticker": "AAPL",
+    "cik": 320193,
+    "name": "Apple Inc.",
+    "sector": "Technology",
+    "fiscal_year_end": "0926",
+    "display_name": "Apple"
+  },
+  {
+    "ticker": "MSFT",
+    "cik": 789019,
+    "name": "MICROSOFT CORP",
+    "sector": "Technology",
+    "fiscal_year_end": "0630",
+    "display_name": "Microsoft"
+  },
+  {
+    "ticker": "NVDA",
+    "cik": 1045810,
+    "name": "NVIDIA CORP",
+    "sector": "Technology",
+    "fiscal_year_end": "0131",
+    "display_name": "NVIDIA"
+  },
+  {
+    "ticker": "AMZN",
+    "cik": 1018724,
+    "name": "AMAZON COM INC",
+    "sector": "Consumer",
+    "fiscal_year_end": "1231",
+    "display_name": "Amazon"
+  },
+  {
+    "ticker": "JPM",
+    "cik": 19617,
+    "name": "JPMORGAN CHASE & CO",
+    "sector": "Financials",
+    "fiscal_year_end": "1231",
+    "display_name": "JPMorgan Chase"
+  },
+  {
+    "ticker": "GS",
+    "cik": 886982,
+    "name": "GOLDMAN SACHS GROUP INC",
+    "sector": "Financials",
+    "fiscal_year_end": "1231",
+    "display_name": "Goldman Sachs"
+  },
+  {
+    "ticker": "XOM",
+    "cik": 34088,
+    "name": "EXXON MOBIL CORP",
+    "sector": "Energy",
+    "fiscal_year_end": "1231",
+    "display_name": "ExxonMobil"
+  },
+  {
+    "ticker": "JNJ",
+    "cik": 200406,
+    "name": "JOHNSON & JOHNSON",
+    "sector": "Healthcare",
+    "fiscal_year_end": "0103",
+    "display_name": "Johnson & Johnson"
+  },
+  {
+    "ticker": "TSLA",
+    "cik": 1318605,
+    "name": "Tesla, Inc.",
+    "sector": "Consumer",
+    "fiscal_year_end": "1231",
+    "display_name": "Tesla"
+  },
+  {
+    "ticker": "KO",
+    "cik": 21344,
+    "name": "COCA COLA CO",
+    "sector": "Consumer",
+    "fiscal_year_end": "1231",
+    "display_name": "Coca-Cola"
+  }
+]

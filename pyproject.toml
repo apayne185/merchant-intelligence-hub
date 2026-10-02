@@ -2,217 +2,103 @@
 requires = ["hatchling>=1.24"]
 build-backend = "hatchling.build"
 
-# =============================================================================
-# Merchant Intelligence Hub
-# =============================================================================
-# Estructura de packaging moderna (PEP 621 + Hatch).
+# Filings & Risk Copilot
 #
-# Install (recomendado, con uv — https://docs.astral.sh/uv/):
-#     uv sync --extra dev          # resuelve + crea .venv + genera uv.lock
+#   uv sync --extra dev          # also compiles the C++ engine (cpp/riskcore)
+#   MOCK_LLM=1 uv run uvicorn src.copilot.api:app --port 8001
+#   MOCK_LLM=1 uv run pytest
 #
-# Install (fallback con pip):
-#     pip install -e ".[dev]"
-#
-# Run the Merchant Intelligence Copilot:
-#     MOCK_LLM=1 uv run uvicorn src.copilot.api:app --reload --port 8001
-#
-# Run the complaint-classification API (Parte 4):
-#     MOCK_LLM=1 uv run uvicorn src.parte4_api.main:app --reload --port 8000
-#
-# Test:
-#     MOCK_LLM=1 uv run pytest -v
-#
-# Nuevas dependencias: version fijada + justificacion en DECISIONS.md.
-# =============================================================================
+# Every pinned dependency is justified in DECISIONS.md.
 
 [project]
-name = "merchant-intelligence-hub"
-version = "0.3.0"
-description = "Merchant Intelligence Copilot — a multi-agent system (LangGraph + Agno) answering natural-language merchant questions via real KPI/SQL tools, a churn-risk model, and policy RAG, with cited answers — built on a pandas/PySpark ETL and churn-risk ML pipeline underneath."
+name = "filings-risk-copilot"
+version = "1.0.0"
+description = "Multi-agent copilot over SEC filings and market risk: point-in-time XBRL facts, a C++20 VaR engine, streaming EDGAR ingestion, and answers whose every number is verified against its source filing."
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
 license = { text = "MIT" }
-authors = [
-    { name = "Anna Payne" },
-]
-keywords = ["ai-agents", "langgraph", "rag", "llm", "data-engineering", "machine-learning", "fastapi"]
+authors = [{ name = "Anna Payne" }]
+keywords = ["llm", "agents", "langgraph", "rag", "sec-edgar", "xbrl", "value-at-risk", "pybind11", "fastapi"]
 
-# -----------------------------------------------------------------------------
-# Core deps — necesarias para que la app y los tests arranquen
-# -----------------------------------------------------------------------------
 dependencies = [
-    # Data & ML
-    "pandas==2.3.3",
-    # numpy 1.26.4 has no Python 3.13 wheel (last 1.26.x release, predates
-    # 3.13's Oct-2024 launch) — uv falls back to a from-source build, which
-    # is what made CI hang for 2+ hours instead of the ~1min local install.
-    # 2.1.3 is the earliest 2.x with cp313 wheels (verified via PyPI's file
-    # list), chosen to minimize behavioral distance from 1.26.4 rather than
-    # jumping to the newest 2.x. See DECISIONS.md D31 (same wheel-
-    # availability issue D13 already hit and fixed for pandas).
-    "numpy==2.2.6",
-    # 1.5.1 also has no cp313 wheel; 1.5.2 (patch release, same reason as
-    # numpy above) does. See DECISIONS.md D31.
-    "scikit-learn==1.5.2",
-    # 4.5.0 -> 4.6.0: CVE-2024-43598 (RCE, HIGH), flagged by the CI Trivy gate
-    # (D56). Verified outputs/model.pkl unpickles and predicts identically
-    # (max abs diff 0.0 over all 9,967 merchants) before bumping.
-    "lightgbm==4.7.0",
-    "shap==0.49.1",
+    # C++20 VaR/ES engine (workspace member, built by scikit-build-core).
+    "riskcore",
 
-    # API stack (Parte 4) — uvicorn obligatorio
+    # Data
+    "pandas==2.3.3",
+    "numpy==2.2.6",
+    # Point-in-time fact store.
+    "duckdb>=1.5,<2",
+    # EDGAR client.
+    "httpx==0.28.1",
+
+    # API
     "fastapi==0.141.1",
     "uvicorn[standard]==0.54.0",
     "pydantic==2.13.5",
 
-    # Agentic framework (Parte 4) — OBLIGATORIO, no sustituir por LangChain/LlamaIndex
+    # Agents: LangGraph owns control flow and state; LLM calls inside nodes go
+    # through Agno, so there is one agent-framework pattern, not two.
+    "langgraph>=1.2,<2",
     "agno>=2.5,<4",
     "openai>=1.40,<4",
 
-    # Copilot orchestrator (src/copilot/) — LangGraph owns graph/state/control-flow
-    # only; LLM calls inside nodes still go through Agno (see DECISIONS.md D22) so
-    # there's exactly one agent-framework pattern in the repo, not two competing
-    # ones. No langchain-openai/chat-model dep needed as a result.
-    "langgraph>=1.2,<2",
-    # Real SQL execution for the Data Analyst tool (src/copilot/tools/data_analyst.py)
-    # over a pandas df — see DECISIONS.md D23 for why (parameterized queries, not
-    # LLM-generated SQL).
-    "duckdb>=1.5,<2",
-
-    # Multi-modal ingestion (src/copilot/tools/ingestion.py) — pypdf is
-    # pure-Python (no system binary), so PDF text extraction always works.
-    # pytesseract/Pillow import fine standalone too; only *calling*
-    # pytesseract.image_to_string() needs the tesseract system binary,
-    # gated behind an availability check so MOCK_LLM=1 and tests never
-    # require it — see DECISIONS.md D38.
-    "pypdf==6.19.0",
-    "pytesseract==0.3.13",
-    "Pillow==12.3.0",
-
-    # Observability (src/copilot/tracing.py) — standard OTel SDK API/span
-    # model, console/JSON exporter only, no collector to run. See
-    # DECISIONS.md D37 for why this over a hand-rolled tracer.
+    # Observability: OTel API/SDK/exporter move in lockstep.
     "opentelemetry-api==1.44.0",
     "opentelemetry-sdk==1.44.0",
-    # OTLP/HTTP exporter for COPILOT_TRACE_EXPORTER=otlp — ships spans to the
-    # OTel Collector in docker-compose.yml / k8s. Pinned to the same release
-    # train as the SDK above (OTel requires api/sdk/exporter in lockstep).
-    # HTTP not gRPC: no grpcio wheel (~10MB, native) in the image. See D51.
     "opentelemetry-exporter-otlp-proto-http==1.44.0",
-
-    # Production platform layer (src/copilot/infra/) — see DECISIONS.md D51-D55.
-    # /metrics endpoint: HTTP RED metrics + custom per-node/token/guardrail series.
     "prometheus-client==0.26.0",
     "prometheus-fastapi-instrumentator==8.1.0",
-    # Bearer-JWT validation (HS256 shared secret or RS256 via an IdP's JWKS);
-    # [crypto] pulls `cryptography` for RS256/JWKS.
+
+    # Platform: JWT auth, Redis (rate limits, cache, event streams), Postgres audit log.
     "pyjwt[crypto]==2.15.1",
-    # Shared rate-limit counters + response cache across replicas. Optional at
-    # runtime: unset REDIS_URL -> in-process fallback (D53).
     "redis==8.1.0",
-    # Request audit log (AUDIT_DATABASE_URL). Optional at runtime, same as Redis.
     "psycopg[binary,pool]==3.3.6",
 
-    # Utilidades comunes
     "python-dotenv==1.2.3",
 ]
 
 [project.optional-dependencies]
-# Dependencias de desarrollo y tests
 dev = [
     "pytest==8.3.3",
     "pytest-asyncio==0.24.0",
-    "httpx==0.28.1",
     "ruff==0.16.9",
-    # Runs .pre-commit-config.yaml locally (D29) — CI enforces the eval gate
-    # independently via ci.yml, this is for local hygiene before pushing.
     "pre-commit==4.6.2",
-    # CI quality gates (D56): coverage floor, type checking, SAST.
     "pytest-cov==7.1.0",
     "mypy==2.3.1",
     "bandit==1.9.4",
-]
-
-# MLflow tracking for churn-model retraining (scripts/train_churn_mlflow.py,
-# D57). mlflow-skinny = the tracking client without the server/UI stack
-# (Flask, alembic, SQLAlchemy...) — the server runs as its own container
-# (docker-compose `mlops` profile), so the app/training env never needs it.
-mlops = [
-    "mlflow-skinny==3.16.1",
-    # MLflow 3.x serializes sklearn models with skops (a restricted, no-
-    # arbitrary-code format) instead of pickle by default — the safer
-    # counterpart to the joblib.load() warning in SECURITY.md.
-    "skops==0.16.0",
-]
-
-# Notebook tooling (Parte 3, src/eda/) + xgboost (not imported by any module,
-# app or script). Moved out of core deps in D56: together with xgboost's
-# nvidia-nccl-cu12 dependency they were ~0.9GB of the runtime image that
-# nothing at runtime ever loads — the "accepted tradeoff" D33/D34 recorded,
-# revisited once image size became an explicit goal.
-notebooks = [
-    "jupyter==1.1.1",
-    "ipykernel==7.3.0",
-    "xgboost==3.2.0",
-]
-
-# Opcional para la Parte 5 bonus (collusion rings)
-bonus = [
-    "networkx==3.4.2",
-]
-pyspark = [
-    "delta-spark==3.3.3",
-    "pyspark==3.5.9",
+    "fakeredis==2.32.0",
+    "pandas-stubs==2.3.3.260113",
 ]
 
 [project.urls]
 Homepage = "https://github.com/apayne185/merchant-intelligence-hub"
 
-# -----------------------------------------------------------------------------
-# Hatch — qué empaquetar
-# -----------------------------------------------------------------------------
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
 
-[tool.hatch.metadata]
-allow-direct-references = true
-
-# -----------------------------------------------------------------------------
-# uv — configuración mínima del gestor (https://docs.astral.sh/uv/)
-# -----------------------------------------------------------------------------
 [tool.uv]
-# Garantiza venv local y resolución determinista (uv.lock se commitea).
 managed = true
 
-# -----------------------------------------------------------------------------
-# Pytest
-# -----------------------------------------------------------------------------
+[tool.uv.workspace]
+members = ["cpp/riskcore"]
+
+[tool.uv.sources]
+riskcore = { workspace = true }
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
-addopts = [
-    "-ra",
-    "--strict-markers",
-    "--strict-config",
-]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
 asyncio_mode = "auto"
 pythonpath = ["."]
 markers = [
     "integration: needs real Redis/Postgres (REDIS_URL / AUDIT_DATABASE_URL); skipped otherwise",
 ]
 
-# -----------------------------------------------------------------------------
-# Coverage — CI gate (D56): `pytest --cov` fails under fail_under.
-# -----------------------------------------------------------------------------
 [tool.coverage.run]
 source = ["src"]
 branch = true
-omit = [
-    # Needs the `pyspark` extra + a JVM; exercised by tests/test_parte1_pyspark.py
-    # only where that's installed, so it can't count toward a gate CI enforces
-    # without it.
-    "src/parte1_pyspark.py",
-]
 
 [tool.coverage.report]
 fail_under = 85
@@ -224,24 +110,19 @@ exclude_also = [
     "raise NotImplementedError",
 ]
 
-# -----------------------------------------------------------------------------
-# Mypy — CI gate (D56). Package code only (src/copilot, src/mlops); the new
-# platform + MLOps modules are held to --strict. Notebook ports, scripts and
-# Parte 1-5 code predate type checking and aren't in the gate yet.
-# -----------------------------------------------------------------------------
 [tool.mypy]
 python_version = "3.10"
-files = ["src/copilot", "src/mlops"]
+files = ["src"]
 explicit_package_bases = true
 ignore_missing_imports = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 check_untyped_defs = true
 
-# The --strict flag set, spelled out: `strict = true` inside an override
-# leaks its global-only flags to every module in the run.
+# The --strict flag set, spelled out: `strict = true` inside an override leaks
+# its global-only flags to every module in the run.
 [[tool.mypy.overrides]]
-module = ["src.copilot.infra.*", "src.mlops.*"]
+module = ["src.copilot.infra.*", "src.filings.*", "src.risk.*", "src.streaming.*", "src.marketdata.*", "src.copilot.verification"]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 disallow_untyped_calls = true
@@ -252,29 +133,15 @@ warn_return_any = true
 no_implicit_reexport = true
 strict_equality = true
 
-# -----------------------------------------------------------------------------
-# Ruff (lint opcional)
-# -----------------------------------------------------------------------------
 [tool.ruff]
-target-version = "py310"  # matches requires-python (>=3.10)
-line-length = 100
+target-version = "py310"
+line-length = 120
 src = ["src", "tests"]
-# Notebooks carry pre-existing lint debt (D29) and aren't imported by any
-# module; excluding them is what lets CI make lint a hard gate for every
-# .py file (D56) instead of the old advisory-only step.
-extend-exclude = ["*.ipynb"]
+extend-exclude = ["cpp/riskcore/build"]
 
 [tool.ruff.lint]
-select = [
-    "E", "F", "W",   # pycodestyle + pyflakes
-    "I",             # isort
-    "B",             # bugbear
-    "UP",            # pyupgrade
-    "RUF",           # ruff-specific
-]
-ignore = [
-    "E501",  # line too long (gestionado por formatter)
-]
+select = ["E", "F", "W", "I", "B", "UP", "RUF"]
+ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["B", "RUF"]

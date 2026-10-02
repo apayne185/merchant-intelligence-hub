@@ -1,18 +1,16 @@
 """
-/ask response cache (D53) — Redis when REDIS_URL is set, a small in-process
-TTL cache otherwise. Disabled unless CACHE_TTL_SECONDS > 0.
+/ask response cache: Redis when REDIS_URL is set, a small in-process TTL
+cache otherwise. Disabled unless CACHE_TTL_SECONDS > 0.
 
-Why caching /ask is sound here: every tool answers from a static snapshot
-(the transactions CSV, the pickled model, the policy corpus), so the same
-(question, merchant_id, locale, mode) yields the same facts until the
-snapshot is redeployed — and in real mode a hit skips two paid LLM calls.
-The key is built from the *redacted* question (PII never becomes part of a
-Redis key) and includes the app version, so a deploy that changes answers
-invalidates old entries without a manual flush.
+The key includes the fact store's data version, which increments whenever
+the streaming ingester applies a new filing, so an answer cached before a
+10-Q landed is never served after it. It is built from the redacted
+question (PII never becomes part of a Redis key) and the app version, so a
+deploy that changes answers invalidates old entries without a flush.
 
-Not keyed by caller: no tool applies per-caller authorization today, so a
-cached answer is equally valid for every caller. If tenant-scoped data
-access is ever added, the tenant id must go into cache_key() first.
+Not keyed by caller: no tool applies per-caller authorization, so a cached
+answer is equally valid for every caller. Tenant-scoped data would require
+the tenant id in the key first.
 """
 from __future__ import annotations
 
@@ -31,9 +29,10 @@ from src.copilot.infra.store import redis_client
 logger = logging.getLogger(__name__)
 
 
-def cache_key(*, question: str, merchant_id: int | None, locale: str, mode: str, version: str) -> str:
+def cache_key(*, question: str, context: dict[str, Any], locale: str, mode: str, version: str,
+              data_version: int) -> str:
     payload = json.dumps(
-        {"q": question.strip(), "m": merchant_id, "l": locale, "mode": mode, "v": version},
+        {"q": question.strip(), "ctx": context, "l": locale, "mode": mode, "v": version, "d": data_version},
         sort_keys=True,
     )
     return "askcache:" + hashlib.sha256(payload.encode()).hexdigest()

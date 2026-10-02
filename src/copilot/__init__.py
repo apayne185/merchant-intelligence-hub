@@ -1,7 +1,7 @@
-"""Merchant Intelligence Copilot — multi-agent orchestrator.
+"""Filings & Risk Copilot: multi-agent orchestration over SEC filings and market risk.
 
-Routes natural-language merchant questions to specialist tools (KPI/SQL,
-churn-risk scoring, policy-doc RAG, complaint classification) via a
-LangGraph graph, and returns a structured, cited answer. See
-src/copilot/README.md for the architecture.
+Routes questions to specialist tools (point-in-time XBRL fundamentals, 10-K
+risk-factor retrieval, C++ portfolio risk, pre-trade limit checks) through a
+LangGraph orchestrator, then verifies every number in the answer against
+the evidence those tools produced.
 """
