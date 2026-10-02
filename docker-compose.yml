@@ -107,7 +107,7 @@ services:
 
   redis:
     <<: *hardening
-    image: redis:8.10.0-alpine
+    image: redis:8.10.2-alpine
     # Redis holds disposable keys (cache, rate-limit counters, all with TTLs)
     # and durable ones (the filing streams). volatile-lru evicts only keys with
     # a TTL, so memory pressure drops cache entries, never the work queue;
