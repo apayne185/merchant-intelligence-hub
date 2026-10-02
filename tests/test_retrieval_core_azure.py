@@ -1,14 +1,8 @@
 """
-Tests for the Azure OpenAI embedder backend (src/copilot/retrieval_core.py)
-— DECISIONS.md D39.
+Tests for the real embedder backends in src/copilot/retrieval_core.py.
 
-No real network calls: AzureOpenAIEmbedder.embed()/OpenAIEmbedder.embed()
-aren't exercised here (that would need a real API key and cost money,
-same reasoning as this repo's other real-mode tests staying untested in
-CI — see e.g. tests/test_copilot_grounding.py's mock-only coverage).
-Instead these tests cover _select_real_embedder()'s branching logic and
-AzureOpenAIEmbedder's construction, mocking the openai SDK's AzureOpenAI
-client so no credentials or network access are needed.
+No network: the openai SDK clients are mocked, so these cover backend
+selection, construction and the batching contract without credentials.
 """
 from __future__ import annotations
 
@@ -24,7 +18,7 @@ from src.copilot.retrieval_core import (
 
 @pytest.fixture(autouse=True)
 def _clear_azure_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Every test in this file starts from a clean slate — no test should
+    """Every test in this file starts from a clean slate, no test should
     depend on whatever Azure/OpenAI env vars happen to be set (or not) on
     the machine running the suite."""
     for var in ("AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_KEY", "OPENAI_API_VERSION", "OPENAI_API_KEY"):

@@ -1,9 +1,9 @@
 """
-Request audit log (D54) — one Postgres row per /ask call: who asked
+Request audit log (DECISIONS.md D15): one Postgres row per /ask call: who asked
 (JWT subject), when, what the guardrails did, which tools ran, outcome,
 latency, and the request/trace ids that join it to logs and traces.
 
-Never stores the question text — only its SHA-256 (of the *redacted*
+Never stores the question text, only its SHA-256 (of the *redacted*
 text), enough to spot repeated/abusive queries without the audit table
 becoming a second copy of whatever sensitive text users paste in.
 
@@ -13,7 +13,7 @@ deliberate availability-over-completeness choice for an analytics copilot;
 a system where every action *must* be audited (payments, access grants)
 would make this write synchronous and fail closed instead.
 
-Schema is created idempotently on startup (CREATE TABLE IF NOT EXISTS) —
+Schema is created idempotently on startup (CREATE TABLE IF NOT EXISTS):
 fine for a single append-only table; anything with evolving schema would
 get a real migration tool (alembic) first.
 """
@@ -116,7 +116,7 @@ class PostgresAuditSink:
             return
         # CREATE TABLE IF NOT EXISTS is not atomic in Postgres: two
         # concurrent callers can both pass the existence check and one dies
-        # on a pg_class unique violation. Found live in docker-compose — the
+        # on a pg_class unique violation. Found live in docker-compose, the
         # first two background audit writes raced and one row was lost. The
         # thread lock covers this process; the transaction-scoped advisory
         # lock covers several replicas starting at once (k8s rollout).

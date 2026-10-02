@@ -1,10 +1,10 @@
 """
 API-level tests for the copilot's production platform layer
-(src/copilot/infra/, DECISIONS.md D51-D55): auth, rate limiting,
+(src/copilot/infra/): auth, rate limiting,
 guardrails, response cache, audit, correlation headers, /metrics, /ready.
 
-Settings are injected via app.dependency_overrides[get_settings] — no
-process-env mutation, no Redis/Postgres needed (both have in-process /
+Settings are injected via app.dependency_overrides[get_settings] (no
+process-env mutation), and no Redis/Postgres is needed (both have in-process /
 fake stand-ins here; the real backends are covered by
 tests/test_copilot_integration.py when REDIS_URL/AUDIT_DATABASE_URL are set).
 """
@@ -34,7 +34,7 @@ from src.copilot.infra.settings import Settings, get_settings  # noqa: E402
 from src.copilot.tracing import _request_span_buffer  # noqa: E402
 
 SECRET = "test-secret-with-enough-entropy-0123456789"
-Q = {"question": "What does onboarding require?"}
+Q = {"question": "What was Apple's revenue in FY2025?"}
 
 
 class FakeAuditSink:
@@ -84,7 +84,7 @@ def _auth(**kw) -> dict[str, str]:
 # -----------------------------------------------------------------------------
 # Auth
 # -----------------------------------------------------------------------------
-def test_auth_none_allows_anonymous(client: TestClient, force_fixture_csv: None, audit: FakeAuditSink) -> None:
+def test_auth_none_allows_anonymous(client: TestClient, audit: FakeAuditSink) -> None:
     r = client.post("/ask", json=Q)
     assert r.status_code == 200
     assert audit.records[-1].subject == "anonymous"
@@ -97,7 +97,7 @@ def test_jwt_missing_token_401(client: TestClient, configure) -> None:
     assert r.headers["WWW-Authenticate"].startswith("Bearer")
 
 
-def test_jwt_valid_token(client: TestClient, configure, force_fixture_csv: None, audit: FakeAuditSink) -> None:
+def test_jwt_valid_token(client: TestClient, configure, audit: FakeAuditSink) -> None:
     configure(auth_mode="jwt", jwt_secret=SECRET)
     r = client.post("/ask", json=Q, headers=_auth(subject="tenant-42"))
     assert r.status_code == 200, r.text
@@ -136,7 +136,7 @@ def test_health_and_metrics_stay_public(client: TestClient, configure) -> None:
 # -----------------------------------------------------------------------------
 # Rate limiting
 # -----------------------------------------------------------------------------
-def test_rate_limit_429_after_quota(client: TestClient, configure, force_fixture_csv: None) -> None:
+def test_rate_limit_429_after_quota(client: TestClient, configure) -> None:
     configure(rate_limit_per_minute=2)
     first = client.post("/ask", json=Q)
     assert first.headers["X-RateLimit-Limit"] == "2"
@@ -147,14 +147,14 @@ def test_rate_limit_429_after_quota(client: TestClient, configure, force_fixture
     assert int(r.headers["Retry-After"]) >= 1
 
 
-def test_rate_limit_is_per_subject(client: TestClient, configure, force_fixture_csv: None) -> None:
+def test_rate_limit_is_per_subject(client: TestClient, configure) -> None:
     configure(auth_mode="jwt", jwt_secret=SECRET, rate_limit_per_minute=1)
     assert client.post("/ask", json=Q, headers=_auth(subject="a")).status_code == 200
     assert client.post("/ask", json=Q, headers=_auth(subject="a")).status_code == 429
     assert client.post("/ask", json=Q, headers=_auth(subject="b")).status_code == 200
 
 
-def test_unauthenticated_request_does_not_burn_quota(client: TestClient, configure, force_fixture_csv: None) -> None:
+def test_unauthenticated_request_does_not_burn_quota(client: TestClient, configure) -> None:
     configure(auth_mode="jwt", jwt_secret=SECRET, rate_limit_per_minute=1)
     for _ in range(3):
         assert client.post("/ask", json=Q).status_code == 401
@@ -222,9 +222,9 @@ def test_redis_cache_roundtrip_and_fail_open() -> None:
 # Guardrails through the API
 # -----------------------------------------------------------------------------
 def test_pii_redacted_before_graph_and_in_response(
-    client: TestClient, force_fixture_csv: None, audit: FakeAuditSink
+    client: TestClient, audit: FakeAuditSink
 ) -> None:
-    r = client.post("/ask", json={"question": "Onboarding policy for card 4111 1111 1111 1111?"})
+    r = client.post("/ask", json={"question": "Apple revenue FY2025, billed to card 4111 1111 1111 1111?"})
     assert r.status_code == 200
     body = r.json()
     assert "4111" not in json.dumps(body)
@@ -243,7 +243,7 @@ def test_prompt_injection_blocked_400(client: TestClient, audit: FakeAuditSink) 
 # -----------------------------------------------------------------------------
 # Response cache
 # -----------------------------------------------------------------------------
-def test_response_cache_hit(client: TestClient, configure, force_fixture_csv: None, audit: FakeAuditSink) -> None:
+def test_response_cache_hit(client: TestClient, configure, audit: FakeAuditSink) -> None:
     configure(cache_ttl_seconds=60)
     cache = InMemoryCache()
     app.dependency_overrides[get_response_cache] = lambda: cache
@@ -273,7 +273,7 @@ def test_request_id_echoed_and_generated(client: TestClient) -> None:
     assert generated != "bad id with spaces!" and len(generated) == 32
 
 
-def test_traceparent_propagated_into_audit(client: TestClient, force_fixture_csv: None, audit: FakeAuditSink) -> None:
+def test_traceparent_propagated_into_audit(client: TestClient, audit: FakeAuditSink) -> None:
     parent_trace = "4bf92f3577b34da6a3ce929d0e0e4736"
     r = client.post("/ask", json=Q, headers={"traceparent": f"00-{parent_trace}-00f067aa0ba902b7-01"})
     assert r.status_code == 200
@@ -281,10 +281,10 @@ def test_traceparent_propagated_into_audit(client: TestClient, force_fixture_csv
     assert r.headers["traceparent"].split("-")[1] == parent_trace
 
 
-def test_server_span_does_not_leak_into_request_buffer(client: TestClient, force_fixture_csv: None) -> None:
+def test_server_span_does_not_leak_into_request_buffer(client: TestClient) -> None:
     # Start empty: other modules (the eval harness) invoke the graph
     # directly without popping, so the buffer may already sit at its
-    # max_traces cap — where eviction would mask/skew a before/after count.
+    # max_traces cap, where eviction would mask/skew a before/after count.
     buf = _request_span_buffer()
     buf._by_trace.clear()
     buf._order.clear()
@@ -309,12 +309,13 @@ def test_json_formatter_includes_correlation_and_extras() -> None:
 # -----------------------------------------------------------------------------
 # Metrics / readiness
 # -----------------------------------------------------------------------------
-def test_metrics_exposes_copilot_series(client: TestClient, force_fixture_csv: None) -> None:
-    client.post("/ask", json={"question": "Which merchants are trending toward churn and why?"})
+def test_metrics_exposes_copilot_series(client: TestClient) -> None:
+    client.post("/ask", json={"question": "What was Apple's net margin in FY2025?"})
     text = client.get("/metrics").text
     assert 'copilot_node_duration_seconds_bucket{le="0.001",node="route"}' in text
     assert 'copilot_ask_requests_total{mode="mock",outcome="ok"}' in text
-    assert 'copilot_tool_invocations_total{tool="risk"}' in text
+    assert 'copilot_tool_invocations_total{tool="fundamentals"}' in text
+    assert 'copilot_answer_verification_total{outcome="verified"}' in text
     assert "http_request_duration_seconds_bucket" in text
 
 
@@ -334,7 +335,10 @@ def test_record_llm_usage_tokens_and_estimated_cost() -> None:
 def test_ready(client: TestClient) -> None:
     r = client.get("/ready")
     assert r.status_code == 200
-    assert r.json() == {"status": "ready", "checks": {"redis": "disabled", "audit_db": "ok", "graph": "ok"}}
+    body = r.json()
+    assert body["checks"] == {"redis": "disabled", "audit_db": "ok", "graph": "ok", "fact_store": "ok",
+                              "fact_stream": "disabled"}
+    assert body["status"] == "ready" and body["facts_loaded"] > 5000
 
 
 # -----------------------------------------------------------------------------

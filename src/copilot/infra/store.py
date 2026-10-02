@@ -1,5 +1,6 @@
 """
-Shared Redis client for the rate limiter and response cache (D53).
+Shared Redis client for the rate limiter and response cache. (Blocking
+stream reads use their own client, see src/streaming/events.py:stream_client.)
 
 Short socket timeouts on purpose: both callers fail *open* when Redis is
 unreachable (a Redis blip degrades rate limiting/caching, it must not take

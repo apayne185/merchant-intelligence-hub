@@ -32,7 +32,7 @@ def _env_list(name: str, default: str) -> tuple[str, ...]:
 class Settings:
     environment: str = "development"
 
-    # --- Auth (src/copilot/infra/auth.py, D52) ---
+    # --- Auth (src/copilot/infra/auth.py) ---
     auth_mode: AuthMode = "none"
     jwt_secret: str | None = None
     jwt_jwks_url: str | None = None
@@ -41,15 +41,15 @@ class Settings:
     jwt_issuer: str | None = None
     required_scope: str | None = "copilot:ask"
 
-    # --- Rate limiting + response cache (D53) ---
+    # --- Rate limiting + response cache ---
     rate_limit_per_minute: int = 60
     redis_url: str | None = None
     cache_ttl_seconds: int = 0
 
-    # --- Audit log (D54) ---
+    # --- Audit log ---
     audit_database_url: str | None = None
 
-    # --- Logging (D55) ---
+    # --- Logging ---
     log_format: Literal["json", "text"] = "text"
     log_level: str = "INFO"
 
@@ -62,7 +62,7 @@ class Settings:
             auth_mode=auth_mode,  # type: ignore[arg-type]  # validated below
             jwt_secret=os.environ.get("AUTH_JWT_SECRET") or None,
             jwt_jwks_url=jwks_url,
-            # Explicit allowlist, never "whatever the token header says" —
+            # Explicit allowlist, never "whatever the token header says":
             # that's the classic alg-confusion hole (alg=none, or an RS256
             # public key reused as an HS256 secret). Default follows the key
             # type actually configured.
@@ -96,6 +96,6 @@ class Settings:
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Process-wide settings, read once — env vars don't change under a
+    """Process-wide settings, read once: env vars don't change under a
     running process, same reasoning as tracing.get_tracer()."""
     return Settings.from_env()

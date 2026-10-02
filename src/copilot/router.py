@@ -1,103 +1,75 @@
 """
-Router — decides which specialist tool(s) a question needs.
+Router: picks the specialist tools and resolves entities for a question.
 
-Mock mode: deterministic keyword rules, zero LLM calls — same style as
-_MockAgent in src/parte4_api/agent.py. Real mode: an Agno agent with
-output_schema=RouteDecision and NO tools attached — classification +
-argument extraction only, mirroring agent.py's _LLMClassification pattern
-(D9). See DECISIONS.md D26.
+Entity extraction (tickers, fiscal year, metrics, weights) is deterministic
+in both modes. Tool selection is keyword rules in mock mode and an Agno
+structured-output call in real mode; the LLM can add tickers, but only
+tickers in the covered universe survive.
 """
 from __future__ import annotations
 
 import re
+from typing import Any
 
+from src.copilot.entities import extract_fiscal_year, extract_metrics, extract_tickers, extract_weights, universe
 from src.copilot.infra.metrics import record_llm_usage
 from src.copilot.schemas import RouteDecision, ToolName
 from src.copilot.state import CopilotState
 
-_DATA_PATTERNS = re.compile(
-    r"\b(tpv|top merchants?|approval rate|yoy|year.over.year|volume|kpi|churn rate)\b", re.IGNORECASE
-)
-_RISK_PATTERNS = re.compile(
-    r"\b(risk|churn|at.?risk|trending|predict|likely to (leave|cancel))\b", re.IGNORECASE
-)
-_GROUNDING_PATTERNS = re.compile(
-    r"\b(polic(y|ies)|onboarding|kyc|escalat|require[sd]?|compliance|\bsla\b)\b", re.IGNORECASE
-)
-_COMPLAINT_PATTERNS = re.compile(
-    r"\b(cancel|complain|not working|broken|charged (me|twice)|refund)\b", re.IGNORECASE
-)
+ROUTER_MODEL = "gpt-4o-mini"
+TOOL_ORDER: tuple[ToolName, ...] = ("fundamentals", "filing_search", "market_risk", "pretrade_check")
+
+_RISK = re.compile(
+    r"\b(var|value.at.risk|expected shortfall|tail risk|volatility|drawdown|portfolio risk|"
+    r"risk of (my|the|this) portfolio|backtest|risk contribution)\b", re.I)
+# Trade-specific phrases only: bare "concentration" or "limits" also occur in
+# research questions ("supply chain concentration", "export limits").
+_PRETRADE = re.compile(
+    r"\b(pre.trade|(risk|position|concentration|trading) limits?|limit check|compliance check|"
+    r"can (i|we) (buy|hold|allocate|put)|approve (this|the|my) (trade|portfolio|allocation)|"
+    r"allowed to (buy|hold)|rebalanc\w*|proposed (portfolio|allocation|trade))\b", re.I)
+_FILINGS = re.compile(
+    r"\b(risk factors?|disclos\w*|mention\w*|say(s)? about|exposure to|regulat\w*|supply chain|competition|"
+    r"litigation|lawsuits?|tariffs?|china|export controls?|cyber\w*|what risks|10-k says|warn\w*)\b", re.I)
+_FUNDAMENTALS = re.compile(r"\b(financials|fundamentals|results|fiscal|reported|balance sheet|income statement)\b", re.I)
 
 
-def route_mock(question: str, merchant_id: int | None) -> list[ToolName]:
-    """Deterministic keyword router — zero LLM calls. A question can match
-    multiple patterns (the flagship "trending toward churn ... does policy
-    flag them" question matches both risk and grounding) — all matches are
-    kept, in a fixed order (data_analyst, risk, grounding,
-    complaint_classifier) so tool_calls order is reproducible.
-    """
-    tools: list[ToolName] = []
-    if _DATA_PATTERNS.search(question):
-        tools.append("data_analyst")
-
-    if _RISK_PATTERNS.search(question):
-        tools.append("risk")
-        # A per-merchant risk question is better answered with concrete KPI
-        # evidence alongside the ML score than the score alone — the
-        # model's own discrimination is weak (DECISIONS.md D24), so lean on
-        # data_analyst's YoY/TPV facts as the more reliable grounding.
-        if merchant_id is not None and "data_analyst" not in tools:
-            tools.append("data_analyst")
-
-    if _GROUNDING_PATTERNS.search(question):
-        tools.append("grounding")
-
-    # Complaint classifier only fires when nothing analytical matched AND
-    # the text reads like a first-person complaint with a known merchant —
-    # see tools/complaint_classifier.py's module docstring for why this
-    # stays conservative (misrouting an analytical question here silently
-    # misclassifies it as `other`/low-urgency instead of answering it).
-    if not tools and merchant_id is not None and _COMPLAINT_PATTERNS.search(question):
-        tools.append("complaint_classifier")
-
+def route_mock(question: str, tickers: list[str], has_portfolio: bool) -> list[ToolName]:
+    tools: set[ToolName] = set()
+    if extract_metrics(question) or _FUNDAMENTALS.search(question):
+        tools.add("fundamentals")
+    if _FILINGS.search(question):
+        tools.add("filing_search")
+    if _PRETRADE.search(question):
+        tools.add("pretrade_check")
+    elif _RISK.search(question) or (has_portfolio and not tools):
+        tools.add("market_risk")
     if not tools:
-        # No confident match — default to grounding rather than answering
-        # nothing; policy context is the safest fallback for an ambiguous
-        # business question.
-        tools.append("grounding")
-
-    return tools
+        tools.add("fundamentals" if tickers else "filing_search")
+    return [t for t in TOOL_ORDER if t in tools]
 
 
-def route_real(question: str, merchant_id: int | None) -> RouteDecision:
-    """Real-mode router: an Agno agent, output_schema=RouteDecision, no
-    tools attached — classification + argument extraction only."""
+def route_real(question: str, tickers: list[str]) -> RouteDecision:  # pragma: no cover - network
     from agno.agent import Agent
     from agno.models.openai import OpenAIChat
 
     instructions = f"""
-You are the router for a merchant-intelligence copilot. Given a user's
-question, decide which specialist tools are needed to answer it:
+You route questions for a financial research copilot covering these companies:
+{", ".join(f"{t} ({c['display_name']})" for t, c in universe().items())}.
 
-- data_analyst: concrete KPI/SQL facts (TPV, approval rate, YoY, top merchants)
-- risk: the churn-risk ML model's score/drivers for specific merchant(s)
-- grounding: company policy/onboarding/escalation documents
-- complaint_classifier: the question IS a pasted customer complaint, not an
-  analytical question about merchants in general
+Choose every tool the question needs:
+- fundamentals: reported financials from SEC XBRL (revenue, income, margins, EPS, debt, cash flow, growth)
+- filing_search: what a company's 10-K risk factors say about a topic
+- market_risk: Value at Risk, expected shortfall, volatility or risk attribution of a portfolio
+- pretrade_check: whether a proposed portfolio or trade passes risk limits
 
-A question can need more than one tool. The caller already knows
-merchant_id={merchant_id} if set; only fill `merchant_id` in your response
-if you can extract one directly from the question text that the caller
-didn't already supply.
+Tickers already identified: {tickers}. Add any other covered company the
+question names. Set fiscal_year only if the question names one.
 """
-    agent = Agent(
-        model=OpenAIChat(id="gpt-4o-mini"),
-        instructions=instructions,
-        output_schema=RouteDecision,
-        structured_outputs=True,
-    )
+    agent = Agent(model=OpenAIChat(id=ROUTER_MODEL), instructions=instructions, output_schema=RouteDecision,
+                  structured_outputs=True)
     run_output = agent.run(question)
-    record_llm_usage("router", "gpt-4o-mini", run_output)
+    record_llm_usage("router", ROUTER_MODEL, run_output)
     content = run_output.content
     if isinstance(content, RouteDecision):
         return content
@@ -106,25 +78,33 @@ didn't already supply.
     raise TypeError(f"Unexpected router response: {type(content)!r}")
 
 
-def router_node(state: CopilotState) -> dict:
-    """LangGraph node: populates pending_tools (+ merchant_id, if the real
-    router extracted one the caller didn't already supply) from the
-    question. Branches on state['mock'] rather than reading MOCK_LLM from
-    the environment directly, so mode is explicit and traceable through the
-    graph state instead of implicit global process state.
-    """
+def router_node(state: CopilotState) -> dict[str, Any]:
+    question = state["question"]
+    tickers = list(dict.fromkeys([*state["tickers"], *extract_tickers(question)]))
+    positions = state["positions"] or extract_weights(question)
+    fiscal_year = extract_fiscal_year(question)
+
     if state["mock"]:
-        tools = route_mock(state["question"], state["merchant_id"])
-        reasoning = "mock keyword router"
-        merchant_id = state["merchant_id"]
+        tools = route_mock(question, tickers, bool(positions))
+        reasoning = "keyword router"
     else:
-        decision = route_real(state["question"], state["merchant_id"])
-        tools = decision.tools or ["grounding"]
+        decision = route_real(question, tickers)
+        tickers = list(dict.fromkeys([*tickers, *(t.upper() for t in decision.tickers)]))
+        tools = [t for t in TOOL_ORDER if t in decision.tools] or ["filing_search"]
+        fiscal_year = fiscal_year or decision.fiscal_year
         reasoning = decision.reasoning
-        merchant_id = state["merchant_id"] if state["merchant_id"] is not None else decision.merchant_id
+
+    tickers = [t for t in tickers if t in universe()]
+    if not positions and tickers and any(t in tools for t in ("market_risk", "pretrade_check")):
+        positions = {t: round(1.0 / len(tickers), 6) for t in tickers}
+    if "pretrade_check" in tools and "market_risk" in tools:
+        tools.remove("market_risk")  # the pre-trade check already computes portfolio VaR
 
     return {
         "pending_tools": tools,
         "route_reasoning": reasoning,
-        "merchant_id": merchant_id,
+        "tickers": tickers,
+        "positions": positions,
+        "fiscal_year": fiscal_year,
+        "metrics": extract_metrics(question),
     }

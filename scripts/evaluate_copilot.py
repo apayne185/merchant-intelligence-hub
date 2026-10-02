@@ -1,204 +1,180 @@
 """
-Golden-set evaluation for the Merchant Intelligence Copilot (src/copilot/).
+Golden-set evaluation of the copilot, plus an adversarial test of the answer verifier.
 
-Runs data/golden_set_copilot.json through the orchestrator graph and reports:
-  - route accuracy (exact-set match rate + mean recall of expected tools)
-  - citation hallucination rate — every cited policy_doc id must exist in
-    the actually-loaded corpus (data/policy_docs.json); should be exactly
-    0%, the cheapest high-value regression check there is for a RAG system
-  - citation recall — fraction of examples whose expected_citation_ids are
-    all present in the answer's citations
-  - risk-caveat mention rate — of examples expecting the model's ROC-AUC
-    caveat, how many actually got it (DECISIONS.md D24's honesty concern,
-    made mechanically checkable)
-  - complaint classification accuracy, for the one complaint-routed example
-  - facts_ok_rate — fraction of examples where every expected_facts check passed
+    MOCK_LLM=1 uv run python -m scripts.evaluate_copilot          # deterministic, CI gate
+    OPENAI_API_KEY=... uv run python -m scripts.evaluate_copilot --real
 
-Always forces the small committed fixture (data/copilot_fixture_transactions.csv),
-never the real transactions_sample.csv — the golden set's expected merchant
-ids (90001-90004) and citation ids are fixture-specific, so evaluating
-against the real ~10k-merchant dataset wouldn't make sense here (unlike
-scripts/evaluate_classifier.py, whose golden set doesn't depend on which
-merchant dataset is loaded). This also makes it runnable in CI, which never
-has the real (gitignored) CSV.
+Requests go through the real FastAPI app (guardrails, graph, verification),
+not the graph alone. Metrics, written to outputs/eval_report.json:
 
-Runs with MOCK_LLM by default — free, deterministic, no API key needed.
-`--real` switches to the real router/synthesizer (requires OPENAI_API_KEY,
-costs money, not deterministic run-to-run).
+  route_accuracy            exact match of the tools that ran
+  figure_accuracy           expected SEC figures present in the evidence AND stated
+                            in the answer at a precision consistent with them
+  verification_pass_rate    answers whose every number verified (or had none)
+  numeric_hallucination_rate  unverified numbers / numbers checked, over all answers
+  retrieval_hit_rate        a passage from the right company containing an expected keyword
+  decision_accuracy         pre-trade APPROVE/REJECT matches
+  gap_honesty_rate          unanswerable questions say so instead of inventing a figure
+  verifier_recall           corrupted answers (each number perturbed) the verifier rejects
+  verifier_false_positive_rate  correct answers the verifier rejects
+  latency_ms_p50 / p95      end-to-end /ask latency
 
-This is a small, actually-runnable slice of what a production evaluation
-strategy would look like (see DECISIONS.md D10 for the same caveat about
-scripts/evaluate_classifier.py's golden set) — 11 examples validate that the
-harness mechanism works, not statistical significance.
-
-Usage:
-    MOCK_LLM=1 uv run python -m scripts.evaluate_copilot
-    OPENAI_API_KEY=sk-... uv run python -m scripts.evaluate_copilot --real
+Expected figures come straight from SEC companyfacts by concept and period
+end date, not from the normalizer under test (see data/golden_set.json).
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import re
+import statistics
+import time
 from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-GOLDEN_SET_PATH = REPO_ROOT / "data" / "golden_set_copilot.json"
-OUTPUTS_DIR = REPO_ROOT / "outputs"
+GOLDEN_PATH = REPO_ROOT / "data" / "golden_set.json"
+REPORT_PATH = REPO_ROOT / "outputs" / "eval_report.json"
+PERTURBATIONS = (0.005, -0.01, 0.05, -0.10, 0.5)
 
 
-def _load_golden_set() -> list[dict[str, Any]]:
-    return json.loads(GOLDEN_SET_PATH.read_text())
+def _figure_ok(expected: float, evidence: list[dict[str, Any]], answer: str) -> bool:
+    from src.copilot.verification import extract_claims
+
+    in_evidence = any(
+        abs(v - expected) <= 1e-9 * max(1.0, abs(expected)) for ev in evidence for v in ev["values"].values()
+    )
+    stated = any(abs(abs(c.value) - abs(expected)) <= c.tolerance + 1e-9 * abs(expected)
+                 for c in extract_claims(answer))
+    return in_evidence and stated
 
 
-def evaluate(mock: bool = True) -> dict[str, Any]:
-    """Runs the golden set through the copilot graph and computes metrics.
+def _perturb(answer: str, evidence: list[dict[str, Any]]) -> list[str]:
+    """Corrupted copies of `answer`, one number changed in each. Perturbations
+    that still match some evidence value at the stated precision are skipped:
+    they are not wrong, so a verifier accepting them is correct."""
+    from src.copilot.schemas import Evidence
+    from src.copilot.verification import _matches, evidence_values, extract_claims
 
-    Sets MOCK_LLM before importing graph-adjacent modules, since
-    build_agent() (used by the complaint_classifier tool) branches on that
-    env var at call time — mirrors scripts/evaluate_classifier.py's
-    evaluate() for the same reason.
-    """
-    os.environ["MOCK_LLM"] = "1" if mock else "0"
+    values = evidence_values([Evidence(**e) for e in evidence])
+    out = []
+    for claim in extract_claims(answer):
+        idx = claim.start
+        m = re.search(r"\d[\d,]*(?:\.\d+)?", claim.text)
+        if m is None:
+            continue
+        digits = m.group(0)
+        decimals = len(digits.split(".")[1]) if "." in digits else 0
+        base = float(digits.replace(",", ""))
+        variants = [f"{base * (1 + d):,.{decimals}f}" for d in PERTURBATIONS]
+        plain = digits.replace(",", "").replace(".", "")
+        if len(plain) >= 2 and plain[0] != plain[1]:  # transpose the first two digits
+            swapped = plain[1] + plain[0] + plain[2:]
+            variants.append(f"{float(swapped) / 10 ** decimals:,.{decimals}f}")
+        for v in variants:
+            new_text = claim.text.replace(digits, v, 1)
+            new_claims = extract_claims(new_text)
+            if new_text == claim.text or not new_claims or _matches(new_claims[0], values):
+                continue
+            out.append(answer[:idx] + new_text + answer[claim.end:])
+    return out
 
-    import src.copilot.tools.data_analyst as data_analyst
 
-    # Always the fixture — see module docstring for why.
-    data_analyst.REAL_CSV_PATH = Path("/nonexistent-forced-fixture-only.csv")
+def run(real: bool) -> dict[str, Any]:
+    if not real:
+        os.environ["MOCK_LLM"] = "1"
+    from fastapi.testclient import TestClient
+    from src.copilot.api import app
+    from src.copilot.schemas import Evidence
+    from src.copilot.verification import verify_answer
 
-    from src.copilot.graph import build_graph
-    from src.copilot.state import initial_state
-    from src.copilot.tools.grounding import known_policy_ids
+    cases = json.loads(GOLDEN_PATH.read_text())["cases"]
+    rows: list[dict[str, Any]] = []
+    with TestClient(app) as client:
+        for case in cases:
+            t0 = time.perf_counter()
+            resp = client.post("/ask", json=case["request"])
+            latency = (time.perf_counter() - t0) * 1000
+            body = resp.json()
+            row: dict[str, Any] = {"id": case["id"], "category": case["category"], "status_code": resp.status_code,
+                                   "latency_ms": round(latency, 1)}
+            if resp.status_code != 200:
+                rows.append(row)
+                continue
+            answer, evidence, ver = body["answer"], body["evidence"], body["verification"]
+            row.update({
+                "route": body["route"], "route_ok": sorted(body["route"]) == sorted(case["expected_route"]),
+                "verification": ver["status"], "numbers_checked": ver["numbers_checked"],
+                "numbers_unverified": len(ver["unverified"]), "fallback_used": ver["fallback_used"],
+                "answer": answer,
+            })
+            if "expected_figures" in case:
+                row["figures_ok"] = [_figure_ok(f["value"], evidence, answer) for f in case["expected_figures"]]
+            if "retrieval" in case:
+                spec = case["retrieval"]
+                row["retrieval_hit"] = any(
+                    ev["kind"] == "filing_passage" and ev["ticker"] == spec["ticker"]
+                    and any(k.lower() in (ev.get("excerpt") or "").lower() for k in spec["keywords"])
+                    for ev in evidence
+                )
+            if "expected_decision" in case:
+                row["decision_ok"] = f"Pre-trade decision: {case['expected_decision']}" in answer
+            if "expected_gaps" in case:
+                row["gap_ok"] = all(g.lower() in answer.lower() for g in case["expected_gaps"])
 
-    graph = build_graph()
-    golden_set = _load_golden_set()
-    # Explicit mock=mock, not known_policy_ids()'s own default (mock=True)
-    # — this function's whole point is to validate citations against
-    # whatever mode `mock` (this function's own parameter) actually is.
-    # Benign today only because get_corpus_store's mock/real stores are
-    # built from the same _load_policy_docs() records either way — but a
-    # defaulted bool silently deciding which cache a *validation* check
-    # reads is a latent trap the moment the two modes' corpora could ever
-    # diverge (e.g. a future per-mode corpus filter).
-    known_ids = known_policy_ids(mock=mock)
+            # Adversarial: every corrupted variant of this answer must fail verification.
+            evs = [Evidence(**e) for e in evidence]
+            corrupted = _perturb(answer, evidence)
+            row["verifier_adversarial"] = len(corrupted)
+            row["verifier_caught"] = sum(verify_answer(a, evs).status == "failed" for a in corrupted)
+            row["verifier_false_positive"] = verify_answer(answer, evs).status == "failed"
+            rows.append(row)
 
-    results: list[dict[str, Any]] = []
-    citation_total_cited = 0
-    citation_hallucinations = 0
-    citation_recall_hits = 0
-    citation_recall_total = 0
-    caveat_expected_total = 0
-    caveat_expected_met = 0
-    classification_total = 0
-    classification_correct = 0
+    ok = [r for r in rows if r["status_code"] == 200]
 
-    for example in golden_set:
-        state = initial_state(
-            example["question"],
-            merchant_id=example["merchant_id"],
-            locale=example["locale"],
-            mock=mock,
-        )
-        result = graph.invoke(state)
-        answer = result["answer"] or ""
+    def rate(key: str) -> float | None:
+        vals = [v for r in ok if key in r for v in (r[key] if isinstance(r[key], list) else [r[key]])]
+        return round(sum(vals) / len(vals), 4) if vals else None
 
-        predicted_route = sorted({tc["tool"] for tc in result["tool_calls"]})
-        expected_route = sorted(example["expected_route"])
-        route_exact = predicted_route == expected_route
-        expected_set, predicted_set = set(expected_route), set(predicted_route)
-        route_recall = len(expected_set & predicted_set) / len(expected_set) if expected_set else 1.0
-
-        cited_policy_ids = {c["id"] for c in result["citations"] if c["source_type"] == "policy_doc"}
-        for cid in cited_policy_ids:
-            citation_total_cited += 1
-            if cid not in known_ids:
-                citation_hallucinations += 1
-
-        expected_citation_ids = set(example.get("expected_citation_ids", []))
-        if expected_citation_ids:
-            citation_recall_total += 1
-            if expected_citation_ids.issubset(cited_policy_ids):
-                citation_recall_hits += 1
-
-        facts = example.get("expected_facts", {})
-        facts_ok = True
-        if "mentions_auc_caveat" in facts:
-            caveat_expected_total += 1
-            met = ("0.58" in answer) == facts["mentions_auc_caveat"]
-            facts_ok = facts_ok and met
-            if met and facts["mentions_auc_caveat"]:
-                caveat_expected_met += 1
-        if "mentions_merchant_id" in facts:
-            mid = example["merchant_id"]
-            facts_ok = facts_ok and (mid is not None and str(mid) in answer) == facts["mentions_merchant_id"]
-        if "mentions_not_found" in facts:
-            facts_ok = facts_ok and ("No transaction history found" in answer) == facts["mentions_not_found"]
-
-        expected_category = example.get("expected_classification_category")
-        classification_ok = None
-        if expected_category is not None:
-            classification_total += 1
-            actual_category = result["tool_results"].get("complaint_classifier", {}).get("category")
-            classification_ok = actual_category == expected_category
-            if classification_ok:
-                classification_correct += 1
-
-        results.append({
-            "id": example["id"],
-            "question": example["question"],
-            "expected_route": expected_route,
-            "predicted_route": predicted_route,
-            "route_exact_match": route_exact,
-            "route_recall": round(route_recall, 4),
-            "facts_ok": facts_ok,
-            "classification_ok": classification_ok,
-        })
-
-    n = len(golden_set)
-    return {
-        "mode": "mock" if mock else "real",
-        "n_examples": n,
-        "route_exact_match_rate": round(sum(r["route_exact_match"] for r in results) / n, 4) if n else 0.0,
-        "route_recall_mean": round(sum(r["route_recall"] for r in results) / n, 4) if n else 0.0,
-        "citation_hallucination_rate": (
-            round(citation_hallucinations / citation_total_cited, 4) if citation_total_cited else 0.0
-        ),
-        "citation_recall_rate": (
-            round(citation_recall_hits / citation_recall_total, 4) if citation_recall_total else None
-        ),
-        "risk_caveat_mention_rate": (
-            round(caveat_expected_met / caveat_expected_total, 4) if caveat_expected_total else None
-        ),
-        "classification_accuracy": (
-            round(classification_correct / classification_total, 4) if classification_total else None
-        ),
-        "facts_ok_rate": round(sum(1 for r in results if r["facts_ok"]) / n, 4) if n else 0.0,
-        "results": results,
+    checked = sum(r["numbers_checked"] for r in ok)
+    adversarial = sum(r["verifier_adversarial"] for r in ok)
+    lat = sorted(r["latency_ms"] for r in rows)
+    summary = {
+        "mode": "real" if real else "mock",
+        "cases": len(cases),
+        "http_errors": len(rows) - len(ok),
+        "route_accuracy": rate("route_ok"),
+        "figure_accuracy": rate("figures_ok"),
+        "verification_pass_rate": round(sum(r["verification"] != "failed" for r in ok) / len(ok), 4),
+        "numeric_hallucination_rate": round(sum(r["numbers_unverified"] for r in ok) / checked, 4) if checked else 0.0,
+        "fallback_rate": round(sum(r["fallback_used"] for r in ok) / len(ok), 4),
+        "retrieval_hit_rate": rate("retrieval_hit"),
+        "decision_accuracy": rate("decision_ok"),
+        "gap_honesty_rate": rate("gap_ok"),
+        "numbers_checked": checked,
+        "verifier_adversarial_cases": adversarial,
+        "verifier_recall": round(sum(r["verifier_caught"] for r in ok) / adversarial, 4) if adversarial else None,
+        "verifier_false_positive_rate": rate("verifier_false_positive"),
+        "latency_ms_p50": round(statistics.median(lat), 1),
+        "latency_ms_p95": round(lat[min(len(lat) - 1, int(0.95 * len(lat)))], 1),
     }
+    return {"summary": summary, "cases": rows}
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--real", action="store_true", help="Use the real router/synthesizer (requires OPENAI_API_KEY, costs money)"
-    )
-    args = parser.parse_args()
-
-    report = evaluate(mock=not args.real)
-
-    OUTPUTS_DIR.mkdir(exist_ok=True)
-    (OUTPUTS_DIR / "eval_report_copilot.json").write_text(json.dumps(report, indent=2))
-
-    print(f"=== COPILOT EVAL REPORT ({report['mode']} mode, {report['n_examples']} examples) ===")
-    print(f"Route exact-match rate:      {report['route_exact_match_rate']:.0%}")
-    print(f"Route recall (mean):         {report['route_recall_mean']:.0%}")
-    print(f"Citation hallucination rate: {report['citation_hallucination_rate']:.0%}")
-    print(f"Citation recall rate:        {report['citation_recall_rate']}")
-    print(f"Risk-caveat mention rate:    {report['risk_caveat_mention_rate']}")
-    print(f"Classification accuracy:     {report['classification_accuracy']}")
-    print(f"Facts-ok rate:               {report['facts_ok_rate']:.0%}")
-    print("\nSaved to outputs/eval_report_copilot.json")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--real", action="store_true", help="call the real LLM (needs OPENAI_API_KEY)")
+    args = ap.parse_args()
+    report = run(args.real)
+    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    REPORT_PATH.write_text(json.dumps(report, indent=1) + "\n")
+    for k, v in report["summary"].items():
+        print(f"{k:32s} {v}")
+    failing = [r["id"] for r in report["cases"] if r.get("route_ok") is False or False in r.get("figures_ok", [])
+               or r.get("retrieval_hit") is False or r.get("decision_ok") is False or r.get("gap_ok") is False]
+    if failing:
+        print("cases with misses:", ", ".join(failing))
 
 
 if __name__ == "__main__":

@@ -1,12 +1,12 @@
 """
-Request-context ASGI middleware (D55): request id, W3C trace-context
+Request-context ASGI middleware (DECISIONS.md D16): request id, W3C trace-context
 propagation, and one structured access-log line per request.
 
   - X-Request-ID: accepted from the caller/gateway if well-formed, else
     generated; echoed on the response and bound to every log line.
   - traceparent: an incoming W3C trace context (from an upstream gateway or
     service) is extracted, and this request's server span becomes its
-    child — one trace end to end, not a new root per hop. The response
+    child, one trace end to end, not a new root per hop. The response
     carries `traceparent` back so a caller can find the trace.
 
 Pure ASGI rather than Starlette's BaseHTTPMiddleware: contextvars set here
@@ -28,7 +28,7 @@ from src.copilot.tracing import traced
 access_logger = logging.getLogger("copilot.access")
 
 _VALID_REQUEST_ID = re.compile(r"^[A-Za-z0-9._\-]{1,128}$")
-# Probes and scrapes: no span, no access line — at a 10s scrape/probe
+# Probes and scrapes: no span, no access line, at a 10s scrape/probe
 # interval per replica they'd drown the real traffic in both backends.
 _QUIET_PATHS = frozenset({"/health", "/ready", "/metrics"})
 

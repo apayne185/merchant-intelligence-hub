@@ -1,34 +1,22 @@
 """
-Observability for the orchestrator graph — real OpenTelemetry spans (the
-standard tracing API/data model), no collector to stand up. One span per
-graph node (route/data_analyst/risk/grounding/complaint_classifier/
-synthesize) plus a root span per /ask request, nested via OTel's normal
-parent/child context propagation — so a trace shows exactly which
-specialist(s) fired, in what order, and how long each took, without
-guessing from `tool_calls` timestamps after the fact.
+Observability for the orchestrator graph: OpenTelemetry spans, one per graph
+node (route, fundamentals, filing_search, market_risk, pretrade_check,
+synthesize) under a root span per /ask request, so a trace shows which
+specialists fired, in what order, and how long each took. Offline by
+default; see DECISIONS.md D16.
 
-Same "no new infra this repo can't run locally" philosophy as D17-D19's
-in-repo vector store and D26's no-checkpointer decision: exporters here
-write to the console or a local JSON-lines file, never to a collector
-endpoint — MOCK_LLM=1 stays fully offline and deterministic in span
-*structure* (span attributes like duration are naturally non-deterministic
-wall-clock values, so tests assert on span names/attributes, never on
-timing). See DECISIONS.md D37.
-
-Exporter selection via COPILOT_TRACE_EXPORTER env var:
-  - unset/"none" (default): tracing is a no-op — spans are created (cheap,
-    same code path always runs so it's actually exercised in tests) but
-    never exported anywhere. Zero behavior change for existing deployments.
-  - "console": human-readable spans printed to stdout as they end.
-  - "file": newline-delimited JSON spans appended to
-    COPILOT_TRACE_FILE (default: outputs/traces.jsonl).
+Exporter selection via COPILOT_TRACE_EXPORTER:
+  - unset/"none" (default): spans are created (so the code path is always
+    exercised in tests) but never exported.
+  - "console": human-readable spans on stdout.
+  - "file": newline-delimited JSON spans appended to COPILOT_TRACE_FILE
+    (default outputs/traces.jsonl), size-capped with one rotation.
   - "otlp": OTLP/HTTP to an OpenTelemetry Collector (docker-compose.yml,
-    k8s/) — endpoint/headers via the standard OTEL_EXPORTER_OTLP_* env
-    vars, service.name/version/environment via OTEL_SERVICE_NAME and
-    OTEL_RESOURCE_ATTRIBUTES. The Collector fans out to Jaeger (traces) and,
-    via its spanmetrics connector, to Prometheus. See DECISIONS.md D51 for
-    why this doesn't contradict D37's "no collector" — it's opt-in; the
-    default stays offline.
+    k8s/), configured through the standard OTEL_EXPORTER_OTLP_* variables.
+    The Collector fans out to Jaeger (traces) and, via its spanmetrics
+    connector, to Prometheus.
+
+Tests assert on span names and attributes, never on timing.
 """
 from __future__ import annotations
 
@@ -55,22 +43,22 @@ from opentelemetry.sdk.trace.export import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TRACE_FILE = REPO_ROOT / "outputs" / "traces.jsonl"
-# Hard cap on the trace file's size — once export() sees the file at or
+# Hard cap on the trace file's size, once export() sees the file at or
 # past this, it rotates trace.jsonl -> trace.jsonl.1 (overwriting any
 # previous .1) rather than growing forever. This is a portfolio/demo repo
 # writing to local disk, not a production log pipeline with its own
-# rotation/shipping — a size cap here is the minimum needed so
+# rotation/shipping, a size cap here is the minimum needed so
 # COPILOT_TRACE_EXPORTER=file can't quietly fill a disk over a long-running
 # process. 10MB is generous for a demo (~10k+ requests at a few hundred
 # bytes/span, several spans/request) without being a real bound in
-# production use — deliberately not configurable via env var, since anyone
+# production use, deliberately not configurable via env var, since anyone
 # who needs real log rotation should point COPILOT_TRACE_FILE at a path
 # already managed by one instead.
 _MAX_TRACE_FILE_BYTES = 10 * 1024 * 1024
 
 
 class _NoOpExporter(SpanExporter):
-    """Discards every span. Used when tracing isn't configured — spans are
+    """Discards every span. Used when tracing isn't configured, spans are
     still created (so the instrumented code path is always exercised, in
     tests included) but cost nothing beyond span-object construction."""
 
@@ -82,9 +70,9 @@ class _NoOpExporter(SpanExporter):
 
 
 class JsonLinesFileExporter(SpanExporter):
-    """Appends each span as one JSON line to a local file — a durable trace
+    """Appends each span as one JSON line to a local file, a durable trace
     log without running a collector. Mirrors this repo's outputs/*.json
-    convention (D21/D28/D36 eval reports) but newline-delimited since spans
+    convention of the eval reports, but newline-delimited since spans
     arrive incrementally, not as one final report.
 
     Paired with BatchSpanProcessor (see get_tracer() below), not
@@ -92,7 +80,7 @@ class JsonLinesFileExporter(SpanExporter):
     of firing once per span, so this keeps one open file handle across the
     whole batch rather than reopening per span. Also caps the file at
     _MAX_TRACE_FILE_BYTES, rotating to a single ``.1`` backup instead of
-    growing without bound — see that constant's comment for why a
+    growing without bound, see that constant's comment for why a
     one-generation rotation, not a real log-rotation scheme, is the right
     amount of complexity here.
     """
@@ -163,12 +151,12 @@ class _RequestSpanBuffer(SpanExporter):
     """A second, always-on exporter (independent of COPILOT_TRACE_EXPORTER)
     that keeps recently finished spans in a small process-local ring, keyed
     by trace_id, so a caller (api.py's /ask) can pull back just *this
-    request's* spans right after graph.invoke() returns — "how long did
+    request's* spans right after graph.invoke() returns, "how long did
     each node take for the request that just ran" answered directly,
     without parsing a log file or standing up a real backend.
 
     Unlike the SDK's own InMemorySpanExporter (deque + clear-everything),
-    this groups by trace_id and pops only the caller's own entry — safe
+    this groups by trace_id and pops only the caller's own entry, safe
     under FastAPI's concurrent request handling, where another /ask call
     can have spans in flight at the same time a first one reads its own
     trace back. Bounded by every request eventually popping its own
@@ -187,7 +175,7 @@ class _RequestSpanBuffer(SpanExporter):
                 # Skip the HTTP SERVER span the request middleware opens
                 # (src/copilot/infra/middleware.py): it ends *after* /ask
                 # has already popped its trace, so buffering it would
-                # re-create exactly the leak D40 fixed. /ask only ever reads
+                # re-create the span-buffer leak this guards against. /ask only ever reads
                 # back its own INTERNAL spans (copilot.ask + copilot.node.*).
                 if span.kind == trace.SpanKind.SERVER:
                     continue
@@ -230,18 +218,18 @@ def get_tracer() -> trace.Tracer:
     provider = TracerProvider(
         resource=Resource.create(
             {
-                "service.name": os.environ.get("OTEL_SERVICE_NAME", "merchant-intelligence-copilot"),
+                "service.name": os.environ.get("OTEL_SERVICE_NAME", "filings-risk-copilot"),
                 "deployment.environment": os.environ.get("APP_ENV", "development"),
             }
         )
     )
     # BatchSpanProcessor, not Simple: the console/file exporter's export()
     # used to run synchronously in the request path on every single span
-    # end (SimpleSpanProcessor calls export() per span) — a blocking
+    # end (SimpleSpanProcessor calls export() per span), a blocking
     # stdout write or file open+write+close, ~6 times per /ask, the moment
     # anyone turns tracing on. Batching moves that I/O to a background
     # thread and coalesces multiple spans per export() call. Deliberately
-    # NOT applied to the request-span buffer below — api.py's /ask reads
+    # NOT applied to the request-span buffer below, api.py's /ask reads
     # that buffer synchronously right after graph.invoke() returns, so it
     # must still see every span immediately, not after a batching delay.
     provider.add_span_processor(BatchSpanProcessor(_build_exporter()))
@@ -273,7 +261,7 @@ def traced(
     kind: trace.SpanKind = trace.SpanKind.INTERNAL,
     **attributes: Any,
 ) -> Iterator[trace.Span]:
-    """Span context manager — records exceptions on the span (status +
+    """Span context manager, records exceptions on the span (status +
     the exception event) and always re-raises, so tracing never changes
     control flow or swallows an error the caller would otherwise see.
     `context` parents the span on an extracted remote context (W3C
@@ -302,7 +290,7 @@ class NodeFn(Protocol[_StateT]):
 def traced_node(node_name: str, fn: NodeFn[_StateT]) -> NodeFn[_StateT]:
     """Wraps a LangGraph node function in a span named after the node,
     tagging how many pending tools remain and (for the router) nothing
-    state-specific — kept generic on purpose so this wrapper works
+    state-specific, kept generic on purpose so this wrapper works
     identically for every node in graph.py's _NODE_FNS without each node
     needing to know it's being traced (same "tools stay framework-agnostic"
     boundary graph.py's own docstring already draws for LangGraph itself).
