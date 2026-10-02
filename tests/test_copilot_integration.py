@@ -1,5 +1,5 @@
 """
-Integration tests against real Redis and Postgres — the backends
+Integration tests against real Redis and Postgres, the backends
 tests/test_copilot_platform.py replaces with fakes.
 
 Skipped unless the env vars are set; CI's `integration` job provides both as
@@ -108,3 +108,36 @@ def test_postgres_audit_concurrent_first_writes_all_land() -> None:
             "SELECT count(*) FROM copilot_audit_log WHERE request_id = ANY(%s)", (ids,)
         ).fetchone()[0]
     assert n == 8
+
+
+@pytest.mark.skipif(not REDIS_URL, reason="REDIS_URL not set")
+def test_streams_pipeline_against_real_redis() -> None:
+    """Poller -> consumer group -> broadcast -> subscriber, on a real server,
+    under a unique key prefix so parallel CI jobs cannot collide."""
+    import json
+
+    import src.streaming.events as events
+    from src.copilot.infra.store import redis_client
+    from src.filings.factstore import FactStore
+    from src.streaming import poller, subscriber, worker
+
+    r = redis_client(os.environ["REDIS_URL"])
+    prefix = f"it-{uuid.uuid4().hex[:8]}"
+    names = {"FILINGS_STREAM": f"{prefix}:filings", "FACTS_STREAM": f"{prefix}:facts", "DLQ_STREAM": f"{prefix}:dlq",
+             "SEEN_SET": f"{prefix}:seen", "ATTEMPTS_HASH": f"{prefix}:attempts"}
+    mp = pytest.MonkeyPatch()
+    try:
+        for mod in (events, poller, worker, subscriber):
+            for k, v in names.items():
+                if hasattr(mod, k):
+                    mp.setattr(mod, k, v)
+        evs = poller.events_from_index(json.loads(poller.INDEX_PATH.read_text()))[:6]
+        assert poller.publish(r, evs) == 6
+        w = worker.IngestWorker(r, worker.fixture_source(), "it-worker", block_ms=100)
+        assert w.run_once() == {"ok": 6}
+        store = FactStore()
+        assert subscriber.FactSubscriber(r, store, block_ms=100).poll() == 6
+        assert store.count() > 0
+    finally:
+        r.delete(*names.values())
+        mp.undo()
