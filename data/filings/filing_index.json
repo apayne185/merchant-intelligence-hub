@@ -1,0 +1,722 @@
+[
+ {
+  "ticker": "JNJ",
+  "cik": 200406,
+  "accessionNumber": "0000200406-24-000096",
+  "form": "10-Q",
+  "filingDate": "2024-10-23",
+  "reportDate": "2024-09-29",
+  "acceptanceDateTime": "2024-10-23T20:02:27.000Z",
+  "primaryDocument": "jnj-20240929.htm"
+ },
+ {
+  "ticker": "TSLA",
+  "cik": 1318605,
+  "accessionNumber": "0001628280-24-043486",
+  "form": "10-Q",
+  "filingDate": "2024-10-24",
+  "reportDate": "2024-09-30",
+  "acceptanceDateTime": "2024-10-24T00:42:47.000Z",
+  "primaryDocument": "tsla-20240930.htm"
+ },
+ {
+  "ticker": "KO",
+  "cik": 21344,
+  "accessionNumber": "0000021344-24-000060",
+  "form": "10-Q",
+  "filingDate": "2024-10-24",
+  "reportDate": "2024-09-27",
+  "acceptanceDateTime": "2024-10-24T15:55:23.000Z",
+  "primaryDocument": "ko-20240927.htm"
+ },
+ {
+  "ticker": "MSFT",
+  "cik": 789019,
+  "accessionNumber": "0000950170-24-118967",
+  "form": "10-Q",
+  "filingDate": "2024-10-30",
+  "reportDate": "2024-09-30",
+  "acceptanceDateTime": "2024-10-30T20:07:17.000Z",
+  "primaryDocument": "msft-20240930.htm"
+ },
+ {
+  "ticker": "AMZN",
+  "cik": 1018724,
+  "accessionNumber": "0001018724-24-000161",
+  "form": "10-Q",
+  "filingDate": "2024-11-01",
+  "reportDate": "2024-09-30",
+  "acceptanceDateTime": "2024-10-31T22:44:54.000Z",
+  "primaryDocument": "amzn-20240930.htm"
+ },
+ {
+  "ticker": "AAPL",
+  "cik": 320193,
+  "accessionNumber": "0000320193-24-000123",
+  "form": "10-K",
+  "filingDate": "2024-11-01",
+  "reportDate": "2024-09-28",
+  "acceptanceDateTime": "2024-11-01T14:01:36.000Z",
+  "primaryDocument": "aapl-20240928.htm"
+ },
+ {
+  "ticker": "XOM",
+  "cik": 34088,
+  "accessionNumber": "0000034088-24-000068",
+  "form": "10-Q",
+  "filingDate": "2024-11-04",
+  "reportDate": "2024-09-30",
+  "acceptanceDateTime": "2024-11-04T17:56:10.000Z",
+  "primaryDocument": "xom-20240930.htm"
+ },
+ {
+  "ticker": "NVDA",
+  "cik": 1045810,
+  "accessionNumber": "0001045810-24-000316",
+  "form": "10-Q",
+  "filingDate": "2024-11-20",
+  "reportDate": "2024-10-27",
+  "acceptanceDateTime": "2024-11-20T21:31:22.000Z",
+  "primaryDocument": "nvda-20241027.htm"
+ },
+ {
+  "ticker": "MSFT",
+  "cik": 789019,
+  "accessionNumber": "0000950170-25-010491",
+  "form": "10-Q",
+  "filingDate": "2025-01-29",
+  "reportDate": "2024-12-31",
+  "acceptanceDateTime": "2025-01-29T21:11:54.000Z",
+  "primaryDocument": "msft-20241231.htm"
+ },
+ {
+  "ticker": "TSLA",
+  "cik": 1318605,
+  "accessionNumber": "0001628280-25-003063",
+  "form": "10-K",
+  "filingDate": "2025-01-30",
+  "reportDate": "2024-12-31",
+  "acceptanceDateTime": "2025-01-30T01:42:33.000Z",
+  "primaryDocument": "tsla-20241231.htm"
+ },
+ {
+  "ticker": "AAPL",
+  "cik": 320193,
+  "accessionNumber": "0000320193-25-000008",
+  "form": "10-Q",
+  "filingDate": "2025-01-31",
+  "reportDate": "2024-12-28",
+  "acceptanceDateTime": "2025-01-31T16:01:27.000Z",
+  "primaryDocument": "aapl-20241228.htm"
+ },
+ {
+  "ticker": "AMZN",
+  "cik": 1018724,
+  "accessionNumber": "0001018724-25-000004",
+  "form": "10-K",
+  "filingDate": "2025-02-07",
+  "reportDate": "2024-12-31",
+  "acceptanceDateTime": "2025-02-06T23:40:29.000Z",
+  "primaryDocument": "amzn-20241231.htm"
+ },
+ {
+  "ticker": "JNJ",
+  "cik": 200406,
+  "accessionNumber": "0000200406-25-000038",
+  "form": "10-K",
+  "filingDate": "2025-02-13",
+  "reportDate": "2024-12-29",
+  "acceptanceDateTime": "2025-02-13T21:07:39.000Z",
+  "primaryDocument": "jnj-20241229.htm"
+ },
+ {
+  "ticker": "XOM",
+  "cik": 34088,
+  "accessionNumber": "0000034088-25-000010",
+  "form": "10-K",
+  "filingDate": "2025-02-19",
+  "reportDate": "2024-12-31",
+  "acceptanceDateTime": "2025-02-19T21:39:37.000Z",
+  "primaryDocument": "xom-20241231.htm"
+ },
+ {
+  "ticker": "KO",
+  "cik": 21344,
+  "accessionNumber": "0000021344-25-000011",
+  "form": "10-K",
+  "filingDate": "2025-02-20",
+  "reportDate": "2024-12-31",
+  "acceptanceDateTime": "2025-02-20T20:17:12.000Z",
+  "primaryDocument": "ko-20241231.htm"
+ },
+ {
+  "ticker": "NVDA",
+  "cik": 1045810,
+  "accessionNumber": "0001045810-25-000023",
+  "form": "10-K",
+  "filingDate": "2025-02-26",
+  "reportDate": "2025-01-26",
+  "acceptanceDateTime": "2025-02-26T21:48:33.000Z",
+  "primaryDocument": "nvda-20250126.htm"
+ },
+ {
+  "ticker": "TSLA",
+  "cik": 1318605,
+  "accessionNumber": "0001628280-25-018911",
+  "form": "10-Q",
+  "filingDate": "2025-04-23",
+  "reportDate": "2025-03-31",
+  "acceptanceDateTime": "2025-04-23T01:02:10.000Z",
+  "primaryDocument": "tsla-20250331.htm"
+ },
+ {
+  "ticker": "JNJ",
+  "cik": 200406,
+  "accessionNumber": "0000200406-25-000119",
+  "form": "10-Q",
+  "filingDate": "2025-04-23",
+  "reportDate": "2025-03-30",
+  "acceptanceDateTime": "2025-04-23T20:04:45.000Z",
+  "primaryDocument": "jnj-20250330.htm"
+ },
+ {
+  "ticker": "MSFT",
+  "cik": 789019,
+  "accessionNumber": "0000950170-25-061046",
+  "form": "10-Q",
+  "filingDate": "2025-04-30",
+  "reportDate": "2025-03-31",
+  "acceptanceDateTime": "2025-04-30T20:08:52.000Z",
+  "primaryDocument": "msft-20250331.htm"
+ },
+ {
+  "ticker": "KO",
+  "cik": 21344,
+  "accessionNumber": "0000021344-25-000029",
+  "form": "10-Q",
+  "filingDate": "2025-05-01",
+  "reportDate": "2025-03-28",
+  "acceptanceDateTime": "2025-05-01T19:38:52.000Z",
+  "primaryDocument": "ko-20250328.htm"
+ },
+ {
+  "ticker": "AMZN",
+  "cik": 1018724,
+  "accessionNumber": "0001018724-25-000036",
+  "form": "10-Q",
+  "filingDate": "2025-05-02",
+  "reportDate": "2025-03-31",
+  "acceptanceDateTime": "2025-05-01T22:14:53.000Z",
+  "primaryDocument": "amzn-20250331.htm"
+ },
+ {
+  "ticker": "AAPL",
+  "cik": 320193,
+  "accessionNumber": "0000320193-25-000057",
+  "form": "10-Q",
+  "filingDate": "2025-05-02",
+  "reportDate": "2025-03-29",
+  "acceptanceDateTime": "2025-05-02T14:00:46.000Z",
+  "primaryDocument": "aapl-20250329.htm"
+ },
+ {
+  "ticker": "XOM",
+  "cik": 34088,
+  "accessionNumber": "0000034088-25-000024",
+  "form": "10-Q",
+  "filingDate": "2025-05-05",
+  "reportDate": "2025-03-31",
+  "acceptanceDateTime": "2025-05-05T16:41:41.000Z",
+  "primaryDocument": "xom-20250331.htm"
+ },
+ {
+  "ticker": "NVDA",
+  "cik": 1045810,
+  "accessionNumber": "0001045810-25-000116",
+  "form": "10-Q",
+  "filingDate": "2025-05-28",
+  "reportDate": "2025-04-27",
+  "acceptanceDateTime": "2025-05-28T20:32:57.000Z",
+  "primaryDocument": "nvda-20250427.htm"
+ },
+ {
+  "ticker": "TSLA",
+  "cik": 1318605,
+  "accessionNumber": "0001628280-25-035806",
+  "form": "10-Q",
+  "filingDate": "2025-07-24",
+  "reportDate": "2025-06-30",
+  "acceptanceDateTime": "2025-07-24T00:23:31.000Z",
+  "primaryDocument": "tsla-20250630.htm"
+ },
+ {
+  "ticker": "KO",
+  "cik": 21344,
+  "accessionNumber": "0000021344-25-000061",
+  "form": "10-Q",
+  "filingDate": "2025-07-24",
+  "reportDate": "2025-06-27",
+  "acceptanceDateTime": "2025-07-24T18:07:20.000Z",
+  "primaryDocument": "ko-20250627.htm"
+ },
+ {
+  "ticker": "JNJ",
+  "cik": 200406,
+  "accessionNumber": "0000200406-25-000178",
+  "form": "10-Q",
+  "filingDate": "2025-07-24",
+  "reportDate": "2025-06-29",
+  "acceptanceDateTime": "2025-07-24T20:04:24.000Z",
+  "primaryDocument": "jnj-20250629.htm"
+ },
+ {
+  "ticker": "MSFT",
+  "cik": 789019,
+  "accessionNumber": "0000950170-25-100235",
+  "form": "10-K",
+  "filingDate": "2025-07-30",
+  "reportDate": "2025-06-30",
+  "acceptanceDateTime": "2025-07-30T20:11:40.000Z",
+  "primaryDocument": "msft-20250630.htm"
+ },
+ {
+  "ticker": "AMZN",
+  "cik": 1018724,
+  "accessionNumber": "0001018724-25-000086",
+  "form": "10-Q",
+  "filingDate": "2025-08-01",
+  "reportDate": "2025-06-30",
+  "acceptanceDateTime": "2025-07-31T22:13:08.000Z",
+  "primaryDocument": "amzn-20250630.htm"
+ },
+ {
+  "ticker": "AAPL",
+  "cik": 320193,
+  "accessionNumber": "0000320193-25-000073",
+  "form": "10-Q",
+  "filingDate": "2025-08-01",
+  "reportDate": "2025-06-28",
+  "acceptanceDateTime": "2025-08-01T14:00:42.000Z",
+  "primaryDocument": "aapl-20250628.htm"
+ },
+ {
+  "ticker": "XOM",
+  "cik": 34088,
+  "accessionNumber": "0000034088-25-000042",
+  "form": "10-Q",
+  "filingDate": "2025-08-04",
+  "reportDate": "2025-06-30",
+  "acceptanceDateTime": "2025-08-04T16:47:59.000Z",
+  "primaryDocument": "xom-20250630.htm"
+ },
+ {
+  "ticker": "NVDA",
+  "cik": 1045810,
+  "accessionNumber": "0001045810-25-000209",
+  "form": "10-Q",
+  "filingDate": "2025-08-27",
+  "reportDate": "2025-07-27",
+  "acceptanceDateTime": "2025-08-27T20:52:07.000Z",
+  "primaryDocument": "nvda-20250727.htm"
+ },
+ {
+  "ticker": "JNJ",
+  "cik": 200406,
+  "accessionNumber": "0000200406-25-000209",
+  "form": "10-Q",
+  "filingDate": "2025-10-22",
+  "reportDate": "2025-09-28",
+  "acceptanceDateTime": "2025-10-22T20:04:17.000Z",
+  "primaryDocument": "jnj-20250928.htm"
+ },
+ {
+  "ticker": "TSLA",
+  "cik": 1318605,
+  "accessionNumber": "0001628280-25-045968",
+  "form": "10-Q",
+  "filingDate": "2025-10-23",
+  "reportDate": "2025-09-30",
+  "acceptanceDateTime": "2025-10-23T01:08:43.000Z",
+  "primaryDocument": "tsla-20250930.htm"
+ },
+ {
+  "ticker": "KO",
+  "cik": 21344,
+  "accessionNumber": "0001628280-25-046054",
+  "form": "10-Q",
+  "filingDate": "2025-10-23",
+  "reportDate": "2025-09-26",
+  "acceptanceDateTime": "2025-10-23T18:39:30.000Z",
+  "primaryDocument": "ko-20250926.htm"
+ },
+ {
+  "ticker": "MSFT",
+  "cik": 789019,
+  "accessionNumber": "0001193125-25-256321",
+  "form": "10-Q",
+  "filingDate": "2025-10-29",
+  "reportDate": "2025-09-30",
+  "acceptanceDateTime": "2025-10-29T20:10:48.000Z",
+  "primaryDocument": "msft-20250930.htm"
+ },
+ {
+  "ticker": "AMZN",
+  "cik": 1018724,
+  "accessionNumber": "0001018724-25-000123",
+  "form": "10-Q",
+  "filingDate": "2025-10-31",
+  "reportDate": "2025-09-30",
+  "acceptanceDateTime": "2025-10-30T22:18:21.000Z",
+  "primaryDocument": "amzn-20250930.htm"
+ },
+ {
+  "ticker": "AAPL",
+  "cik": 320193,
+  "accessionNumber": "0000320193-25-000079",
+  "form": "10-K",
+  "filingDate": "2025-10-31",
+  "reportDate": "2025-09-27",
+  "acceptanceDateTime": "2025-10-31T14:01:26.000Z",
+  "primaryDocument": "aapl-20250927.htm"
+ },
+ {
+  "ticker": "GS",
+  "cik": 886982,
+  "accessionNumber": "0000886982-25-001411",
+  "form": "10-Q",
+  "filingDate": "2025-10-31",
+  "reportDate": "2025-09-30",
+  "acceptanceDateTime": "2025-11-01T00:17:56.000Z",
+  "primaryDocument": "gs-20250930.htm"
+ },
+ {
+  "ticker": "XOM",
+  "cik": 34088,
+  "accessionNumber": "0000034088-25-000061",
+  "form": "10-Q",
+  "filingDate": "2025-11-03",
+  "reportDate": "2025-09-30",
+  "acceptanceDateTime": "2025-11-03T17:45:47.000Z",
+  "primaryDocument": "xom-20250930.htm"
+ },
+ {
+  "ticker": "JPM",
+  "cik": 19617,
+  "accessionNumber": "0001628280-25-048859",
+  "form": "10-Q",
+  "filingDate": "2025-11-04",
+  "reportDate": "2025-09-30",
+  "acceptanceDateTime": "2025-11-05T02:18:08.000Z",
+  "primaryDocument": "jpm-20250930.htm"
+ },
+ {
+  "ticker": "NVDA",
+  "cik": 1045810,
+  "accessionNumber": "0001045810-25-000230",
+  "form": "10-Q",
+  "filingDate": "2025-11-19",
+  "reportDate": "2025-10-26",
+  "acceptanceDateTime": "2025-11-19T21:36:17.000Z",
+  "primaryDocument": "nvda-20251026.htm"
+ },
+ {
+  "ticker": "MSFT",
+  "cik": 789019,
+  "accessionNumber": "0001193125-26-027207",
+  "form": "10-Q",
+  "filingDate": "2026-01-28",
+  "reportDate": "2025-12-31",
+  "acceptanceDateTime": "2026-01-28T21:07:34.000Z",
+  "primaryDocument": "msft-20251231.htm"
+ },
+ {
+  "ticker": "TSLA",
+  "cik": 1318605,
+  "accessionNumber": "0001628280-26-003952",
+  "form": "10-K",
+  "filingDate": "2026-01-29",
+  "reportDate": "2025-12-31",
+  "acceptanceDateTime": "2026-01-29T01:55:03.000Z",
+  "primaryDocument": "tsla-20251231.htm"
+ },
+ {
+  "ticker": "AAPL",
+  "cik": 320193,
+  "accessionNumber": "0000320193-26-000006",
+  "form": "10-Q",
+  "filingDate": "2026-01-30",
+  "reportDate": "2025-12-27",
+  "acceptanceDateTime": "2026-01-30T16:01:32.000Z",
+  "primaryDocument": "aapl-20251227.htm"
+ },
+ {
+  "ticker": "AMZN",
+  "cik": 1018724,
+  "accessionNumber": "0001018724-26-000004",
+  "form": "10-K",
+  "filingDate": "2026-02-06",
+  "reportDate": "2025-12-31",
+  "acceptanceDateTime": "2026-02-05T23:44:31.000Z",
+  "primaryDocument": "amzn-20251231.htm"
+ },
+ {
+  "ticker": "JNJ",
+  "cik": 200406,
+  "accessionNumber": "0000200406-26-000016",
+  "form": "10-K",
+  "filingDate": "2026-02-11",
+  "reportDate": "2025-12-28",
+  "acceptanceDateTime": "2026-02-11T21:06:11.000Z",
+  "primaryDocument": "jnj-20251228.htm"
+ },
+ {
+  "ticker": "JPM",
+  "cik": 19617,
+  "accessionNumber": "0001628280-26-008131",
+  "form": "10-K",
+  "filingDate": "2026-02-13",
+  "reportDate": "2025-12-31",
+  "acceptanceDateTime": "2026-02-14T02:20:00.000Z",
+  "primaryDocument": "jpm-20251231.htm"
+ },
+ {
+  "ticker": "XOM",
+  "cik": 34088,
+  "accessionNumber": "0000034088-26-000045",
+  "form": "10-K",
+  "filingDate": "2026-02-18",
+  "reportDate": "2025-12-31",
+  "acceptanceDateTime": "2026-02-18T21:06:52.000Z",
+  "primaryDocument": "xom-20251231.htm"
+ },
+ {
+  "ticker": "KO",
+  "cik": 21344,
+  "accessionNumber": "0001628280-26-010047",
+  "form": "10-K",
+  "filingDate": "2026-02-20",
+  "reportDate": "2025-12-31",
+  "acceptanceDateTime": "2026-02-20T14:46:32.000Z",
+  "primaryDocument": "ko-20251231.htm"
+ },
+ {
+  "ticker": "NVDA",
+  "cik": 1045810,
+  "accessionNumber": "0001045810-26-000021",
+  "form": "10-K",
+  "filingDate": "2026-02-25",
+  "reportDate": "2026-01-25",
+  "acceptanceDateTime": "2026-02-25T21:42:19.000Z",
+  "primaryDocument": "nvda-20260125.htm"
+ },
+ {
+  "ticker": "GS",
+  "cik": 886982,
+  "accessionNumber": "0000886982-26-000091",
+  "form": "10-K",
+  "filingDate": "2026-02-25",
+  "reportDate": "2025-12-31",
+  "acceptanceDateTime": "2026-02-26T03:22:27.000Z",
+  "primaryDocument": "gs-20251231.htm"
+ },
+ {
+  "ticker": "JNJ",
+  "cik": 200406,
+  "accessionNumber": "0000200406-26-000087",
+  "form": "10-Q",
+  "filingDate": "2026-04-22",
+  "reportDate": "2026-03-29",
+  "acceptanceDateTime": "2026-04-22T20:02:41.000Z",
+  "primaryDocument": "jnj-20260329.htm"
+ },
+ {
+  "ticker": "TSLA",
+  "cik": 1318605,
+  "accessionNumber": "0001628280-26-026673",
+  "form": "10-Q",
+  "filingDate": "2026-04-23",
+  "reportDate": "2026-03-31",
+  "acceptanceDateTime": "2026-04-23T01:43:00.000Z",
+  "primaryDocument": "tsla-20260331.htm"
+ },
+ {
+  "ticker": "MSFT",
+  "cik": 789019,
+  "accessionNumber": "0001193125-26-191507",
+  "form": "10-Q",
+  "filingDate": "2026-04-29",
+  "reportDate": "2026-03-31",
+  "acceptanceDateTime": "2026-04-29T20:06:24.000Z",
+  "primaryDocument": "msft-20260331.htm"
+ },
+ {
+  "ticker": "AMZN",
+  "cik": 1018724,
+  "accessionNumber": "0001018724-26-000014",
+  "form": "10-Q",
+  "filingDate": "2026-04-30",
+  "reportDate": "2026-03-31",
+  "acceptanceDateTime": "2026-04-29T22:48:09.000Z",
+  "primaryDocument": "amzn-20260331.htm"
+ },
+ {
+  "ticker": "KO",
+  "cik": 21344,
+  "accessionNumber": "0001628280-26-028802",
+  "form": "10-Q",
+  "filingDate": "2026-04-30",
+  "reportDate": "2026-04-03",
+  "acceptanceDateTime": "2026-04-30T19:17:45.000Z",
+  "primaryDocument": "ko-20260403.htm"
+ },
+ {
+  "ticker": "AAPL",
+  "cik": 320193,
+  "accessionNumber": "0000320193-26-000013",
+  "form": "10-Q",
+  "filingDate": "2026-05-01",
+  "reportDate": "2026-03-28",
+  "acceptanceDateTime": "2026-05-01T14:01:00.000Z",
+  "primaryDocument": "aapl-20260328.htm"
+ },
+ {
+  "ticker": "GS",
+  "cik": 886982,
+  "accessionNumber": "0000886982-26-000118",
+  "form": "10-Q",
+  "filingDate": "2026-05-01",
+  "reportDate": "2026-03-31",
+  "acceptanceDateTime": "2026-05-02T00:14:24.000Z",
+  "primaryDocument": "gs-20260331.htm"
+ },
+ {
+  "ticker": "JPM",
+  "cik": 19617,
+  "accessionNumber": "0001628280-26-029344",
+  "form": "10-Q",
+  "filingDate": "2026-05-01",
+  "reportDate": "2026-03-31",
+  "acceptanceDateTime": "2026-05-02T00:18:43.000Z",
+  "primaryDocument": "jpm-20260331.htm"
+ },
+ {
+  "ticker": "XOM",
+  "cik": 34088,
+  "accessionNumber": "0000034088-26-000067",
+  "form": "10-Q",
+  "filingDate": "2026-05-04",
+  "reportDate": "2026-03-31",
+  "acceptanceDateTime": "2026-05-04T16:40:35.000Z",
+  "primaryDocument": "xom-20260331.htm"
+ },
+ {
+  "ticker": "NVDA",
+  "cik": 1045810,
+  "accessionNumber": "0001045810-26-000052",
+  "form": "10-Q",
+  "filingDate": "2026-05-20",
+  "reportDate": "2026-04-26",
+  "acceptanceDateTime": "2026-05-20T20:35:52.000Z",
+  "primaryDocument": "nvda-20260426.htm"
+ },
+ {
+  "ticker": "TSLA",
+  "cik": 1318605,
+  "accessionNumber": "0001628280-26-049270",
+  "form": "10-Q",
+  "filingDate": "2026-07-23",
+  "reportDate": "2026-06-30",
+  "acceptanceDateTime": "2026-07-23T01:02:31.000Z",
+  "primaryDocument": "tsla-20260630.htm"
+ },
+ {
+  "ticker": "JNJ",
+  "cik": 200406,
+  "accessionNumber": "0000200406-26-000153",
+  "form": "10-Q",
+  "filingDate": "2026-07-23",
+  "reportDate": "2026-06-28",
+  "acceptanceDateTime": "2026-07-23T20:04:19.000Z",
+  "primaryDocument": "jnj-20260628.htm"
+ },
+ {
+  "ticker": "KO",
+  "cik": 21344,
+  "accessionNumber": "0001628280-26-050503",
+  "form": "10-Q",
+  "filingDate": "2026-07-29",
+  "reportDate": "2026-07-03",
+  "acceptanceDateTime": "2026-07-29T18:04:37.000Z",
+  "primaryDocument": "ko-20260703.htm"
+ },
+ {
+  "ticker": "MSFT",
+  "cik": 789019,
+  "accessionNumber": "0001193125-26-323660",
+  "form": "10-K",
+  "filingDate": "2026-07-29",
+  "reportDate": "2026-06-30",
+  "acceptanceDateTime": "2026-07-29T20:08:01.000Z",
+  "primaryDocument": "msft-20260630.htm"
+ },
+ {
+  "ticker": "AMZN",
+  "cik": 1018724,
+  "accessionNumber": "0001018724-26-000026",
+  "form": "10-Q",
+  "filingDate": "2026-07-31",
+  "reportDate": "2026-06-30",
+  "acceptanceDateTime": "2026-07-30T22:11:13.000Z",
+  "primaryDocument": "amzn-20260630.htm"
+ },
+ {
+  "ticker": "AAPL",
+  "cik": 320193,
+  "accessionNumber": "0000320193-26-000020",
+  "form": "10-Q",
+  "filingDate": "2026-07-31",
+  "reportDate": "2026-06-27",
+  "acceptanceDateTime": "2026-07-31T14:01:02.000Z",
+  "primaryDocument": "aapl-20260627.htm"
+ },
+ {
+  "ticker": "XOM",
+  "cik": 34088,
+  "accessionNumber": "0000034088-26-000093",
+  "form": "10-Q",
+  "filingDate": "2026-08-03",
+  "reportDate": "2026-06-30",
+  "acceptanceDateTime": "2026-08-03T18:55:38.000Z",
+  "primaryDocument": "xom-20260630.htm"
+ },
+ {
+  "ticker": "GS",
+  "cik": 886982,
+  "accessionNumber": "0000886982-26-000297",
+  "form": "10-Q",
+  "filingDate": "2026-08-03",
+  "reportDate": "2026-06-30",
+  "acceptanceDateTime": "2026-08-04T01:24:06.000Z",
+  "primaryDocument": "gs-20260630.htm"
+ },
+ {
+  "ticker": "JPM",
+  "cik": 19617,
+  "accessionNumber": "0001628280-26-054343",
+  "form": "10-Q",
+  "filingDate": "2026-08-06",
+  "reportDate": "2026-06-30",
+  "acceptanceDateTime": "2026-08-07T00:19:03.000Z",
+  "primaryDocument": "jpm-20260630.htm"
+ },
+ {
+  "ticker": "NVDA",
+  "cik": 1045810,
+  "accessionNumber": "0001045810-26-000075",
+  "form": "10-Q",
+  "filingDate": "2026-08-26",
+  "reportDate": "2026-07-26",
+  "acceptanceDateTime": "2026-08-26T20:36:00.000Z",
+  "primaryDocument": "nvda-20260726.htm"
+ }
+]

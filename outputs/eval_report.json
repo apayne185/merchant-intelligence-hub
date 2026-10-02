@@ -1,244 +1,772 @@
 {
+ "summary": {
   "mode": "mock",
-  "n_examples": 28,
-  "overall_accuracy": 0.3214,
-  "per_category_accuracy": {
-    "technical_issue": 0.0,
-    "billing": 0.0,
-    "onboarding": 0.0,
-    "fraud": 0.0,
-    "churn_threat": 0.5,
-    "other": 1.0
+  "cases": 37,
+  "http_errors": 0,
+  "route_accuracy": 1.0,
+  "figure_accuracy": 1.0,
+  "verification_pass_rate": 1.0,
+  "numeric_hallucination_rate": 0.0,
+  "fallback_rate": 0.0,
+  "retrieval_hit_rate": 1.0,
+  "decision_accuracy": 1.0,
+  "gap_honesty_rate": 1.0,
+  "numbers_checked": 93,
+  "verifier_adversarial_cases": 442,
+  "verifier_recall": 1.0,
+  "verifier_false_positive_rate": 0.0,
+  "latency_ms_p50": 19.8,
+  "latency_ms_p95": 34.0
+ },
+ "cases": [
+  {
+   "id": "fund-aapl-revenue-fy2025",
+   "category": "fundamentals",
+   "status_code": 200,
+   "latency_ms": 27.8,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 1,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Apple (AAPL) revenue for FY 2025 was $416.16 billion [AAPL:revenue:FY2025:0000320193-25-000079].",
+   "figures_ok": [
+    true
+   ],
+   "verifier_adversarial": 6,
+   "verifier_caught": 6,
+   "verifier_false_positive": false
   },
-  "churn_threat_recall": 0.5,
-  "prompt_injection_detection_rate": 1.0,
-  "retrieval_category_precision_at_k": 0.8929,
-  "urgency_meets_minimum_rate": 0.4643,
-  "escalation_accuracy": 0.7857,
-  "results": [
-    {
-      "id": 1,
-      "expected_category": "technical_issue",
-      "predicted_category": "other",
-      "correct": false,
-      "urgency_meets_minimum": false,
-      "escalation_correct": true
-    },
-    {
-      "id": 2,
-      "expected_category": "technical_issue",
-      "predicted_category": "other",
-      "correct": false,
-      "urgency_meets_minimum": false,
-      "escalation_correct": true
-    },
-    {
-      "id": 3,
-      "expected_category": "technical_issue",
-      "predicted_category": "other",
-      "correct": false,
-      "urgency_meets_minimum": false,
-      "escalation_correct": true
-    },
-    {
-      "id": 4,
-      "expected_category": "billing",
-      "predicted_category": "other",
-      "correct": false,
-      "urgency_meets_minimum": false,
-      "escalation_correct": true
-    },
-    {
-      "id": 5,
-      "expected_category": "billing",
-      "predicted_category": "other",
-      "correct": false,
-      "urgency_meets_minimum": false,
-      "escalation_correct": true
-    },
-    {
-      "id": 6,
-      "expected_category": "billing",
-      "predicted_category": "other",
-      "correct": false,
-      "urgency_meets_minimum": false,
-      "escalation_correct": true
-    },
-    {
-      "id": 7,
-      "expected_category": "onboarding",
-      "predicted_category": "other",
-      "correct": false,
-      "urgency_meets_minimum": true,
-      "escalation_correct": true
-    },
-    {
-      "id": 8,
-      "expected_category": "onboarding",
-      "predicted_category": "other",
-      "correct": false,
-      "urgency_meets_minimum": true,
-      "escalation_correct": true
-    },
-    {
-      "id": 9,
-      "expected_category": "onboarding",
-      "predicted_category": "other",
-      "correct": false,
-      "urgency_meets_minimum": true,
-      "escalation_correct": true
-    },
-    {
-      "id": 10,
-      "expected_category": "fraud",
-      "predicted_category": "other",
-      "correct": false,
-      "urgency_meets_minimum": false,
-      "escalation_correct": false
-    },
-    {
-      "id": 11,
-      "expected_category": "fraud",
-      "predicted_category": "other",
-      "correct": false,
-      "urgency_meets_minimum": false,
-      "escalation_correct": false
-    },
-    {
-      "id": 12,
-      "expected_category": "fraud",
-      "predicted_category": "other",
-      "correct": false,
-      "urgency_meets_minimum": false,
-      "escalation_correct": false
-    },
-    {
-      "id": 13,
-      "expected_category": "churn_threat",
-      "predicted_category": "other",
-      "correct": false,
-      "urgency_meets_minimum": false,
-      "escalation_correct": false
-    },
-    {
-      "id": 14,
-      "expected_category": "churn_threat",
-      "predicted_category": "churn_threat",
-      "correct": true,
-      "urgency_meets_minimum": true,
-      "escalation_correct": true
-    },
-    {
-      "id": 15,
-      "expected_category": "churn_threat",
-      "predicted_category": "other",
-      "correct": false,
-      "urgency_meets_minimum": false,
-      "escalation_correct": false
-    },
-    {
-      "id": 16,
-      "expected_category": "other",
-      "predicted_category": "other",
-      "correct": true,
-      "urgency_meets_minimum": true,
-      "escalation_correct": true
-    },
-    {
-      "id": 17,
-      "expected_category": "other",
-      "predicted_category": "other",
-      "correct": true,
-      "urgency_meets_minimum": true,
-      "escalation_correct": true
-    },
-    {
-      "id": 18,
-      "expected_category": "other",
-      "predicted_category": "other",
-      "correct": true,
-      "urgency_meets_minimum": true,
-      "escalation_correct": true
-    },
-    {
-      "id": 19,
-      "expected_category": "other",
-      "predicted_category": "other",
-      "correct": true,
-      "urgency_meets_minimum": true,
-      "escalation_correct": true
-    },
-    {
-      "id": 20,
-      "expected_category": "other",
-      "predicted_category": "other",
-      "correct": true,
-      "urgency_meets_minimum": true,
-      "escalation_correct": true
-    },
-    {
-      "id": 21,
-      "expected_category": "other",
-      "predicted_category": "other",
-      "correct": true,
-      "urgency_meets_minimum": true,
-      "escalation_correct": true
-    },
-    {
-      "id": 22,
-      "expected_category": "technical_issue",
-      "predicted_category": "other",
-      "correct": false,
-      "urgency_meets_minimum": false,
-      "escalation_correct": true
-    },
-    {
-      "id": 23,
-      "expected_category": "billing",
-      "predicted_category": "other",
-      "correct": false,
-      "urgency_meets_minimum": true,
-      "escalation_correct": true
-    },
-    {
-      "id": 24,
-      "expected_category": "onboarding",
-      "predicted_category": "other",
-      "correct": false,
-      "urgency_meets_minimum": true,
-      "escalation_correct": true
-    },
-    {
-      "id": 25,
-      "expected_category": "fraud",
-      "predicted_category": "other",
-      "correct": false,
-      "urgency_meets_minimum": false,
-      "escalation_correct": false
-    },
-    {
-      "id": 26,
-      "expected_category": "churn_threat",
-      "predicted_category": "churn_threat",
-      "correct": true,
-      "urgency_meets_minimum": false,
-      "escalation_correct": true
-    },
-    {
-      "id": 27,
-      "expected_category": "other",
-      "predicted_category": "other",
-      "correct": true,
-      "urgency_meets_minimum": true,
-      "escalation_correct": true
-    },
-    {
-      "id": 28,
-      "expected_category": "technical_issue",
-      "predicted_category": "other",
-      "correct": false,
-      "urgency_meets_minimum": false,
-      "escalation_correct": true
-    }
-  ]
+  {
+   "id": "fund-aapl-netincome-fy2024",
+   "category": "fundamentals",
+   "status_code": 200,
+   "latency_ms": 12.1,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 1,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Apple (AAPL) net income for FY 2024 was $93.74 billion [AAPL:net_income:FY2024:0000320193-25-000079].",
+   "figures_ok": [
+    true
+   ],
+   "verifier_adversarial": 6,
+   "verifier_caught": 6,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "fund-msft-revenue-fy2024",
+   "category": "fundamentals",
+   "status_code": 200,
+   "latency_ms": 11.3,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 1,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Microsoft (MSFT) revenue for FY 2024 was $245.12 billion [MSFT:revenue:FY2024:0001193125-26-323660].",
+   "figures_ok": [
+    true
+   ],
+   "verifier_adversarial": 6,
+   "verifier_caught": 6,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "fund-nvda-revenue-fy2025",
+   "category": "fundamentals",
+   "status_code": 200,
+   "latency_ms": 11.4,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 1,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "NVIDIA (NVDA) revenue for FY 2025 was $130.50 billion [NVDA:revenue:FY2025:0001045810-26-000021].",
+   "figures_ok": [
+    true
+   ],
+   "verifier_adversarial": 6,
+   "verifier_caught": 6,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "fund-amzn-netincome-fy2024",
+   "category": "fundamentals",
+   "status_code": 200,
+   "latency_ms": 13.3,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 2,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Amazon (AMZN) net income for FY 2024 was $59.25 billion (restated; originally reported as $37.68 billion) [AMZN:net_income:FY2024:0001018724-26-000004].",
+   "figures_ok": [
+    true
+   ],
+   "verifier_adversarial": 12,
+   "verifier_caught": 12,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "fund-jpm-netincome-fy2024",
+   "category": "fundamentals",
+   "status_code": 200,
+   "latency_ms": 10.7,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 1,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "JPMorgan Chase (JPM) net income for FY 2024 was $58.47 billion [JPM:net_income:FY2024:0001628280-26-008131].",
+   "figures_ok": [
+    true
+   ],
+   "verifier_adversarial": 6,
+   "verifier_caught": 6,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "fund-xom-netincome-fy2024",
+   "category": "fundamentals",
+   "status_code": 200,
+   "latency_ms": 10.6,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 1,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "ExxonMobil (XOM) net income for FY 2024 was $33.68 billion [XOM:net_income:FY2024:0000034088-26-000045].",
+   "figures_ok": [
+    true
+   ],
+   "verifier_adversarial": 5,
+   "verifier_caught": 5,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "fund-tsla-revenue-fy2024",
+   "category": "fundamentals",
+   "status_code": 200,
+   "latency_ms": 11.6,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 1,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Tesla (TSLA) revenue for FY 2024 was $97.69 billion [TSLA:revenue:FY2024:0001628280-26-003952].",
+   "figures_ok": [
+    true
+   ],
+   "verifier_adversarial": 6,
+   "verifier_caught": 6,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "fund-ko-netincome-fy2024",
+   "category": "fundamentals",
+   "status_code": 200,
+   "latency_ms": 11.9,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 1,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Coca-Cola (KO) net income for FY 2024 was $10.63 billion [KO:net_income:FY2024:0001628280-26-010047].",
+   "figures_ok": [
+    true
+   ],
+   "verifier_adversarial": 6,
+   "verifier_caught": 6,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "fund-gs-eps-fy2024",
+   "category": "fundamentals",
+   "status_code": 200,
+   "latency_ms": 11.1,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 1,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Goldman Sachs (GS) diluted EPS for FY 2024 was $40.54 [GS:eps_diluted:FY2024:0000886982-26-000091].",
+   "figures_ok": [
+    true
+   ],
+   "verifier_adversarial": 6,
+   "verifier_caught": 6,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "fund-aapl-eps-fy2025",
+   "category": "fundamentals",
+   "status_code": 200,
+   "latency_ms": 15.2,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 2,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Apple (AAPL) net income for FY 2025 was $112.01 billion [AAPL:net_income:FY2025:0000320193-25-000079]. Apple (AAPL) diluted EPS for FY 2025 was $7.46 [AAPL:eps_diluted:FY2025:0000320193-25-000079].",
+   "figures_ok": [
+    true
+   ],
+   "verifier_adversarial": 11,
+   "verifier_caught": 11,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "fund-multi-amzn-msft",
+   "category": "fundamentals",
+   "status_code": 200,
+   "latency_ms": 16.8,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 2,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Amazon (AMZN) revenue for FY 2024 was $637.96 billion [AMZN:revenue:FY2024:0001018724-26-000004]. Microsoft (MSFT) revenue for FY 2024 was $245.12 billion [MSFT:revenue:FY2024:0001193125-26-323660].",
+   "figures_ok": [
+    true,
+    true
+   ],
+   "verifier_adversarial": 12,
+   "verifier_caught": 12,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "derived-aapl-netmargin-fy2025",
+   "category": "derived",
+   "status_code": 200,
+   "latency_ms": 21.2,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 1,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Apple (AAPL) net margin for FY 2025 was 26.9% (net_income / revenue) [AAPL:net_margin:FY2025].",
+   "figures_ok": [
+    true
+   ],
+   "verifier_adversarial": 6,
+   "verifier_caught": 6,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "derived-msft-opmargin-fy2025",
+   "category": "derived",
+   "status_code": 200,
+   "latency_ms": 22.4,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 1,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Microsoft (MSFT) operating margin for FY 2025 was 45.6% (operating_income / revenue) [MSFT:operating_margin:FY2025].",
+   "figures_ok": [
+    true
+   ],
+   "verifier_adversarial": 6,
+   "verifier_caught": 6,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "derived-nvda-growth-fy2025",
+   "category": "derived",
+   "status_code": 200,
+   "latency_ms": 24.8,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 2,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "NVIDIA (NVDA) revenue growth YoY for FY 2025 was 114.2% [NVDA:revenue_growth_yoy:FY2025]. NVIDIA (NVDA) revenue for FY 2025 was $130.50 billion [NVDA:revenue:FY2025:0001045810-26-000021].",
+   "figures_ok": [
+    true
+   ],
+   "verifier_adversarial": 11,
+   "verifier_caught": 11,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "derived-tsla-fcf-latest",
+   "category": "derived",
+   "status_code": 200,
+   "latency_ms": 20.0,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 1,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Tesla (TSLA) free cash flow for FY 2024 was $3.58 billion (operating_cash_flow - capex) [TSLA:free_cash_flow:FY2024].",
+   "figures_ok": [
+    true
+   ],
+   "verifier_adversarial": 6,
+   "verifier_caught": 6,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "pit-tsla-fcf-asof-2025-06",
+   "category": "point_in_time",
+   "status_code": 200,
+   "latency_ms": 19.6,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 1,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Tesla (TSLA) free cash flow for FY 2024 was $3.58 billion (operating_cash_flow - capex) [TSLA:free_cash_flow:FY2024].",
+   "figures_ok": [
+    true
+   ],
+   "verifier_adversarial": 6,
+   "verifier_caught": 6,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "pit-aapl-revenue-before-fy2025-10k",
+   "category": "point_in_time",
+   "status_code": 200,
+   "latency_ms": 14.9,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 1,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Apple (AAPL) revenue for FY 2024 was $391.04 billion [AAPL:revenue:FY2024:0000320193-24-000123].",
+   "figures_ok": [
+    true
+   ],
+   "verifier_adversarial": 6,
+   "verifier_caught": 6,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "pit-aapl-eps-fy2019-original",
+   "category": "point_in_time",
+   "status_code": 200,
+   "latency_ms": 10.9,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 1,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Apple (AAPL) diluted EPS for FY 2019 was $11.89 [AAPL:eps_diluted:FY2019:0000320193-19-000119].",
+   "figures_ok": [
+    true
+   ],
+   "verifier_adversarial": 5,
+   "verifier_caught": 5,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "pit-aapl-eps-fy2019-restated",
+   "category": "point_in_time",
+   "status_code": 200,
+   "latency_ms": 11.3,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 2,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Apple (AAPL) diluted EPS for FY 2019 was $2.97 (restated; originally reported as $11.89) [AAPL:eps_diluted:FY2019:0000320193-21-000105].",
+   "figures_ok": [
+    true
+   ],
+   "verifier_adversarial": 11,
+   "verifier_caught": 11,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "gap-jpm-gross-margin",
+   "category": "gaps",
+   "status_code": 200,
+   "latency_ms": 15.0,
+   "route": [
+    "fundamentals"
+   ],
+   "route_ok": true,
+   "verification": "no_numeric_claims",
+   "numbers_checked": 0,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Gross margin is not computable for JPMorgan Chase (JPM) FY 2025 (an input is not reported).",
+   "gap_ok": true,
+   "verifier_adversarial": 0,
+   "verifier_caught": 0,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "rag-nvda-export-controls",
+   "category": "retrieval",
+   "status_code": 200,
+   "latency_ms": 25.1,
+   "route": [
+    "filing_search"
+   ],
+   "route_ok": true,
+   "verification": "no_numeric_claims",
+   "numbers_checked": 0,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "NVDA's 10-K filed 2026-02-25 (Item 1A. Risk Factors) states: \"Export controls have and are likely in the future to have a disproportionate impact on NVIDIA and may disadvantage us against certain of our competitors that sell chips that are outside the scope of such control.\" [NVDA:0001045810-26-000021:1A:085:f234c420] NVDA's 10-K filed 2026-02-25 (Item 1A. Risk Factors) states: \"Export controls targeting GPUs and semiconductors associated with AI have subjected and may in the future subject downstream users of our products to restrictions on the use, resale, repair, or transfer of our products, negatively impacting our business and financial results.\" [NVDA:0001045810-26-000021:1A:073:3f2c611d] NVDA's 10-K filed 2026-02-25 (Item 1A. Risk Factors) states: \"\u2022government actions or changes in governmental policies, such as export controls, increased restrictions on gaming usage, or tariffs; \u2022our customers\u2019 and partners\u2019 ability to secure capital and energy and to build complex datacenter infrastructure timely; and \u2022the availability of third-party content on our platforms, such as GeForce NOW.\" [NVDA:0001045810-26-000021:1A:015:4f4bd5e1]",
+   "retrieval_hit": true,
+   "verifier_adversarial": 0,
+   "verifier_caught": 0,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "rag-aapl-supply-chain",
+   "category": "retrieval",
+   "status_code": 200,
+   "latency_ms": 19.8,
+   "route": [
+    "filing_search"
+   ],
+   "route_ok": true,
+   "verification": "no_numeric_claims",
+   "numbers_checked": 0,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "AAPL's 10-K filed 2025-10-31 (Item 1A. Risk Factors) states: \"Changes or additions to the Company\u2019s supply chain require considerable time and resources and involve significant risks and uncertainties, including exposure to additional regulatory and operational risks.\" [AAPL:0000320193-25-000079:1A:019:2e770b2d] AAPL's 10-K filed 2025-10-31 (Item 1A. Risk Factors) states: \"The Company\u2019s investments can be negatively affected by changes in liquidity, credit deterioration, financial results, market and economic conditions, political risk, sovereign risk, interest rate fluctuations or other factors.\" [AAPL:0000320193-25-000079:1A:064:4d562c0c] AAPL's 10-K filed 2025-10-31 (Item 1A. Risk Factors) states: \"Global supply chains can be highly concentrated, and an escalation of geopolitical tensions or conflict could result in significant disruptions.\" [AAPL:0000320193-25-000079:1A:006:99fa533f]",
+   "retrieval_hit": true,
+   "verifier_adversarial": 0,
+   "verifier_caught": 0,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "rag-jpm-cyber",
+   "category": "retrieval",
+   "status_code": 200,
+   "latency_ms": 28.8,
+   "route": [
+    "filing_search"
+   ],
+   "route_ok": true,
+   "verification": "no_numeric_claims",
+   "numbers_checked": 0,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "JPM's 10-K filed 2026-02-13 (Item 1A. Risk Factors) states: \"The Parent Company, JPMorgan Chase & Co., is a holding company that holds the stock of JPMorgan Chase Bank, N.A.\" [JPM:0001628280-26-008131:1A:052:ed34dc14] JPM's 10-K filed 2026-02-13 (Item 1A. Risk Factors) states: \"The cybersecurity risks that JPMorganChase faces could be intensified by factors such as: \u2022increased volume and complexity of cyber attacks during periods of heightened geopolitical tensions \u2022technological advances such as artificial intelligence (\u201cAI\u201d) and quantum computing that may enable malicious actors to develop more advanced social engineering attacks, including targeted phishing attacks, and.\" [JPM:0001628280-26-008131:1A:066:1bc71673] JPM's 10-K filed 2026-02-13 (Item 1A. Risk Factors) states: \"\u2022Liquidity risks, including the risk that JPMorganChase\u2019s ability to operate could be impaired by constrained liquidity; the dependence of JPMorgan Chase & Co.\" [JPM:0001628280-26-008131:1A:003:4dfd432e]",
+   "retrieval_hit": true,
+   "verifier_adversarial": 0,
+   "verifier_caught": 0,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "rag-xom-climate",
+   "category": "retrieval",
+   "status_code": 200,
+   "latency_ms": 15.8,
+   "route": [
+    "filing_search"
+   ],
+   "route_ok": true,
+   "verification": "no_numeric_claims",
+   "numbers_checked": 0,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "XOM's 10-K filed 2026-02-18 (Item 1A. Risk Factors) states: \"Even in countries with well-developed legal systems where ExxonMobil does business, we remain exposed to changes in law or interpretation or enforcement of settled law, including changes that result from concerted efforts to increase our legal exposure by groups opposed to the products we provide or international treaties and accords or changes by local jurisdictions encroaching on national regulatory frameworks or global issues or changes resulting from imposition of extraterritorial laws and regulations, and changes in government policy or priorities that could adversely affect our.\" [XOM:0000034088-26-000045:1A:011:c60fc1c4] XOM's 10-K filed 2026-02-18 (Item 1A. Risk Factors) states: \"Driven by concern over the risks of climate change, a number of countries have adopted, or are considering the adoption of, broad-reaching regulatory frameworks seeking to report on or reduce greenhouse gas emissions, including emissions from the production and use of oil and gas and their products, as well as increase the use of, or support for, different emission-reduction technologies.\" [XOM:0000034088-26-000045:1A:016:3bc71fb3] XOM's 10-K filed 2026-02-18 (Item 1A. Risk Factors) states: \"ExxonMobil\u2019s financial and operating results are subject to a variety of risks inherent in the global oil, gas, and petrochemical businesses and the pursuit of lower-emission and other new business opportunities.\" [XOM:0000034088-26-000045:1A:000:43ea06c9]",
+   "retrieval_hit": true,
+   "verifier_adversarial": 0,
+   "verifier_caught": 0,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "rag-tsla-key-person",
+   "category": "retrieval",
+   "status_code": 200,
+   "latency_ms": 21.5,
+   "route": [
+    "filing_search"
+   ],
+   "route_ok": true,
+   "verification": "no_numeric_claims",
+   "numbers_checked": 0,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "TSLA's 10-K filed 2026-01-29 (Item 1A. Risk Factors) states: \"If Elon Musk were forced to sell shares of our common stock, either that he has the ability to pledge to secure certain personal loan obligations, or in satisfaction of other obligations, such sales could cause our stock price to decline.\" [TSLA:0001628280-26-003952:1A:082:ee275367] TSLA's 10-K filed 2026-01-29 (Item 1A. Risk Factors) states: \"We are highly dependent on the services of Elon Musk, Technoking of Tesla and our Chief Executive Officer.\" [TSLA:0001628280-26-003952:1A:037:e4c20156] TSLA's 10-K filed 2026-01-29 (Item 1A. Risk Factors) states: \"We are highly dependent on the services of Elon Musk, Technoking of Tesla and our Chief Executive Officer.\" [TSLA:0001628280-26-003952:1A:036:81d86450]",
+   "retrieval_hit": true,
+   "verifier_adversarial": 0,
+   "verifier_caught": 0,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "rag-jnj-talc",
+   "category": "retrieval",
+   "status_code": 200,
+   "latency_ms": 15.0,
+   "route": [
+    "filing_search"
+   ],
+   "route_ok": true,
+   "verification": "no_numeric_claims",
+   "numbers_checked": 0,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "JNJ's 10-K filed 2026-02-11 (Item 1A. Risk Factors) states: \"For example, the Company is a defendant in numerous lawsuits arising out of the use of body powders containing talc, primarily JOHNSON\u2019S Baby Powder.\" [JNJ:0000200406-26-000016:1A:013:6ef329f3] JNJ's 10-K filed 2026-02-11 (Item 1A. Risk Factors) states: \"Regulatory issues regarding compliance with current Good Manufacturing Practices (cGMP) (and comparable quality regulations in foreign countries) by manufacturers of drugs and devices can lead to fines and penalties, product recalls, product shortages, interruptions in production, delays in new product approvals and litigation.\" [JNJ:0000200406-26-000016:1A:016:a37f0140] JNJ's 10-K filed 2026-02-11 (Item 1A. Risk Factors) states: \"Counterfeit medicines pose a risk to patient health and safety because of the conditions under which they are manufactured \u2013 often in unregulated, unlicensed, uninspected and unsanitary sites \u2013 as well as the lack of regulation of their contents.\" [JNJ:0000200406-26-000016:1A:006:dceafd66]",
+   "retrieval_hit": true,
+   "verifier_adversarial": 0,
+   "verifier_caught": 0,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "rag-gs-regulation",
+   "category": "retrieval",
+   "status_code": 200,
+   "latency_ms": 26.3,
+   "route": [
+    "filing_search"
+   ],
+   "route_ok": true,
+   "verification": "no_numeric_claims",
+   "numbers_checked": 0,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "GS's 10-K filed 2026-02-25 (Item 1A. Risk Factors) states: \"Prudent risk management, as well as regulatory restrictions, may cause us to limit our exposure to counterparties, geographic areas or markets, which may limit our business opportunities and increase the cost of our funding or hedging activities.\" [GS:0000886982-26-000091:1A:076:69ba7eb9] GS's 10-K filed 2026-02-25 (Item 1A. Risk Factors) states: \"We face significant legal risks in our businesses, and the volume of claims and amount of damages and penalties claimed in litigation and regulatory proceedings against financial institutions remain high.\" [GS:0000886982-26-000091:1A:094:b3193b94] GS's 10-K filed 2026-02-25 (Item 1A. Risk Factors) states: \"In our consumer-oriented activities, we have faced and continue to face compliance, legal and regulatory risk, increased reputational risk and increased operational risk due to, among other things, higher transaction volumes and significantly increased retention and transmission of consumer and client information.\" [GS:0000886982-26-000091:1A:137:72ba41a5]",
+   "retrieval_hit": true,
+   "verifier_adversarial": 0,
+   "verifier_caught": 0,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "rag-ko-water",
+   "category": "retrieval",
+   "status_code": 200,
+   "latency_ms": 19.9,
+   "route": [
+    "filing_search"
+   ],
+   "route_ok": true,
+   "verification": "no_numeric_claims",
+   "numbers_checked": 0,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "KO's 10-K filed 2026-02-20 (Item 1A. Risk Factors) states: \"Water scarcity and poor quality could negatively impact the Coca-Cola system\u2019s costs and capacity.\" [KO:0001628280-26-010047:1A:083:38d5fa36] KO's 10-K filed 2026-02-20 (Item 1A. Risk Factors) states: \"Climate change may also exacerbate extreme weather, resulting in water scarcity or flooding, and cause a further deterioration of water quality in affected regions, which could limit water availability for the Coca-Cola system\u2019s bottling operations.\" [KO:0001628280-26-010047:1A:086:8aac42aa] KO's 10-K filed 2026-02-20 (Item 1A. Risk Factors) states: \"RISKS RELATED TO THE COCA-COLA SYSTEM We rely on our bottling partners for a significant portion of our business.\" [KO:0001628280-26-010047:1A:034:b02a9c3a]",
+   "retrieval_hit": true,
+   "verifier_adversarial": 0,
+   "verifier_caught": 0,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "risk-weights-in-question",
+   "category": "market_risk",
+   "status_code": 200,
+   "latency_ms": 32.3,
+   "route": [
+    "market_risk"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 15,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "As of 2026-10-01, the portfolio's 1-day 99% historical VaR is 5.09% of capital (expected shortfall 6.40%), using 500 trading days [risk:6f9e9f4f2329:var]. The 10-day 99% Monte Carlo VaR with fat-tailed (Student-t) shocks is 9.46% (expected shortfall 11.23%) [risk:6f9e9f4f2329:var]. NVDA contributes 64.7% of portfolio VaR at a 40.0% weight [risk:6f9e9f4f2329:NVDA]. Backtest: 5 VaR exceptions in 500 days against 5.0 expected, consistent with the Kupiec test at the 5% level [risk:6f9e9f4f2329:backtest].",
+   "verifier_adversarial": 65,
+   "verifier_caught": 65,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "risk-equal-weight",
+   "category": "market_risk",
+   "status_code": 200,
+   "latency_ms": 31.1,
+   "route": [
+    "market_risk"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 15,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "As of 2026-10-01, the portfolio's 1-day 99% historical VaR is 4.52% of capital (expected shortfall 5.67%), using 500 trading days [risk:91936962f51c:var]. The 10-day 99% Monte Carlo VaR with fat-tailed (Student-t) shocks is 10.54% (expected shortfall 12.50%) [risk:91936962f51c:var]. NVDA contributes 48.2% of portfolio VaR at a 33.3% weight [risk:91936962f51c:NVDA]. Backtest: 5 VaR exceptions in 500 days against 5.0 expected, consistent with the Kupiec test at the 5% level [risk:91936962f51c:backtest].",
+   "verifier_adversarial": 64,
+   "verifier_caught": 64,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "risk-explicit-portfolio",
+   "category": "market_risk",
+   "status_code": 200,
+   "latency_ms": 30.6,
+   "route": [
+    "market_risk"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 15,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "As of 2024-12-31, the portfolio's 1-day 99% historical VaR is 3.99% of capital (expected shortfall 4.51%), using 500 trading days [risk:0f09914d4fde:var]. The 10-day 99% Monte Carlo VaR with fat-tailed (Student-t) shocks is 8.65% (expected shortfall 10.38%) [risk:0f09914d4fde:var]. GS contributes 53.5% of portfolio VaR at a 50.0% weight [risk:0f09914d4fde:GS]. Backtest: 8 VaR exceptions in 500 days against 5.0 expected, consistent with the Kupiec test at the 5% level [risk:0f09914d4fde:backtest].",
+   "verifier_adversarial": 64,
+   "verifier_caught": 64,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "pretrade-reject-concentration",
+   "category": "pretrade",
+   "status_code": 200,
+   "latency_ms": 34.0,
+   "route": [
+    "pretrade_check"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 8,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Pre-trade decision: REJECT. Breach: single-name weight TSLA is 50.0% against a limit of 35.0% [limit:single-name_weight_TSLA]. Breach: single-name weight NVDA is 50.0% against a limit of 35.0% [limit:single-name_weight_NVDA]. Breach: 1-day 99% historical VaR is 8.4% against a limit of 4.0% [limit:1-day_99%_historical_VaR].",
+   "decision_ok": true,
+   "verifier_adversarial": 36,
+   "verifier_caught": 36,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "pretrade-reject-single-name",
+   "category": "pretrade",
+   "status_code": 200,
+   "latency_ms": 26.2,
+   "route": [
+    "pretrade_check"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 8,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Pre-trade decision: REJECT. Breach: single-name weight NVDA is 100.0% against a limit of 35.0% [limit:single-name_weight_NVDA]. Breach: sector weight Technology is 100.0% against a limit of 60.0% [limit:sector_weight_Technology]. Breach: 1-day 99% historical VaR is 7.6% against a limit of 4.0% [limit:1-day_99%_historical_VaR].",
+   "decision_ok": true,
+   "verifier_adversarial": 36,
+   "verifier_caught": 36,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "pretrade-approve-diversified",
+   "category": "pretrade",
+   "status_code": 200,
+   "latency_ms": 46.6,
+   "route": [
+    "pretrade_check"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 5,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Pre-trade decision: APPROVE. All 12 limits pass, including 1-day 99% VaR of 1.83% against 4.00% [limit:summary] [limit:1-day_99%_historical_VaR].",
+   "decision_ok": true,
+   "verifier_adversarial": 21,
+   "verifier_caught": 21,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "mixed-fund-and-rag",
+   "category": "mixed",
+   "status_code": 200,
+   "latency_ms": 33.5,
+   "route": [
+    "fundamentals",
+    "filing_search"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 1,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "NVIDIA (NVDA) revenue growth YoY for FY 2025 was 114.2% [NVDA:revenue_growth_yoy:FY2025]. NVDA's 10-K filed 2026-02-25 (Item 1A. Risk Factors) states: \"In addition, the pace of growth in our operating expenses and investments may lag our revenue growth, creating volatility or periods where profitability levels may not be sustainable.\" [NVDA:0001045810-26-000021:1A:065:adc57da3] NVDA's 10-K filed 2026-02-25 (Item 1A. Risk Factors) states: \"Export controls have and are likely in the future to have a disproportionate impact on NVIDIA and may disadvantage us against certain of our competitors that sell chips that are outside the scope of such control.\" [NVDA:0001045810-26-000021:1A:085:f234c420] NVDA's 10-K filed 2026-02-25 (Item 1A. Risk Factors) states: \"Export controls targeting GPUs and semiconductors associated with AI have subjected and may in the future subject downstream users of our products to restrictions on the use, resale, repair, or transfer of our products, negatively impacting our business and financial results.\" [NVDA:0001045810-26-000021:1A:073:3f2c611d]",
+   "figures_ok": [
+    true
+   ],
+   "retrieval_hit": true,
+   "verifier_adversarial": 5,
+   "verifier_caught": 5,
+   "verifier_false_positive": false
+  },
+  {
+   "id": "route-research-not-trade",
+   "category": "routing",
+   "status_code": 200,
+   "latency_ms": 30.3,
+   "route": [
+    "fundamentals",
+    "filing_search"
+   ],
+   "route_ok": true,
+   "verification": "verified",
+   "numbers_checked": 1,
+   "numbers_unverified": 0,
+   "fallback_used": false,
+   "answer": "Apple (AAPL) net margin for FY 2025 was 26.9% (net_income / revenue) [AAPL:net_margin:FY2025]. AAPL's 10-K filed 2025-10-31 (Item 1A. Risk Factors) states: \"The Company\u2019s net sales and gross margins are subject to volatility and downward pressure due to a variety of factors, including: continued industry-wide global product pricing pressures and product pricing actions that the Company may take in response to such pressures; increased competition; the Company\u2019s ability to effectively stimulate demand for certain of its products and services; compressed product life cycles; supply shortages; potential increases in the cost of components, outside manufacturing services, and developing, acquiring and delivering content for the Company\u2019s.\" [AAPL:0000320193-25-000079:1A:061:5ae2b2e5] AAPL's 10-K filed 2025-10-31 (Item 1A. Risk Factors) states: \"Restrictions on international trade, such as tariffs and other controls on imports or exports of goods, technology or data, can materially adversely affect the Company\u2019s business and supply chain.\" [AAPL:0000320193-25-000079:1A:004:2b2e39e1] AAPL's 10-K filed 2025-10-31 (Item 1A. Risk Factors) states: \"In addition, the Company\u2019s global supply chain is large and complex and a majority of the Company\u2019s supplier facilities, including manufacturing and assembly sites, are located outside the U.S.\" [AAPL:0000320193-25-000079:1A:001:8a348a65]",
+   "figures_ok": [
+    true
+   ],
+   "retrieval_hit": true,
+   "verifier_adversarial": 6,
+   "verifier_caught": 6,
+   "verifier_false_positive": false
+  }
+ ]
 }

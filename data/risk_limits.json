@@ -1,0 +1,7 @@
+{
+  "max_single_name_weight": 0.35,
+  "max_sector_weight": 0.6,
+  "max_gross_exposure": 1.0,
+  "max_var_1d_99": 0.04,
+  "restricted_list": []
+}
