@@ -35,7 +35,7 @@ dependencies = [
     # API
     "fastapi==0.142.2",
     "uvicorn[standard]==0.54.0",
-    "pydantic==2.13.5",
+    "pydantic==2.14.1",
 
     # Agents: LangGraph owns control flow and state; LLM calls inside nodes go
     # through Agno, so there is one agent-framework pattern, not two.
