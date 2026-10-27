@@ -15,7 +15,7 @@ name = "filings-risk-copilot"
 version = "1.0.0"
 description = "Multi-agent copilot over SEC filings and market risk: point-in-time XBRL facts, a C++20 VaR engine, streaming EDGAR ingestion, and answers whose every number is verified against its source filing."
 readme = "README.md"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.11,<3.14"
 license = { text = "MIT" }
 authors = [{ name = "Anna Payne" }]
 keywords = ["llm", "agents", "langgraph", "rag", "sec-edgar", "xbrl", "value-at-risk", "pybind11", "fastapi"]
