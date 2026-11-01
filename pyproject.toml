@@ -25,7 +25,7 @@ dependencies = [
     "riskcore",
 
     # Data
-    "pandas==2.3.3",
+    "pandas==3.1.0",
     "numpy==2.2.6",
     # Point-in-time fact store.
     "duckdb>=1.5,<2",
