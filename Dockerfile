@@ -20,7 +20,7 @@ FROM ghcr.io/astral-sh/uv:0.13.5@sha256:32a7bb39b496babbd997b0a39a4d66c126bdaf56
 # --platform pinned on both stages: a plain `docker build` on an arm64 laptop
 # would otherwise produce an image that only fails once Fargate (X86_64 in
 # terraform/ecs.tf) tries to run it.
-FROM --platform=linux/amd64 python:3.13-slim-trixie@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f AS builder
+FROM --platform=linux/amd64 python:3.13-slim-trixie@sha256:2d44738ebf4ce5f63b9d9ea871e9c7cfdc0426f7b0c97cac915fd88ded1d86bb AS builder
 
 COPY --from=uv /uv /uvx /bin/
 
@@ -54,7 +54,7 @@ COPY src/ ./src/
 
 # Must stay the same image as the builder stage: the venv's interpreter
 # symlinks point at this base's /usr/local/bin/python3.13.
-FROM --platform=linux/amd64 python:3.13-slim-trixie@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f AS runtime
+FROM --platform=linux/amd64 python:3.13-slim-trixie@sha256:2d44738ebf4ce5f63b9d9ea871e9c7cfdc0426f7b0c97cac915fd88ded1d86bb AS runtime
 
 ARG VERSION=dev
 ARG REVISION=unknown
