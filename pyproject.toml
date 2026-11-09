@@ -28,7 +28,7 @@ dependencies = [
     "pandas==3.1.0",
     "numpy==2.2.6",
     # Point-in-time fact store.
-    "duckdb>=1.5,<2",
+    "duckdb>=1.5,<3",
     # EDGAR client.
     "httpx==0.28.1",
 
